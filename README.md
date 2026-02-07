@@ -42,35 +42,51 @@ Concilium automates the entire process:
 - **Single Interface** — No more tab switching or terminal juggling
 - **Open Source** — MIT licensed, fully transparent
 
-## Installation
+## Getting Started
 
-### macOS
+Concilium is open source and ready to build. Clone the repo, configure your environment, and build the app.
 
-```bash
-brew install --cask concilium
-```
+### Prerequisites
 
-Or download the latest release from the [Releases page](https://github.com/matiasdaloia/concilium/releases).
-
-### Linux
-
-Download the latest `.AppImage` or `.deb` from the [Releases page](https://github.com/matiasdaloia/concilium/releases).
-
-### Requirements
-
-- macOS 12+ or Linux
+- Node.js 18+
+- macOS 12+ (Apple Silicon or Intel) or Linux
 - At least one CLI agent installed:
   - [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
   - [Codex](https://github.com/openai/codex) (OpenAI)
   - [OpenCode](https://github.com/sst/opencode) or similar
-- OpenRouter API key (for peer review and synthesis stages)
 
-## Quick Start
+### 1. Clone the repository
 
-1. **Download and install** Concilium
-2. **Configure your agents** in the app settings
-3. **Add your OpenRouter API key** for the review stage
-4. **Ask a question** and watch the council deliberate
+```bash
+git clone https://github.com/matiasdaloia/concilium.git
+```
+
+### 2. Configure environment
+
+Create a `.env` file in the `desktop` directory with your OpenRouter API key:
+
+```bash
+cd concilium/desktop
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
+```
+
+### 3. Install & Build
+
+```bash
+npm install
+npm run build
+```
+
+This will install dependencies and package the application into the `out/` directory.
+
+### 4. Run the application
+
+Locate the built executable in the `out/` directory:
+
+- **macOS:** `open out/Concilium-darwin-arm64/Concilium.app`
+- **Linux:** `./out/Concilium-linux-x64/concilium`
+
+> The folder name may vary depending on your architecture (e.g., `darwin-x64` for Intel Macs).
 
 ## Architecture
 
