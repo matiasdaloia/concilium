@@ -1,0 +1,36 @@
+{
+  "id": "demo-001",
+  "prompt": "Implement user authentication for the Express API",
+  "agents": [
+    {
+      "name": "OpenCode",
+      "provider": "opencode",
+      "model": "anthropic/claude-sonnet-4",
+      "summary": "JWT tokens with refresh token rotation"
+    },
+    {
+      "name": "Codex",
+      "provider": "codex",
+      "model": "openai/o3-mini",
+      "summary": "Session-based auth with Redis"
+    },
+    {
+      "name": "Claude",
+      "provider": "claude",
+      "model": "anthropic/claude-sonnet-4",
+      "summary": "OAuth 2.0 with PKCE flow"
+    }
+  ],
+  "rankings": [
+    { "juror": "juror_1", "ranking": ["Claude", "OpenCode", "Codex"] },
+    { "juror": "juror_2", "ranking": ["Claude", "Codex", "OpenCode"] },
+    { "juror": "juror_3", "ranking": ["OpenCode", "Claude", "Codex"] },
+    { "juror": "juror_4", "ranking": ["Claude", "OpenCode", "Codex"] }
+  ],
+  "leaderboard": [
+    { "name": "Claude", "averageRank": 1.25 },
+    { "name": "OpenCode", "averageRank": 2.0 },
+    { "name": "Codex", "averageRank": 2.75 }
+  ],
+  "synthesis": "Hybrid approach combining JWT for stateless API auth, Redis for session management, and PKCE for OAuth flows."
+}

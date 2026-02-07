@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "WebSearch",
+      "Bash(opencode --help:*)",
+      "WebFetch(domain:opentui.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:ralph-tui.com)",
+      "Bash(find:*)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(opencode run:*)",
+      "Bash(/Users/matiasdaloia/.opencode/bin/opencode run:*)",
+      "Bash(/Users/matiasdaloia/.opencode/bin/opencode:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

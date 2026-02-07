@@ -1,0 +1,60 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Nav from '../sections/Nav.astro';
+import Hero from '../sections/Hero.astro';
+import TheProblem from '../sections/TheProblem.astro';
+import HowItWorks from '../sections/HowItWorks.astro';
+import WhyItMatters from '../sections/WhyItMatters.astro';
+import VideoDemo from '../sections/VideoDemo.astro';
+import OpenSource from '../sections/OpenSource.astro';
+import GetStarted from '../sections/GetStarted.astro';
+import Footer from '../sections/Footer.astro';
+import BeforeAfter from '../islands/BeforeAfter';
+import PipelineDemo from '../islands/PipelineDemo';
+import GitHubStars from '../islands/GitHubStars';
+---
+
+<BaseLayout>
+  <Nav />
+
+  <main>
+    <Hero />
+
+    <TheProblem />
+    <BeforeAfter client:visible />
+
+    <HowItWorks />
+    <WhyItMatters />
+
+    <VideoDemo />
+    <PipelineDemo client:visible />
+
+    <OpenSource />
+    <GitHubStars client:idle />
+
+    <GetStarted />
+  </main>
+
+  <Footer />
+</BaseLayout>
+
+<script>
+  // Scroll reveal using IntersectionObserver
+  const revealElements = document.querySelectorAll('section');
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          observer.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.1 }
+  );
+
+  revealElements.forEach((el) => {
+    el.classList.add('reveal');
+    observer.observe(el);
+  });
+</script>

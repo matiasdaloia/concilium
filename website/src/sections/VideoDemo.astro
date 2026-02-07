@@ -1,0 +1,49 @@
+---
+---
+
+<section id="demo" class="py-24 relative overflow-hidden">
+  <div class="max-w-7xl mx-auto px-6 relative z-10 w-full">
+    <div class="flex flex-col items-center text-center gap-4 mb-16">
+      <h2
+        class="text-3xl md:text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/70"
+      >
+        Watch Concilium in Action
+      </h2>
+      <p class="text-lg text-text-secondary max-w-2xl">
+        See how Concilium orchestrates multiple LLMs to reach consensus on complex coding tasks.
+      </p>
+    </div>
+
+    <div class="relative w-full max-w-5xl mx-auto group">
+      {/* Glow effect */}
+      <div
+        class="absolute -inset-1 bg-gradient-to-r from-green-primary/20 via-blue-500/20 to-purple-500/20 rounded-2xl blur-xl opacity-50 group-hover:opacity-75 transition-opacity duration-500"
+      >
+      </div>
+
+      <div
+        class="relative rounded-xl overflow-hidden border border-white/10 bg-black/40 backdrop-blur-sm shadow-2xl"
+      >
+        <div class="aspect-video w-full relative group cursor-pointer">
+          <video
+            class="w-full h-full object-cover"
+            controls="controls"
+            poster="/video-poster.jpg"
+          >
+            <source src="/demo.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+          
+          <div class="absolute inset-0 flex items-center justify-center pointer-events-none group-hover:bg-black/10 transition-colors">
+          </div>
+        </div>
+      </div>
+      
+      <div class="mt-8 flex justify-center">
+        <p class="text-sm text-text-muted font-mono">
+          Full demo walkthrough &bull; 2:15
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

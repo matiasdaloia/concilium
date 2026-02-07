@@ -1,0 +1,99 @@
+---
+import SectionHeader from '../components/SectionHeader.astro';
+import Button from '../components/Button.astro';
+---
+
+<section class="py-24 md:py-32">
+  <div class="max-w-7xl mx-auto px-6">
+    <SectionHeader title="Open Source" subtitle="MIT Licensed" />
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- GitHub card -->
+      <div class="bg-bg-surface border border-border-primary rounded-lg p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-4">
+          <svg class="w-6 h-6 text-text-primary" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+          </svg>
+          <div>
+            <h3 class="text-sm font-medium text-text-primary">matiasdaloia/concilium</h3>
+            <p class="text-[11px] text-text-muted">MIT License</p>
+          </div>
+        </div>
+
+        <p class="text-sm text-text-secondary mb-6">
+          The entire codebase is open source. Browse the code, report issues, or contribute features.
+        </p>
+
+        <!-- GitHub stars mount point -->
+        <div id="github-stars-mount" class="mb-6">
+          <div class="flex items-center gap-4 text-xs text-text-muted">
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+              Stars
+            </span>
+            <span class="flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 3a3 3 0 0 0-3 3v2.25a3 3 0 0 0 3 3h2.25a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H6zm12 0a3 3 0 0 0-3 3v2.25a3 3 0 0 0 3 3h.008a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H18zM6 15.75a3 3 0 0 0-3 3V21a3 3 0 0 0 3 3h2.25a3 3 0 0 0 3-3v-2.25a3 3 0 0 0-3-3H6z"/>
+              </svg>
+              Forks
+            </span>
+          </div>
+        </div>
+
+        <Button variant="secondary" href="https://github.com/matiasdaloia/concilium">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+          </svg>
+          Star on GitHub
+        </Button>
+      </div>
+
+      <!-- Get Involved card -->
+      <div class="bg-bg-surface border border-border-primary rounded-lg p-6 md:p-8">
+        <div class="flex items-center gap-3 mb-4">
+          <div class="w-6 h-6 rounded-full bg-green-primary/20 flex items-center justify-center">
+            <span class="text-green-primary text-xs">+</span>
+          </div>
+          <h3 class="text-sm font-medium text-text-primary">Get Involved</h3>
+        </div>
+
+        <ul class="space-y-4 mb-6">
+          <li class="flex items-start gap-3">
+            <span class="text-green-primary text-xs mt-1">→</span>
+            <div>
+              <span class="text-sm text-text-primary">Report bugs</span>
+              <p class="text-[11px] text-text-muted mt-0.5">Found something broken? Open an issue.</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-green-primary text-xs mt-1">→</span>
+            <div>
+              <span class="text-sm text-text-primary">Submit PRs</span>
+              <p class="text-[11px] text-text-muted mt-0.5">Fix a bug or add a feature.</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-green-primary text-xs mt-1">→</span>
+            <div>
+              <span class="text-sm text-text-primary">Request features</span>
+              <p class="text-[11px] text-text-muted mt-0.5">Have an idea? Start a discussion.</p>
+            </div>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="text-green-primary text-xs mt-1">→</span>
+            <div>
+              <span class="text-sm text-text-primary">Join discussions</span>
+              <p class="text-[11px] text-text-muted mt-0.5">Shape the future of collective AI.</p>
+            </div>
+          </li>
+        </ul>
+
+        <Button variant="secondary" href="https://github.com/matiasdaloia/concilium/issues">
+          Open an Issue
+        </Button>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,22 @@
+/** Design tokens exported for React islands that can't use Tailwind directly */
+export const colors = {
+  bgPage: '#0C0C0C',
+  bgSurface: '#171717',
+  bgInput: '#1A1A1A',
+  bgHover: '#222222',
+  borderPrimary: '#1F1F1F',
+  borderSecondary: '#252525',
+  textPrimary: '#E5E5E5',
+  textSecondary: '#A3A3A3',
+  textTertiary: '#737373',
+  textMuted: '#525252',
+  greenPrimary: '#22C55E',
+  greenDim: '#16A34A',
+  blueInfo: '#3B82F6',
+  amberWarning: '#F59E0B',
+  redError: '#EF4444',
+  purpleAccent: '#A855F7',
+  providerOpencode: '#22C55E',
+  providerCodex: '#3B82F6',
+  providerClaude: '#A855F7',
+} as const;

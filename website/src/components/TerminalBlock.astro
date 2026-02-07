@@ -1,0 +1,13 @@
+---
+interface Props {
+  command: string;
+  class?: string;
+}
+
+const { command, class: className = '' } = Astro.props;
+---
+
+<div class={`bg-bg-surface border border-border-primary rounded-lg px-4 py-3 font-mono ${className}`}>
+  <span class="text-green-primary text-sm">$</span>
+  <span class="text-text-primary text-sm ml-2">{command}</span>
+</div>

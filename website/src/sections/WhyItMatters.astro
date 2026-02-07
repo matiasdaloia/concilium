@@ -1,0 +1,79 @@
+---
+import SectionHeader from '../components/SectionHeader.astro';
+
+const problems = [
+  "Copy-pasting the same prompt into 3 different tools.",
+  "Switching between browser tabs, terminals, and apps.",
+  "Reading 3 long outputs and comparing them manually.",
+  "No way to know which answer has the fewest bugs.",
+];
+
+const solutions = [
+  "One prompt, three agents, all running at the same time.",
+  "A single desktop app with a unified interface.",
+  "Automatic blind peer-review ranks the best response.",
+  "Synthesized output validated by adversarial consensus.",
+];
+---
+
+<section class="py-24 md:py-32">
+  <div class="max-w-7xl mx-auto px-6">
+    <SectionHeader title="Why Concilium?" subtitle="Better answers, less work" num="02" />
+
+    <div class="grid md:grid-cols-2 gap-6">
+      <!-- Without Concilium -->
+      <div class="rounded-lg border border-red-error/20 bg-red-error/[0.03] p-6 md:p-8">
+        <div class="flex items-center gap-2 mb-6">
+          <div class="w-2 h-2 rounded-full bg-red-error"></div>
+          <span class="text-sm font-medium text-red-error">Without Concilium</span>
+        </div>
+        <ul class="space-y-4">
+          {problems.map((problem) => (
+            <li class="flex items-start gap-3">
+              <span class="text-red-error/60 text-xs mt-0.5 shrink-0">&#10005;</span>
+              <span class="text-sm text-text-secondary">{problem}</span>
+            </li>
+          ))}
+        </ul>
+        <div class="mt-6 pt-4 border-t border-red-error/10">
+          <span class="text-[11px] text-red-error/50 font-mono">~25 min per prompt &middot; high cognitive load &middot; error-prone</span>
+        </div>
+      </div>
+
+      <!-- With Concilium -->
+      <div class="rounded-lg border border-green-primary/20 bg-green-primary/[0.03] p-6 md:p-8">
+        <div class="flex items-center gap-2 mb-6">
+          <div class="w-2 h-2 rounded-full bg-green-primary"></div>
+          <span class="text-sm font-medium text-green-primary">With Concilium</span>
+        </div>
+        <ul class="space-y-4">
+          {solutions.map((solution) => (
+            <li class="flex items-start gap-3">
+              <span class="text-green-primary text-xs mt-0.5 shrink-0">&#10003;</span>
+              <span class="text-sm text-text-secondary">{solution}</span>
+            </li>
+          ))}
+        </ul>
+        <div class="mt-6 pt-4 border-t border-green-primary/10">
+          <span class="text-[11px] text-green-primary/50 font-mono">~3 min per prompt &middot; fully automated &middot; peer-validated</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stat pills -->
+    <div class="mt-12 flex flex-wrap justify-center gap-4">
+      <div class="bg-bg-surface border border-border-secondary rounded-full px-5 py-2.5 flex items-center gap-2">
+        <span class="text-green-primary font-bold text-lg">3</span>
+        <span class="text-xs text-text-secondary font-medium">Parallel Agents</span>
+      </div>
+      <div class="bg-bg-surface border border-border-secondary rounded-full px-5 py-2.5 flex items-center gap-2">
+        <span class="text-amber-warning font-bold text-lg">N</span>
+        <span class="text-xs text-text-secondary font-medium">Blind Reviewers</span>
+      </div>
+      <div class="bg-bg-surface border border-border-secondary rounded-full px-5 py-2.5 flex items-center gap-2">
+        <span class="text-green-primary font-bold text-lg">1</span>
+        <span class="text-xs text-text-secondary font-medium">Validated Answer</span>
+      </div>
+    </div>
+  </div>
+</section>

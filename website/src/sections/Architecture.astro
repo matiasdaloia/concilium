@@ -1,0 +1,172 @@
+---
+import SectionHeader from '../components/SectionHeader.astro';
+---
+
+<section class="py-20 md:py-28" id="architecture">
+  <div class="max-w-6xl mx-auto px-6">
+    <SectionHeader title="architecture" subtitle="under the hood" />
+
+    <!-- Architecture diagram mount point for React island -->
+    <div id="architecture-diagram-mount" class="mb-12">
+      <!-- Static fallback diagram -->
+      <div class="bg-bg-surface border border-border-primary rounded-lg p-8 overflow-x-auto">
+        <svg viewBox="0 0 900 400" class="w-full min-w-[600px] h-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Main Process box -->
+          <rect x="20" y="30" width="340" height="340" rx="8" stroke="#1F1F1F" stroke-width="2" fill="#171717"/>
+          <text x="40" y="60" fill="#A3A3A3" font-family="monospace" font-size="12">Main Process</text>
+
+          <!-- Runner -->
+          <rect x="40" y="80" width="140" height="50" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="75" y="110" fill="#E5E5E5" font-family="monospace" font-size="11">runner.ts</text>
+
+          <!-- Pipeline -->
+          <rect x="200" y="80" width="140" height="50" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="228" y="110" fill="#E5E5E5" font-family="monospace" font-size="11">pipeline.ts</text>
+
+          <!-- OpenRouter -->
+          <rect x="40" y="150" width="140" height="50" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="60" y="180" fill="#E5E5E5" font-family="monospace" font-size="11">openrouter.ts</text>
+
+          <!-- Storage -->
+          <rect x="200" y="150" width="140" height="50" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="232" y="180" fill="#E5E5E5" font-family="monospace" font-size="11">storage.ts</text>
+
+          <!-- CLI Subprocesses -->
+          <text x="40" y="235" fill="#737373" font-family="monospace" font-size="10">CLI Subprocesses</text>
+
+          <rect x="40" y="250" width="85" height="35" rx="4" fill="#22C55E10" stroke="#22C55E40"/>
+          <text x="52" y="272" fill="#22C55E" font-family="monospace" font-size="10">opencode</text>
+
+          <rect x="140" y="250" width="85" height="35" rx="4" fill="#3B82F610" stroke="#3B82F640"/>
+          <text x="162" y="272" fill="#3B82F6" font-family="monospace" font-size="10">codex</text>
+
+          <rect x="240" y="250" width="85" height="35" rx="4" fill="#A855F710" stroke="#A855F740"/>
+          <text x="258" y="272" fill="#A855F7" font-family="monospace" font-size="10">claude</text>
+
+          <!-- OpenRouter API box -->
+          <rect x="40" y="310" width="300" height="40" rx="6" fill="#F59E0B10" stroke="#F59E0B40"/>
+          <text x="120" y="335" fill="#F59E0B" font-family="monospace" font-size="11">OpenRouter API</text>
+
+          <!-- IPC Bridge -->
+          <rect x="400" y="140" width="100" height="120" rx="8" fill="#22C55E10" stroke="#22C55E30"/>
+          <text x="427" y="200" fill="#22C55E" font-family="monospace" font-size="12" font-weight="bold">IPC</text>
+          <text x="410" y="220" fill="#737373" font-family="monospace" font-size="8">contextBridge</text>
+
+          <!-- Arrows main -> IPC -->
+          <line x1="360" y1="200" x2="400" y2="200" stroke="#252525" stroke-width="2" stroke-dasharray="4 3"/>
+
+          <!-- Renderer box -->
+          <rect x="540" y="30" width="340" height="340" rx="8" stroke="#1F1F1F" stroke-width="2" fill="#171717"/>
+          <text x="560" y="60" fill="#A3A3A3" font-family="monospace" font-size="12">Renderer (React)</text>
+
+          <!-- Arrows IPC -> Renderer -->
+          <line x1="500" y1="200" x2="540" y2="200" stroke="#252525" stroke-width="2" stroke-dasharray="4 3"/>
+
+          <!-- useCouncilRun -->
+          <rect x="560" y="80" width="300" height="50" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="640" y="110" fill="#E5E5E5" font-family="monospace" font-size="11">useCouncilRun</text>
+
+          <!-- Components -->
+          <rect x="560" y="150" width="140" height="40" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="585" y="175" fill="#E5E5E5" font-family="monospace" font-size="11">AgentPane</text>
+
+          <rect x="720" y="150" width="140" height="40" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="730" y="175" fill="#E5E5E5" font-family="monospace" font-size="11">StageProgress</text>
+
+          <rect x="560" y="210" width="140" height="40" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="575" y="235" fill="#E5E5E5" font-family="monospace" font-size="11">Leaderboard</text>
+
+          <rect x="720" y="210" width="140" height="40" rx="6" fill="#0C0C0C" stroke="#252525"/>
+          <text x="736" y="235" fill="#E5E5E5" font-family="monospace" font-size="11">MarkdownMD</text>
+
+          <!-- Screens -->
+          <text x="560" y="285" fill="#737373" font-family="monospace" font-size="10">Screens</text>
+          <rect x="560" y="295" width="95" height="35" rx="4" fill="#0C0C0C" stroke="#252525"/>
+          <text x="576" y="317" fill="#A3A3A3" font-family="monospace" font-size="9">Home</text>
+
+          <rect x="665" y="295" width="95" height="35" rx="4" fill="#0C0C0C" stroke="#252525"/>
+          <text x="676" y="317" fill="#A3A3A3" font-family="monospace" font-size="9">Running</text>
+
+          <rect x="770" y="295" width="95" height="35" rx="4" fill="#0C0C0C" stroke="#252525"/>
+          <text x="782" y="317" fill="#A3A3A3" font-family="monospace" font-size="9">Results</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- Collapsible details -->
+    <div class="space-y-4">
+      <details class="group bg-bg-surface border border-border-primary rounded-lg">
+        <summary class="flex items-center justify-between px-6 py-4 cursor-pointer text-sm text-text-primary hover:text-green-primary transition-colors">
+          <span>IPC Channels</span>
+          <svg class="w-4 h-4 text-text-muted group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+        <div class="px-6 pb-4 border-t border-border-primary/50 pt-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="text-green-primary">→</span>
+              <span class="text-text-secondary">agent:status</span>
+              <span class="text-text-muted">// agent state changes</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-green-primary">→</span>
+              <span class="text-text-secondary">agent:event</span>
+              <span class="text-text-muted">// streaming output</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-amber-warning">→</span>
+              <span class="text-text-secondary">stage:change</span>
+              <span class="text-text-muted">// pipeline transitions</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-amber-warning">→</span>
+              <span class="text-text-secondary">juror:status</span>
+              <span class="text-text-muted">// juror evaluating/complete</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-amber-warning">→</span>
+              <span class="text-text-secondary">juror:chunk</span>
+              <span class="text-text-muted">// streaming juror text</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-green-primary">→</span>
+              <span class="text-text-secondary">run:complete</span>
+              <span class="text-text-muted">// final RunRecord</span>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <details class="group bg-bg-surface border border-border-primary rounded-lg">
+        <summary class="flex items-center justify-between px-6 py-4 cursor-pointer text-sm text-text-primary hover:text-green-primary transition-colors">
+          <span>Key Types</span>
+          <svg class="w-4 h-4 text-text-muted group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+        <div class="px-6 pb-4 border-t border-border-primary/50 pt-4">
+          <pre class="text-xs text-text-secondary font-mono overflow-x-auto"><code>{'RunRecord       // { model, response, stages }\nStage1Result    // { model, response }\nStage2Result    // { model, ranking, parsedRanking }\nStage3Result    // { model, response } (synthesis)\nAgentResult     // Per-agent output + events\nAggregateRanking // { model, averageRank, rankingsCount }'}</code></pre>
+        </div>
+      </details>
+
+      <details class="group bg-bg-surface border border-border-primary rounded-lg">
+        <summary class="flex items-center justify-between px-6 py-4 cursor-pointer text-sm text-text-primary hover:text-green-primary transition-colors">
+          <span>Tech Stack</span>
+          <svg class="w-4 h-4 text-text-muted group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </summary>
+        <div class="px-6 pb-4 border-t border-border-primary/50 pt-4">
+          <div class="flex flex-wrap gap-2">
+            {['Electron Forge', 'React 19', 'TypeScript', 'Tailwind CSS v4', 'Vite', 'OpenRouter API', 'Node.js'].map((tech) => (
+              <span class="bg-bg-hover text-text-secondary text-[10px] px-2.5 py-1 rounded-full font-mono">
+                {tech}
+              </span>
+            ))}
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>

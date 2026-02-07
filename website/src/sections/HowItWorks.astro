@@ -1,0 +1,225 @@
+---
+import SectionHeader from "../components/SectionHeader.astro";
+
+const stages = [
+    {
+        num: 1,
+        title: "Parallel Execution",
+        color: "green",
+        colorClass: "border-green-primary/30 bg-green-primary/5",
+        dotClass: "bg-green-primary",
+        numClass: "bg-green-primary text-bg-page",
+        description:
+            "Send one prompt and three agents start working at the same time. No more opening multiple terminals or browser tabs.",
+        detail: "Claude, OpenAI, and OpenCode run in isolated subprocesses. You watch all three stream output simultaneously in the same window.",
+    },
+    {
+        num: 2,
+        title: "Blind Review",
+        color: "amber",
+        colorClass: "border-amber-warning/30 bg-amber-warning/5",
+        dotClass: "bg-amber-warning",
+        numClass: "bg-amber-warning text-bg-page",
+        description:
+            "Instead of you reading and comparing outputs, multiple juror models do it for you. Anonymously. With no bias.",
+        detail: "Responses are labeled A, B, C. Jurors evaluate correctness, edge-case handling, and code quality. You skip the manual comparison entirely.",
+    },
+    {
+        num: 3,
+        title: "Synthesis",
+        color: "green",
+        colorClass: "border-green-primary/30 bg-green-primary/5",
+        dotClass: "bg-green-primary",
+        numClass: "bg-green-primary text-bg-page",
+        description:
+            "A Chairman model merges the strongest parts of each solution into one final answer. Better than any single model alone.",
+        detail: "The result combines the best architecture decisions, error handling, and implementation details from all three agents.",
+    },
+];
+---
+
+<section class="py-24 md:py-32" id="how-it-works">
+    <div class="max-w-7xl mx-auto px-6">
+        <SectionHeader
+            title="How It Works"
+            subtitle="Three-Stage Consensus"
+            num="01"
+        />
+
+        <!-- Stage cards -->
+        <div class="grid md:grid-cols-3 gap-6 relative mt-16">
+            <!-- Connector lines (desktop only) -->
+            <div
+                class="hidden md:block absolute top-16 left-[33.3%] w-[33.3%] z-10 opacity-30"
+            >
+                <svg
+                    class="w-full h-4"
+                    viewBox="0 0 200 16"
+                    preserveAspectRatio="none"
+                >
+                    <line
+                        x1="0"
+                        y1="8"
+                        x2="200"
+                        y2="8"
+                        stroke="#252525"
+                        stroke-width="2"
+                        stroke-dasharray="6 4"
+                        class="animate-dash"></line>
+                </svg>
+            </div>
+            <div
+                class="hidden md:block absolute top-16 left-[66.6%] w-[33.3%] z-10 opacity-30"
+            >
+                <svg
+                    class="w-full h-4"
+                    viewBox="0 0 200 16"
+                    preserveAspectRatio="none"
+                >
+                    <line
+                        x1="0"
+                        y1="8"
+                        x2="200"
+                        y2="8"
+                        stroke="#252525"
+                        stroke-width="2"
+                        stroke-dasharray="6 4"
+                        class="animate-dash"></line>
+                </svg>
+            </div>
+
+            {
+                stages.map((stage) => (
+                    <div
+                        class={`relative rounded-xl border p-8 transition-all duration-300 hover:scale-[1.02] bg-white/[0.02] backdrop-blur-sm ${stage.colorClass}`}
+                    >
+                        {/* Stage number */}
+                        <div class="flex items-center gap-4 mb-6">
+                            <div
+                                class={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold font-mono shadow-[0_0_15px_rgba(0,0,0,0.3)] ${stage.numClass}`}
+                            >
+                                0{stage.num}
+                            </div>
+                            <h3 class="text-lg font-bold font-mono tracking-wide text-text-primary uppercase">
+                                {stage.title}
+                            </h3>
+                        </div>
+
+                        {/* Description */}
+                        <p class="text-sm text-text-secondary leading-relaxed mb-6 font-light">
+                            {stage.description}
+                        </p>
+
+                        {/* Detail */}
+                        <div class="pt-4 border-t border-white/5">
+                            <p class="text-[10px] text-text-tertiary leading-relaxed font-mono">
+                                <span class="text-green-primary opacity-60 mr-2">
+                                    »
+                                </span>
+                                {stage.detail}
+                            </p>
+                        </div>
+
+                        {/* Visual: Mock agent panes or juror grid */}
+                        <div class="mt-8 rounded-lg bg-black/40 border border-white/5 overflow-hidden backdrop-blur-md">
+                            {stage.num === 1 && (
+                                <div class="flex divide-x divide-white/5">
+                                    <div class="flex-1 p-3">
+                                        <div class="flex items-center gap-1.5 mb-2">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-provider-opencode shadow-[0_0_5px_#22c55e]" />
+                                            <span class="text-[8px] text-text-muted font-mono uppercase">
+                                                opencode
+                                            </span>
+                                        </div>
+                                        <div class="space-y-1.5 opacity-50">
+                                            <div class="h-1 bg-white/20 rounded w-full" />
+                                            <div class="h-1 bg-white/20 rounded w-3/4" />
+                                            <div class="h-1 bg-white/20 rounded w-5/6" />
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 p-3 bg-white/[0.02]">
+                                        <div class="flex items-center gap-1.5 mb-2">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-provider-codex shadow-[0_0_5px_#3b82f6]" />
+                                            <span class="text-[8px] text-text-muted font-mono uppercase">
+                                                codex
+                                            </span>
+                                        </div>
+                                        <div class="space-y-1.5 opacity-50">
+                                            <div class="h-1 bg-white/20 rounded w-full" />
+                                            <div class="h-1 bg-white/20 rounded w-2/3" />
+                                            <div class="h-1 bg-white/20 rounded w-4/5" />
+                                        </div>
+                                    </div>
+                                    <div class="flex-1 p-3">
+                                        <div class="flex items-center gap-1.5 mb-2">
+                                            <div class="w-1.5 h-1.5 rounded-full bg-provider-claude shadow-[0_0_5px_#a855f7]" />
+                                            <span class="text-[8px] text-text-muted font-mono uppercase">
+                                                claude
+                                            </span>
+                                        </div>
+                                        <div class="space-y-1.5 opacity-50">
+                                            <div class="h-1 bg-white/20 rounded w-full" />
+                                            <div class="h-1 bg-white/20 rounded w-5/6" />
+                                            <div class="h-1 bg-white/20 rounded w-1/2" />
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {stage.num === 2 && (
+                                <div class="grid grid-cols-2 gap-2 p-3">
+                                    {["JUROR_A", "JUROR_B", "JUROR_C"].map(
+                                        (j) => (
+                                            <div class="bg-white/5 border border-white/5 rounded px-2 py-2">
+                                                <div class="flex items-center gap-1.5 mb-1.5">
+                                                    <div class="w-1 h-1 rounded-full bg-amber-warning shadow-[0_0_5px_#f59e0b]" />
+                                                    <span class="text-[7px] text-text-muted font-mono uppercase">
+                                                        {j}
+                                                    </span>
+                                                </div>
+                                                <div class="h-0.5 bg-amber-warning/40 rounded w-1/2" />
+                                            </div>
+                                        ),
+                                    )}
+                                    <div class="bg-white/5 border border-white/5 rounded px-2 py-2 relative overflow-hidden">
+                                        <div class="absolute inset-0 bg-green-primary/10 animate-pulse" />
+                                        <div class="flex items-center gap-1.5 mb-1.5 relative z-10">
+                                            <div class="w-1 h-1 rounded-full bg-green-primary shadow-[0_0_5px_#22c55e]" />
+                                            <span class="text-[7px] text-text-muted font-mono uppercase">
+                                                JUROR_D
+                                            </span>
+                                        </div>
+                                        <div class="h-0.5 bg-green-primary/40 rounded w-3/4 relative z-10" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {stage.num === 3 && (
+                                <div class="p-4 relative overflow-hidden">
+                                    <div class="absolute top-0 right-0 w-16 h-16 bg-green-primary/20 blur-xl rounded-full -mr-8 -mt-8" />
+                                    <div class="flex items-center gap-2 mb-3">
+                                        <div class="w-2 h-2 rounded-full bg-green-primary animate-pulse shadow-[0_0_10px_#22c55e]" />
+                                        <span class="text-[9px] text-green-primary font-bold font-mono uppercase tracking-wider">
+                                            CHAIRMAN · SYNTHESIZING
+                                        </span>
+                                    </div>
+                                    <div class="space-y-2 opacity-80">
+                                        <div class="h-1 bg-gradient-to-r from-green-primary/60 to-transparent rounded w-full" />
+                                        <div class="h-1 bg-gradient-to-r from-green-primary/40 to-transparent rounded w-4/5" />
+                                        <div class="h-1 bg-gradient-to-r from-green-primary/50 to-transparent rounded w-full" />
+                                        <div class="h-1 bg-gradient-to-r from-green-primary/30 to-transparent rounded w-2/3" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                ))
+            }
+        </div>
+
+        <!-- Pipeline demo mount point -->
+        <div class="mt-16" id="pipeline-demo-mount">
+            <!-- PipelineDemo React island will mount here -->
+        </div>
+    </div>
+</section>

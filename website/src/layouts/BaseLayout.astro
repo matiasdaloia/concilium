@@ -1,0 +1,60 @@
+---
+import "@fontsource/jetbrains-mono/300.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/600.css";
+import "@fontsource/jetbrains-mono/700.css";
+import Analytics from "@vercel/analytics/astro";
+import "../styles/tailwind.css";
+
+interface Props {
+    title?: string;
+    description?: string;
+}
+
+const {
+    title = "Concilium — Every model gives you a different answer. Get the right one.",
+    description = "Stop copy-pasting prompts across OpenAI, Claude, and Codex. Concilium runs them in parallel, has them peer-review each other, and synthesizes one validated answer in a single desktop app.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en" class="bg-bg-page scroll-smooth">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="description" content={description} />
+        <meta name="generator" content={Astro.generator} />
+
+        <!-- Theme Color -->
+        <meta name="theme-color" content="#050505" />
+
+        <!-- Open Graph -->
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://concilium.dev" />
+        <meta
+            property="og:image"
+            content="https://concilium.dev/og-image.png"
+        />
+
+        <!-- Twitter -->
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={title} />
+        <meta name="twitter:description" content={description} />
+        <meta
+            name="twitter:image"
+            content="https://concilium.dev/og-image.png"
+        />
+
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <title>{title}</title>
+    </head>
+    <body
+        class="bg-bg-page text-text-primary font-mono antialiased min-h-screen overflow-x-hidden selection:bg-green-primary/30 selection:text-green-primary"
+    >
+        <Analytics />
+        <slot />
+    </body>
+</html>
