@@ -1,0 +1,145 @@
+---
+import SectionHeader from '../components/SectionHeader.astro';
+
+const features = [
+  {
+    icon: 'tokens',
+    title: 'Token Usage Breakdown',
+    description: 'Track input, output, and cache tokens for every agent, juror, and the chairman. See exactly where your tokens go across the entire pipeline.',
+    detail: 'Per-model granularity · Cache hit ratios · Cumulative vs incremental tracking',
+    color: 'green',
+    borderClass: 'border-green-primary/20 hover:border-green-primary/40',
+    iconBg: 'bg-green-primary/10',
+    iconColor: 'text-green-primary',
+    detailColor: 'text-green-primary/50',
+  },
+  {
+    icon: 'cost',
+    title: 'Cost Analysis',
+    description: 'Real-time cost tracking per run, per model, and per stage. Understand your spend and optimize which models give the best value.',
+    detail: 'Cost-per-run trends · Model cost comparison · Stage-level cost split',
+    color: 'amber',
+    borderClass: 'border-amber-warning/20 hover:border-amber-warning/40',
+    iconBg: 'bg-amber-warning/10',
+    iconColor: 'text-amber-warning',
+    detailColor: 'text-amber-warning/50',
+  },
+  {
+    icon: 'performance',
+    title: 'Performance Timing',
+    description: 'Measure how long each stage takes — execution, review, and synthesis. Identify bottlenecks and compare agent response times.',
+    detail: 'Stage-by-stage breakdown · Agent speed comparison · Historical trends',
+    color: 'blue',
+    borderClass: 'border-blue-info/20 hover:border-blue-info/40',
+    iconBg: 'bg-blue-info/10',
+    iconColor: 'text-blue-info',
+    detailColor: 'text-blue-info/50',
+  },
+  {
+    icon: 'models',
+    title: 'Model Leaderboard',
+    description: 'See which models win the most councils. Track win rates, ranking distributions, and find which agent consistently produces the best code.',
+    detail: 'Win rate tracking · Ranking heatmap · Head-to-head comparison',
+    color: 'purple',
+    borderClass: 'border-purple-accent/20 hover:border-purple-accent/40',
+    iconBg: 'bg-purple-accent/10',
+    iconColor: 'text-purple-accent',
+    detailColor: 'text-purple-accent/50',
+  },
+];
+
+const whyItems = [
+  { label: 'Optimize spend', desc: 'Know exactly which models give the best answers per dollar.' },
+  { label: 'Find bottlenecks', desc: 'Stage timing reveals where the pipeline slows down.' },
+  { label: 'Compare models', desc: 'Data-driven decisions on which agents to enable.' },
+  { label: 'Track over time', desc: 'See how your usage, costs, and quality evolve run-over-run.' },
+];
+---
+
+<section class="py-24 md:py-32" id="analytics">
+  <div class="max-w-7xl mx-auto px-6">
+    <SectionHeader title="Built-in Analytics" subtitle="Data-Driven Decisions" num="03" />
+
+    <p class="text-text-secondary text-base md:text-lg max-w-3xl mb-16 -mt-4">
+      Every council run generates detailed telemetry. Concilium captures token usage, costs, timing, and rankings — then
+      surfaces them in a full analytics dashboard so you can make informed decisions about your AI workflow.
+    </p>
+
+    <!-- Feature cards grid -->
+    <div class="grid md:grid-cols-2 gap-5">
+      {features.map((f) => (
+        <div class={`rounded-xl border bg-white/[0.02] backdrop-blur-sm p-6 md:p-8 transition-all duration-300 hover:scale-[1.01] ${f.borderClass}`}>
+          <div class="flex items-center gap-3 mb-4">
+            <div class={`w-9 h-9 rounded-lg ${f.iconBg} flex items-center justify-center`}>
+              {f.icon === 'tokens' && (
+                <svg class={`w-4.5 h-4.5 ${f.iconColor}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                  <path d="M4 6v12c0 1.1.9 2 2 2h14v-4" />
+                  <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z" />
+                </svg>
+              )}
+              {f.icon === 'cost' && (
+                <svg class={`w-4.5 h-4.5 ${f.iconColor}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="1" x2="12" y2="23" />
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
+              )}
+              {f.icon === 'performance' && (
+                <svg class={`w-4.5 h-4.5 ${f.iconColor}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              )}
+              {f.icon === 'models' && (
+                <svg class={`w-4.5 h-4.5 ${f.iconColor}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 21h8" />
+                  <path d="M12 17v4" />
+                  <path d="M7 4h10" />
+                  <path d="M5 8h14" />
+                  <path d="M3 12h18" />
+                  <path d="M4 16h16" />
+                </svg>
+              )}
+            </div>
+            <h3 class="text-base font-bold text-text-primary tracking-wide">{f.title}</h3>
+          </div>
+          <p class="text-sm text-text-secondary leading-relaxed mb-4">
+            {f.description}
+          </p>
+          <div class="pt-3 border-t border-white/5">
+            <span class={`text-[10px] font-mono ${f.detailColor}`}>{f.detail}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- Interactive dashboard preview mount point -->
+    <div class="mt-16" id="analytics-showcase-mount">
+      <!-- AnalyticsShowcase React island will mount here -->
+    </div>
+
+    <!-- Why analytics matter -->
+    <div class="mt-16 bg-bg-surface/50 border border-border-primary rounded-xl p-8 md:p-10">
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-2 h-2 rounded-full bg-green-primary animate-pulse"></div>
+        <h3 class="text-lg font-bold text-text-primary tracking-wide uppercase">Why Analytics Matter</h3>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-6">
+        {whyItems.map((item) => (
+          <div class="flex items-start gap-3">
+            <span class="text-green-primary text-xs mt-1 shrink-0">→</span>
+            <div>
+              <span class="text-sm font-medium text-text-primary">{item.label}</span>
+              <p class="text-[12px] text-text-secondary mt-1 leading-relaxed">{item.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div class="mt-8 pt-6 border-t border-white/5">
+        <p class="text-[11px] text-text-muted font-mono">
+          All analytics are computed locally from your run history. No data ever leaves your machine.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

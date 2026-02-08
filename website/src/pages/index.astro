@@ -6,11 +6,13 @@ import TheProblem from '../sections/TheProblem.astro';
 import HowItWorks from '../sections/HowItWorks.astro';
 import WhyItMatters from '../sections/WhyItMatters.astro';
 import VideoDemo from '../sections/VideoDemo.astro';
+import Analytics from '../sections/Analytics.astro';
 import OpenSource from '../sections/OpenSource.astro';
 import GetStarted from '../sections/GetStarted.astro';
 import Footer from '../sections/Footer.astro';
 import BeforeAfter from '../islands/BeforeAfter';
 import PipelineDemo from '../islands/PipelineDemo';
+import AnalyticsShowcase from '../islands/AnalyticsShowcase';
 import GitHubStars from '../islands/GitHubStars';
 ---
 
@@ -28,6 +30,11 @@ import GitHubStars from '../islands/GitHubStars';
 
     <VideoDemo />
     <PipelineDemo client:visible />
+
+    <Analytics />
+    <div class="max-w-7xl mx-auto px-6 -mt-8 mb-24">
+      <AnalyticsShowcase client:visible />
+    </div>
 
     <OpenSource />
     <GitHubStars client:idle />
