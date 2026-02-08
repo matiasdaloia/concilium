@@ -8,9 +8,10 @@ import { useState, useCallback } from 'react';
 import HomeScreen from './screens/HomeScreen';
 import RunningScreen from './screens/RunningScreen';
 import ResultsScreen from './screens/ResultsScreen';
+import AnalyticsScreen from './screens/AnalyticsScreen';
 import type { RunRecord } from './types';
 
-type Screen = 'home' | 'running' | 'results';
+type Screen = 'home' | 'running' | 'results' | 'analytics';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
@@ -35,9 +36,13 @@ export default function App() {
     setScreen('home');
   }, []);
 
+  const handleOpenAnalytics = useCallback(() => {
+    setScreen('analytics');
+  }, []);
+
   switch (screen) {
     case 'home':
-      return <HomeScreen onStartRun={handleStartRun} />;
+      return <HomeScreen onStartRun={handleStartRun} onOpenAnalytics={handleOpenAnalytics} />;
     case 'running':
       return (
         <RunningScreen
@@ -54,5 +59,7 @@ export default function App() {
           onNewRun={handleNewRun}
         />
       );
+    case 'analytics':
+      return <AnalyticsScreen onBack={handleNewRun} />;
   }
 }

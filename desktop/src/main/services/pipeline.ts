@@ -209,6 +209,7 @@ export async function runCouncilStages(options: {
       model,
       ranking: rankingText,
       parsedRanking: parsed,
+      usage: response.usage ?? null,
     });
   }
 
@@ -247,6 +248,7 @@ export async function runCouncilStages(options: {
   const stage3: Stage3Result = {
     model: config.chairmanModel,
     response: synthesis?.content ?? 'Error: Unable to generate final synthesis from chairman model.',
+    usage: synthesis?.usage ?? null,
   };
 
   log.info('runCouncilStages: pipeline complete');

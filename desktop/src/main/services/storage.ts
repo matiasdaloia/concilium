@@ -74,6 +74,31 @@ export async function loadRun(runId: string): Promise<RunRecord> {
   return JSON.parse(data);
 }
 
+export async function loadAllRuns(): Promise<RunRecord[]> {
+  const dir = await ensureRunsDir();
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".json")).sort();
+  } catch {
+    return [];
+  }
+
+  const records: RunRecord[] = [];
+  for (const file of files) {
+    try {
+      const data: RunRecord = JSON.parse(
+        await readFile(join(dir, file), "utf-8"),
+      );
+      records.push(data);
+    } catch {
+      continue;
+    }
+  }
+
+  records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return records;
+}
+
 export async function listRuns(): Promise<
   Array<{
     id: string;

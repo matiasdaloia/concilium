@@ -9,18 +9,19 @@ import { randomUUID } from 'node:crypto';
 import { cwd } from 'node:process';
 import type { AgentConfig, AgentInstance, StartRunConfig, Stage1Result } from './services/types';
 import { 
-  getCouncilConfig, 
+  getCouncilConfig,
   getCouncilConfigSync,
-  getCouncilConfigPrefs, 
-  saveCouncilConfigPrefs, 
+  getCouncilConfigPrefs,
+  saveCouncilConfigPrefs,
   encryptApiKey,
-  listRuns, 
-  loadRun, 
-  saveRun, 
-  getLastOpencodeModel, 
-  saveLastOpencodeModel, 
-  getAgentInstances, 
-  saveAgentInstances 
+  listRuns,
+  loadAllRuns,
+  loadRun,
+  saveRun,
+  getLastOpencodeModel,
+  saveLastOpencodeModel,
+  getAgentInstances,
+  saveAgentInstances
 } from './services/storage';
 import { fetchOpenRouterModels } from './services/openrouter';
 import { RunController, runAgentsParallel, discoverModelsForAllAgents } from './services/runner';
@@ -88,6 +89,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow) {
   });
 
   ipcMain.handle('storage:listRuns', () => listRuns());
+  ipcMain.handle('storage:loadAllRuns', () => loadAllRuns());
   ipcMain.handle('storage:loadRun', (_, runId: string) => loadRun(runId));
   ipcMain.handle('clipboard:copy', (_, text: string) => {
     clipboard.writeText(text);

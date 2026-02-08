@@ -49,6 +49,7 @@ export interface ElectronAPI {
   startRun(config: { prompt: string; agents: string[]; mode: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
   cancelRun(runId: string): Promise<void>;
   listRuns(): Promise<Array<{ id: string; createdAt: string; promptPreview: string; status: string }>>;
+  loadAllRuns(): Promise<unknown[]>;
   loadRun(runId: string): Promise<unknown>;
   getConfig(): Promise<CouncilConfig>;
   discoverModels(): Promise<AgentModelInfo[]>;
@@ -77,6 +78,7 @@ const api: ElectronAPI = {
   startRun: (config) => ipcRenderer.invoke('run:start', config),
   cancelRun: (runId) => ipcRenderer.invoke('run:cancel', runId),
   listRuns: () => ipcRenderer.invoke('storage:listRuns'),
+  loadAllRuns: () => ipcRenderer.invoke('storage:loadAllRuns'),
   loadRun: (runId) => ipcRenderer.invoke('storage:loadRun', runId),
   getConfig: () => ipcRenderer.invoke('config:get'),
   discoverModels: () => ipcRenderer.invoke('models:discover'),
