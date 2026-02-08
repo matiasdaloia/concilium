@@ -184,13 +184,23 @@ export async function runCouncilStages(options: {
   log.info('runCouncilStages: STAGE 2 - starting ranking queries');
   log.debug('runCouncilStages: label mapping:', labelToModel);
 
+  // Track per-juror timing via callback wrappers
+  const jurorTimings = new Map<string, { startedAt: string; endedAt?: string }>();
+
   const rankingResponses = await queryModelsParallelStreaming(
     config,
     config.councilModels,
     rankingMessages,
-    callbacks?.onRankingModelStart,
+    (model) => {
+      jurorTimings.set(model, { startedAt: new Date().toISOString() });
+      callbacks?.onRankingModelStart?.(model);
+    },
     callbacks?.onRankingModelChunk,
-    callbacks?.onRankingModelComplete,
+    (model, success, usage) => {
+      const timing = jurorTimings.get(model);
+      if (timing) timing.endedAt = new Date().toISOString();
+      callbacks?.onRankingModelComplete?.(model, success, usage);
+    },
   );
 
   log.debug('runCouncilStages: ranking queries completed, processing results...');
@@ -204,12 +214,15 @@ export async function runCouncilStages(options: {
     }
     const rankingText = response.content;
     const parsed = parseRankingFromText(rankingText);
+    const timing = jurorTimings.get(model);
     log.debug(`runCouncilStages: ${model} ranking parsed:`, parsed);
     stage2.push({
       model,
       ranking: rankingText,
       parsedRanking: parsed,
       usage: response.usage ?? null,
+      startedAt: timing?.startedAt ?? null,
+      endedAt: timing?.endedAt ?? null,
     });
   }
 
@@ -236,8 +249,10 @@ export async function runCouncilStages(options: {
 
   const synthesisPrompt = buildSynthesisPrompt(userPrompt, stage1Results, stage2);
   log.debug(`runCouncilStages: synthesis prompt length: ${synthesisPrompt.length} chars`);
-  
+
+  const chairmanStartedAt = new Date().toISOString();
   const synthesis = await queryModel(config, config.chairmanModel, [{ role: 'user', content: synthesisPrompt }], 180_000);
+  const chairmanEndedAt = new Date().toISOString();
 
   if (!synthesis) {
     log.error('runCouncilStages: chairman synthesis failed!');
@@ -249,6 +264,8 @@ export async function runCouncilStages(options: {
     model: config.chairmanModel,
     response: synthesis?.content ?? 'Error: Unable to generate final synthesis from chairman model.',
     usage: synthesis?.usage ?? null,
+    startedAt: chairmanStartedAt,
+    endedAt: chairmanEndedAt,
   };
 
   log.info('runCouncilStages: pipeline complete');

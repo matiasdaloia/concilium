@@ -14,6 +14,17 @@ export interface ModelStats {
   averageRank: number;
 }
 
+export interface CouncilModelStats {
+  model: string;
+  role: 'juror' | 'chairman';
+  appearances: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalDurationSeconds: number;
+  timedAppearances: number;
+  averageDurationSeconds: number;
+}
+
 export interface RunTimelineEntry {
   id: string;
   date: string;           // ISO date (YYYY-MM-DD)
@@ -31,6 +42,7 @@ export interface RunTimelineEntry {
 export interface StageTimingStats {
   stage1AvgSeconds: number;
   stage2AvgSeconds: number;
+  stage3AvgSeconds: number;
   totalAvgSeconds: number;
 }
 
@@ -51,6 +63,9 @@ export interface AnalyticsData {
 
   // By model
   modelStats: ModelStats[];
+
+  // Council model stats (jurors + chairman)
+  councilModelStats: CouncilModelStats[];
 
   // Timeline
   runTimeline: RunTimelineEntry[];
@@ -135,8 +150,22 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
   // Stage timing accumulators
   let stage1TotalSeconds = 0;
   let stage1Count = 0;
+  let stage2TotalSeconds = 0;
+  let stage2Count = 0;
+  let stage3TotalSeconds = 0;
+  let stage3Count = 0;
   let totalRunSeconds = 0;
   let totalRunTimedCount = 0;
+
+  // Council model stats accumulator
+  const councilStatsMap = new Map<string, {
+    role: 'juror' | 'chairman';
+    appearances: number;
+    totalPromptTokens: number;
+    totalCompletionTokens: number;
+    totalDurationSeconds: number;
+    timedAppearances: number;
+  }>();
 
   for (const run of runs) {
     const isSuccess = run.agents.some(a => a.status === 'success');
@@ -218,6 +247,54 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
       }
     }
 
+    // Process council model stats (jurors)
+    for (const s2 of run.stage2) {
+      const key = `juror:${s2.model}`;
+      const existing = councilStatsMap.get(key) ?? {
+        role: 'juror' as const,
+        appearances: 0,
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0,
+        totalDurationSeconds: 0,
+        timedAppearances: 0,
+      };
+      existing.appearances++;
+      existing.totalPromptTokens += s2.usage?.promptTokens ?? 0;
+      existing.totalCompletionTokens += s2.usage?.completionTokens ?? 0;
+      const jurorDuration = durationSeconds(s2.startedAt, s2.endedAt);
+      if (jurorDuration > 0) {
+        existing.totalDurationSeconds += jurorDuration;
+        existing.timedAppearances++;
+        stage2TotalSeconds += jurorDuration;
+        stage2Count++;
+      }
+      councilStatsMap.set(key, existing);
+    }
+
+    // Process council model stats (chairman)
+    if (run.stage3) {
+      const key = `chairman:${run.stage3.model}`;
+      const existing = councilStatsMap.get(key) ?? {
+        role: 'chairman' as const,
+        appearances: 0,
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0,
+        totalDurationSeconds: 0,
+        timedAppearances: 0,
+      };
+      existing.appearances++;
+      existing.totalPromptTokens += run.stage3.usage?.promptTokens ?? 0;
+      existing.totalCompletionTokens += run.stage3.usage?.completionTokens ?? 0;
+      const chairmanDuration = durationSeconds(run.stage3.startedAt, run.stage3.endedAt);
+      if (chairmanDuration > 0) {
+        existing.totalDurationSeconds += chairmanDuration;
+        existing.timedAppearances++;
+        stage3TotalSeconds += chairmanDuration;
+        stage3Count++;
+      }
+      councilStatsMap.set(key, existing);
+    }
+
     // Accumulate totals
     totalInputTokens += runInputTokens;
     totalOutputTokens += runOutputTokens;
@@ -277,10 +354,28 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
   }
   costByDate.sort((a, b) => a.date.localeCompare(b.date));
 
-  // Stage timing (stage2 estimated as total - stage1)
+  // Convert council stats map to sorted array
+  const councilModelStats: CouncilModelStats[] = [];
+  for (const [key, stats] of councilStatsMap) {
+    const model = key.replace(/^(juror|chairman):/, '');
+    councilModelStats.push({
+      model,
+      role: stats.role,
+      appearances: stats.appearances,
+      totalPromptTokens: stats.totalPromptTokens,
+      totalCompletionTokens: stats.totalCompletionTokens,
+      totalDurationSeconds: stats.totalDurationSeconds,
+      timedAppearances: stats.timedAppearances,
+      averageDurationSeconds: stats.timedAppearances > 0 ? stats.totalDurationSeconds / stats.timedAppearances : 0,
+    });
+  }
+  councilModelStats.sort((a, b) => b.appearances - a.appearances);
+
+  // Stage timing — use actual measurements when available, fall back to estimation
   const stage1Avg = stage1Count > 0 ? stage1TotalSeconds / stage1Count : 0;
+  const stage2Avg = stage2Count > 0 ? stage2TotalSeconds / stage2Count : 0;
+  const stage3Avg = stage3Count > 0 ? stage3TotalSeconds / stage3Count : 0;
   const totalAvg = totalRunTimedCount > 0 ? totalRunSeconds / totalRunTimedCount : 0;
-  const stage2Avg = Math.max(0, totalAvg - stage1Avg);
 
   return {
     totalRuns: runs.length,
@@ -290,11 +385,13 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
     totalCost,
     averageDurationSeconds: timedRunCount > 0 ? totalDuration / timedRunCount : 0,
     modelStats,
+    councilModelStats,
     runTimeline: timeline,
     costByDate,
     stageTiming: {
       stage1AvgSeconds: stage1Avg,
       stage2AvgSeconds: stage2Avg,
+      stage3AvgSeconds: stage3Avg,
       totalAvgSeconds: totalAvg,
     },
     providerCounts,

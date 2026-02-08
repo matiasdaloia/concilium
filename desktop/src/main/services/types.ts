@@ -69,12 +69,16 @@ export interface Stage2Result {
   ranking: string;
   parsedRanking: string[];
   usage?: CouncilTokenUsage | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
 }
 
 export interface Stage3Result {
   model: string;
   response: string;
   usage?: CouncilTokenUsage | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
 }
 
 export interface AggregateRanking {

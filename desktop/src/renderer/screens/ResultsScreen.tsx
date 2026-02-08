@@ -231,6 +231,7 @@ function RunReport({ record }: { record: RunRecord }) {
       completionTokens: s2.usage?.completionTokens ?? 0,
       totalTokens: s2.usage?.totalTokens ?? 0,
       hasUsage: !!s2.usage,
+      duration: fmtDuration(s2.startedAt, s2.endedAt),
     }));
 
     // Chairman stats
@@ -241,6 +242,7 @@ function RunReport({ record }: { record: RunRecord }) {
       completionTokens: chairmanUsage?.completionTokens ?? 0,
       totalTokens: chairmanUsage?.totalTokens ?? 0,
       hasUsage: !!chairmanUsage,
+      duration: fmtDuration(record.stage3.startedAt, record.stage3.endedAt),
     } : null;
 
     // Totals
@@ -377,7 +379,8 @@ function RunReport({ record }: { record: RunRecord }) {
                   <th className="text-left px-5 py-2.5 font-medium">Juror Model</th>
                   <th className="text-right px-3 py-2.5 font-medium">Prompt Tokens</th>
                   <th className="text-right px-3 py-2.5 font-medium">Completion Tokens</th>
-                  <th className="text-right px-5 py-2.5 font-medium">Total Tokens</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Total Tokens</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Duration</th>
                 </tr>
               </thead>
               <tbody>
@@ -390,13 +393,14 @@ function RunReport({ record }: { record: RunRecord }) {
                       <>
                         <td className="text-right px-3 py-2.5 text-blue-info">{fmtTokens(juror.promptTokens)}</td>
                         <td className="text-right px-3 py-2.5 text-green-primary">{fmtTokens(juror.completionTokens)}</td>
-                        <td className="text-right px-5 py-2.5 text-text-secondary">{fmtTokens(juror.totalTokens)}</td>
+                        <td className="text-right px-3 py-2.5 text-text-secondary">{fmtTokens(juror.totalTokens)}</td>
                       </>
                     ) : (
-                      <td colSpan={3} className="text-right px-5 py-2.5 text-text-muted italic">
+                      <td colSpan={3} className="text-right px-3 py-2.5 text-text-muted italic">
                         Usage data not available for this run
                       </td>
                     )}
+                    <td className="text-right px-5 py-2.5 text-text-secondary">{juror.duration}</td>
                   </tr>
                 ))}
                 {/* Juror totals */}
@@ -404,9 +408,10 @@ function RunReport({ record }: { record: RunRecord }) {
                   <td className="px-5 py-2.5 text-text-muted font-medium">Total (Jurors)</td>
                   <td className="text-right px-3 py-2.5 text-blue-info font-medium">{fmtTokens(report.totalJurorPrompt)}</td>
                   <td className="text-right px-3 py-2.5 text-green-primary font-medium">{fmtTokens(report.totalJurorCompletion)}</td>
-                  <td className="text-right px-5 py-2.5 text-text-primary font-medium">
+                  <td className="text-right px-3 py-2.5 text-text-primary font-medium">
                     {fmtTokens(report.totalJurorPrompt + report.totalJurorCompletion)}
                   </td>
+                  <td className="text-right px-5 py-2.5 text-text-muted">—</td>
                 </tr>
               </tbody>
             </table>
@@ -428,7 +433,8 @@ function RunReport({ record }: { record: RunRecord }) {
                   <th className="text-left px-5 py-2.5 font-medium">Chairman Model</th>
                   <th className="text-right px-3 py-2.5 font-medium">Prompt Tokens</th>
                   <th className="text-right px-3 py-2.5 font-medium">Completion Tokens</th>
-                  <th className="text-right px-5 py-2.5 font-medium">Total Tokens</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Total Tokens</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Duration</th>
                 </tr>
               </thead>
               <tbody>
@@ -440,13 +446,14 @@ function RunReport({ record }: { record: RunRecord }) {
                     <>
                       <td className="text-right px-3 py-2.5 text-blue-info">{fmtTokens(report.chairmanStats.promptTokens)}</td>
                       <td className="text-right px-3 py-2.5 text-green-primary">{fmtTokens(report.chairmanStats.completionTokens)}</td>
-                      <td className="text-right px-5 py-2.5 text-text-secondary">{fmtTokens(report.chairmanStats.totalTokens)}</td>
+                      <td className="text-right px-3 py-2.5 text-text-secondary">{fmtTokens(report.chairmanStats.totalTokens)}</td>
                     </>
                   ) : (
-                    <td colSpan={3} className="text-right px-5 py-2.5 text-text-muted italic">
+                    <td colSpan={3} className="text-right px-3 py-2.5 text-text-muted italic">
                       Usage data not available for this run
                     </td>
                   )}
+                  <td className="text-right px-5 py-2.5 text-text-secondary">{report.chairmanStats.duration}</td>
                 </tr>
               </tbody>
             </table>

@@ -108,11 +108,13 @@ function EmptyState({ message }: { message: string }) {
 
 /** Stacked horizontal bar for stage timing */
 function StageTimingBar({ timing }: { timing: AnalyticsData['stageTiming'] }) {
-  const total = timing.totalAvgSeconds;
+  const measuredTotal = timing.stage1AvgSeconds + timing.stage2AvgSeconds + timing.stage3AvgSeconds;
+  const total = measuredTotal > 0 ? measuredTotal : timing.totalAvgSeconds;
   if (total === 0) return <EmptyState message="No timing data available" />;
 
   const s1Pct = (timing.stage1AvgSeconds / total) * 100;
   const s2Pct = (timing.stage2AvgSeconds / total) * 100;
+  const s3Pct = (timing.stage3AvgSeconds / total) * 100;
 
   return (
     <div className="space-y-3">
@@ -122,15 +124,26 @@ function StageTimingBar({ timing }: { timing: AnalyticsData['stageTiming'] }) {
           style={{ width: `${s1Pct}%` }}
           title={`Stage 1 (Agents): ${formatDuration(timing.stage1AvgSeconds)}`}
         >
-          {s1Pct > 15 ? 'Agents' : ''}
+          {s1Pct > 12 ? 'Agents' : ''}
         </div>
-        <div
-          className="bg-amber-warning/50 flex items-center justify-center text-[10px] font-mono text-white transition-all"
-          style={{ width: `${s2Pct}%` }}
-          title={`Stage 2+3 (Council): ${formatDuration(timing.stage2AvgSeconds)}`}
-        >
-          {s2Pct > 15 ? 'Council' : ''}
-        </div>
+        {s2Pct > 0 && (
+          <div
+            className="bg-amber-warning/50 flex items-center justify-center text-[10px] font-mono text-white transition-all"
+            style={{ width: `${s2Pct}%` }}
+            title={`Stage 2 (Jurors): ${formatDuration(timing.stage2AvgSeconds)}`}
+          >
+            {s2Pct > 12 ? 'Jurors' : ''}
+          </div>
+        )}
+        {s3Pct > 0 && (
+          <div
+            className="bg-green-primary/50 flex items-center justify-center text-[10px] font-mono text-white transition-all"
+            style={{ width: `${s3Pct}%` }}
+            title={`Stage 3 (Chairman): ${formatDuration(timing.stage3AvgSeconds)}`}
+          >
+            {s3Pct > 12 ? 'Chairman' : ''}
+          </div>
+        )}
       </div>
       <div className="flex justify-between text-[10px] font-mono text-text-muted">
         <div className="flex items-center gap-1.5">
@@ -139,10 +152,14 @@ function StageTimingBar({ timing }: { timing: AnalyticsData['stageTiming'] }) {
         </div>
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-sm bg-amber-warning/50" />
-          Stage 2+3 — Council: {formatDuration(timing.stage2AvgSeconds)}
+          Stage 2 — Jurors: {formatDuration(timing.stage2AvgSeconds)}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-sm bg-green-primary/50" />
+          Stage 3 — Chairman: {formatDuration(timing.stage3AvgSeconds)}
         </div>
         <div>
-          Total: {formatDuration(timing.totalAvgSeconds)}
+          Total: {formatDuration(total)}
         </div>
       </div>
     </div>
@@ -443,6 +460,79 @@ function ModelsTab({ analytics }: { analytics: AnalyticsData }) {
             ))}
         </div>
       </div>
+
+      {/* Council Model Comparison (Jurors + Chairman) */}
+      {analytics.councilModelStats.length > 0 && (
+        <div className="bg-bg-surface border border-border-primary rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border-primary">
+            <h3 className="text-xs font-medium text-text-secondary tracking-wide">Council Model Comparison</h3>
+            <p className="text-[10px] text-text-muted mt-0.5">Per-model timing and token usage for jurors and chairman across all runs</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px] font-mono">
+              <thead>
+                <tr className="border-b border-border-primary text-text-muted">
+                  <th className="text-left px-5 py-2.5 font-medium">Model</th>
+                  <th className="text-center px-3 py-2.5 font-medium">Role</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Uses</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Prompt Tokens</th>
+                  <th className="text-right px-3 py-2.5 font-medium">Completion Tokens</th>
+                  <th className="text-right px-5 py-2.5 font-medium">Avg Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.councilModelStats.map((s, i) => (
+                  <tr key={`${s.role}-${s.model}`} className={`border-b border-border-primary/50 ${i % 2 === 0 ? 'bg-bg-surface' : 'bg-bg-page/30'}`}>
+                    <td className="px-5 py-2.5 text-text-primary font-medium truncate max-w-[200px]" title={s.model}>
+                      {s.model}
+                    </td>
+                    <td className="text-center px-3 py-2.5">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[9px] uppercase tracking-wider ${
+                        s.role === 'chairman'
+                          ? 'bg-green-primary/15 text-green-primary'
+                          : 'bg-amber-warning/15 text-amber-warning'
+                      }`}>
+                        {s.role}
+                      </span>
+                    </td>
+                    <td className="text-right px-3 py-2.5 text-text-secondary">{s.appearances}</td>
+                    <td className="text-right px-3 py-2.5 text-blue-info">{formatTokenCount(s.totalPromptTokens)}</td>
+                    <td className="text-right px-3 py-2.5 text-green-primary">{formatTokenCount(s.totalCompletionTokens)}</td>
+                    <td className="text-right px-5 py-2.5 text-text-secondary">{formatDuration(s.averageDurationSeconds)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Council Avg Duration by Model */}
+      {(() => {
+        const timedCouncilModels = analytics.councilModelStats.filter(s => s.averageDurationSeconds > 0);
+        if (timedCouncilModels.length === 0) return null;
+        const maxCouncilTime = Math.max(...timedCouncilModels.map(s => s.averageDurationSeconds), 1);
+        return (
+          <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
+            <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Council Avg Duration</h3>
+            <p className="text-[10px] text-text-muted mb-3">Average time per juror/chairman model — compare across models</p>
+            <div className="space-y-0.5">
+              {timedCouncilModels
+                .sort((a, b) => a.averageDurationSeconds - b.averageDurationSeconds)
+                .map((s) => (
+                  <HBar
+                    key={`${s.role}-${s.model}`}
+                    label={`${s.model} (${s.role})`}
+                    value={s.averageDurationSeconds}
+                    maxValue={maxCouncilTime}
+                    barColor={s.role === 'chairman' ? 'bg-green-primary/40' : 'bg-amber-warning/40'}
+                    displayValue={formatDuration(s.averageDurationSeconds)}
+                  />
+                ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
