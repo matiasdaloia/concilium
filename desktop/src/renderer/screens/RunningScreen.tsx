@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import TitleBar from '../components/TitleBar';
 import StageProgress from '../components/StageProgress';
 import AgentPane from '../components/AgentPane';
@@ -7,6 +7,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import Leaderboard from '../components/Leaderboard';
 import Button from '../components/Button';
 import { useCouncilRun, type JurorState } from '../hooks/useCouncilRun';
+import { useSmartScroll } from '../hooks/useSmartScroll';
 import { api } from '../api';
 import type { RunRecord } from '../types';
 
@@ -25,17 +26,10 @@ interface JurorCardProps {
   onToggleExpanded: () => void;
 }
 
-function JurorCard({ model, juror, jurorLabel, expanded, onToggleExpanded }: JurorCardProps) {
-  const bodyRef = useRef<HTMLDivElement>(null);
+const JurorCard = memo(function JurorCard({ model, juror, jurorLabel, expanded, onToggleExpanded }: JurorCardProps) {
   const hasContent = juror.textContent.trim().length > 0;
   const status = juror.status;
-
-  useEffect(() => {
-    if (status !== 'evaluating') return;
-    const el = bodyRef.current;
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }, [status, juror.textContent, expanded]);
+  const { scrollRef: bodyRef, showScrollButton, scrollToBottom } = useSmartScroll(juror.textContent);
 
   const borderClass =
     status === 'evaluating'
@@ -69,30 +63,44 @@ function JurorCard({ model, juror, jurorLabel, expanded, onToggleExpanded }: Jur
         </div>
       </div>
 
-      <div
-        ref={bodyRef}
-        className={`p-4 overflow-y-auto flex-1 ${expanded ? 'max-h-[400px]' : 'min-h-48 max-h-56'}`}
-      >
-        {hasContent ? (
-          <div>
-            <MarkdownRenderer content={juror.textContent} className="text-xs" />
-            {status === 'evaluating' && (
-              <span className="inline-block w-1.5 h-3.5 bg-amber-warning animate-pulse rounded-sm align-middle ml-0.5" />
-            )}
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <span className="text-[11px] text-text-muted font-mono">
-              {status === 'evaluating' && 'scoring agent responses...'}
-              {status === 'complete' && 'evaluation complete'}
-              {status === 'failed' && 'evaluation failed'}
-            </span>
-          </div>
+      <div className={`relative flex-1 ${expanded ? 'max-h-[400px]' : 'min-h-48 max-h-56'}`}>
+        <div
+          ref={bodyRef}
+          className="absolute inset-0 p-4 overflow-y-auto"
+        >
+          {hasContent ? (
+            <div>
+              <MarkdownRenderer content={juror.textContent} className="text-xs" streaming={status === 'evaluating'} />
+              {status === 'evaluating' && (
+                <span className="inline-block w-1.5 h-3.5 bg-amber-warning animate-pulse rounded-sm align-middle ml-0.5" />
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <span className="text-[11px] text-text-muted font-mono">
+                {status === 'evaluating' && 'scoring agent responses...'}
+                {status === 'complete' && 'evaluation complete'}
+                {status === 'failed' && 'evaluation failed'}
+              </span>
+            </div>
+          )}
+        </div>
+        {showScrollButton && status === 'evaluating' && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-bg-surface/90 border border-border-primary shadow-lg text-[10px] font-mono text-text-secondary hover:text-text-primary hover:border-amber-warning/50 transition-colors backdrop-blur-sm"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            New output
+          </button>
         )}
       </div>
     </div>
   );
-}
+});
 
 export default function RunningScreen({ runId, initialAgents, onComplete, onCancel }: RunningScreenProps) {
   // Stage navigation state (1-3 for running stages, 4 for results)

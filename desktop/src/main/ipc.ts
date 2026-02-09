@@ -267,13 +267,24 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
         // Build model performance snapshots from agent timing + cached pricing
         const modelSnapshots: Record<string, ModelPerformanceSnapshot> = {};
         const cachedModels = getCachedOrFallbackModels();
+        // Map agentKey → full model ID from original configs for pricing lookup
+        const agentKeyToModel = new Map<string, string>();
+        for (const cfg of agentConfigs) {
+          const key = cfg.instanceId ?? cfg.id;
+          if (cfg.model) agentKeyToModel.set(key, cfg.model);
+        }
         for (const agent of agentResults) {
           if (agent.status !== 'success') continue;
           const latencyMs =
             agent.startedAt && agent.endedAt
               ? new Date(agent.endedAt).getTime() - new Date(agent.startedAt).getTime()
               : 0;
-          const modelInfo = cachedModels.find((m) => agent.name.includes(m.id));
+          // Use the full model ID from the config for pricing lookup
+          const agentKey = agent.agentKey ?? agent.id;
+          const fullModelId = agentKeyToModel.get(agentKey) ?? '';
+          const modelInfo = cachedModels.find((m) =>
+            m.id === fullModelId || fullModelId.endsWith(m.id) || m.id.endsWith(fullModelId)
+          );
           const costPer1k = modelInfo
             ? ((modelInfo.pricing.prompt + modelInfo.pricing.completion) / 2) / 1000
             : 0;

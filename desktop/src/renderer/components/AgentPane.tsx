@@ -1,5 +1,6 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { memo, useRef, useMemo } from 'react';
 import MarkdownRenderer from './MarkdownRenderer';
+import { useSmartScroll } from '../hooks/useSmartScroll';
 import type { ParsedEvent, TokenUsage } from '../types';
 
 interface AgentPaneProps {
@@ -94,15 +95,107 @@ function groupEvents(events: ParsedEvent[], showRawDetails: boolean): StreamChun
   return chunks;
 }
 
-export default function AgentPane({ name, events, status, elapsed, tokenUsage, focused, onClick, onAbort, showRawDetails = false }: AgentPaneProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+/**
+ * Incrementally group events: only process newly appended events and merge
+ * into the existing chunk list. Falls back to full recompute if showRawDetails
+ * changes or events were reset (e.g. different agent).
+ */
+function useIncrementalChunks(events: ParsedEvent[], showRawDetails: boolean): StreamChunk[] {
+  const cacheRef = useRef<{
+    chunks: StreamChunk[];
+    processedCount: number;
+    showRaw: boolean;
+  }>({ chunks: [], processedCount: 0, showRaw: false });
 
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length]);
+  return useMemo(() => {
+    const cache = cacheRef.current;
 
-  const chunks = useMemo(() => groupEvents(events, showRawDetails), [events, showRawDetails]);
+    // Full recompute if showRawDetails toggled or events were replaced/reset
+    if (cache.showRaw !== showRawDetails || events.length < cache.processedCount) {
+      const result = groupEvents(events, showRawDetails);
+      cacheRef.current = { chunks: result, processedCount: events.length, showRaw: showRawDetails };
+      return result;
+    }
+
+    // No new events → return cached
+    if (events.length === cache.processedCount) {
+      return cache.chunks;
+    }
+
+    // Process only new events
+    const newEvents = events.slice(cache.processedCount);
+    const chunks = [...cache.chunks];
+
+    // Resume buffers from the last cached chunk if the first new event
+    // continues the same kind, so we extend rather than create a new chunk.
+    let mdBuffer = '';
+    let thinkingBuffer = '';
+    const firstKind = newEvents[0]?.eventType;
+    if (chunks.length > 0) {
+      const last = chunks[chunks.length - 1];
+      if (last.kind === 'markdown' && firstKind === 'text') {
+        chunks.pop();
+        mdBuffer = last.content;
+      } else if (last.kind === 'thinking' && firstKind === 'thinking') {
+        chunks.pop();
+        thinkingBuffer = last.text;
+      }
+    }
+
+    const flushMd = () => {
+      if (mdBuffer) {
+        chunks.push({ kind: 'markdown', content: mdBuffer });
+        mdBuffer = '';
+      }
+    };
+    const flushThinking = () => {
+      if (thinkingBuffer) {
+        chunks.push({ kind: 'thinking', text: thinkingBuffer });
+        thinkingBuffer = '';
+      }
+    };
+    const flushAll = () => { flushMd(); flushThinking(); };
+
+    for (const ev of newEvents) {
+      switch (ev.eventType) {
+        case 'text':
+          flushThinking();
+          mdBuffer += ev.text;
+          break;
+        case 'thinking':
+          flushMd();
+          thinkingBuffer += ev.text;
+          break;
+        case 'tool_call':
+          flushAll();
+          chunks.push({ kind: 'tool', text: ev.text });
+          break;
+        case 'status':
+          flushAll();
+          chunks.push({ kind: 'status', text: ev.text });
+          break;
+        default: {
+          flushAll();
+          const lower = ev.rawLine?.toLowerCase() ?? '';
+          if (lower.includes('error') || lower.includes('fail')) {
+            chunks.push({ kind: 'error', text: ev.text || ev.rawLine });
+          } else if (showRawDetails) {
+            chunks.push({ kind: 'raw', text: ev.text || ev.rawLine });
+          }
+        }
+      }
+    }
+    flushAll();
+
+    cacheRef.current = { chunks, processedCount: events.length, showRaw: showRawDetails };
+    return chunks;
+  }, [events, showRawDetails]);
+}
+
+export default memo(function AgentPane({ name, events, status, elapsed, tokenUsage, focused, onClick, onAbort, showRawDetails = false }: AgentPaneProps) {
+  const chunks = useIncrementalChunks(events, showRawDetails);
+
+  const { scrollRef, showScrollButton, scrollToBottom } = useSmartScroll(chunks);
 
   const isRunning = status === 'running';
   const isError = status === 'error';
@@ -157,52 +250,70 @@ export default function AgentPane({ name, events, status, elapsed, tokenUsage, f
       </div>
 
       {/* Content stream */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 min-h-0">
-        {chunks.map((chunk, i) => {
-          switch (chunk.kind) {
-            case 'markdown':
-              return <MarkdownRenderer key={i} content={chunk.content} className="text-[11px]" />;
-            case 'tool':
-              return (
-                <div key={i} className="flex items-start gap-2 py-0.5 font-mono text-[11px] leading-relaxed">
-                  <span className="text-blue-info shrink-0">▸</span>
-                  <span className="text-blue-info">{chunk.text}</span>
-                </div>
-              );
-            case 'thinking':
-              return (
-                <div key={i} className="py-0.5 [&_.markdown-content]:italic [&_.markdown-content_*]:!text-amber-warning">
-                  <MarkdownRenderer content={chunk.text} className="text-[11px]" />
-                </div>
-              );
-            case 'status':
-              return (
-                <div key={i} className="py-0.5 font-mono text-[11px] text-text-muted leading-relaxed">
-                  {chunk.text}
-                </div>
-              );
-            case 'error':
-              return (
-                <div key={i} className="py-1 px-3 my-1 rounded bg-red-error/10 border border-red-error/20 font-mono text-[11px] text-red-error leading-relaxed">
-                  {chunk.text}
-                </div>
-              );
-            case 'raw':
-              return (
-                <div key={i} className="py-0.5 font-mono text-[11px] text-text-muted/60 leading-relaxed">
-                  {chunk.text}
-                </div>
-              );
-          }
-        })}
-        {chunks.length === 0 && (
-          <span className="text-text-muted text-[11px] font-mono italic">Waiting for output...</span>
-        )}
-        {/* Blinking cursor when running */}
-        {isRunning && chunks.length > 0 && (
-          <span className="inline-block w-2 h-4 bg-green-primary animate-pulse mt-1" />
+      <div className="relative flex-1 min-h-0">
+        <div ref={scrollRef} className="absolute inset-0 overflow-y-auto p-4">
+          {chunks.map((chunk, i) => {
+            switch (chunk.kind) {
+              case 'markdown':
+                return <MarkdownRenderer key={i} content={chunk.content} className="text-[11px]" streaming={isRunning} />;
+              case 'tool':
+                return (
+                  <div key={i} className="flex items-start gap-2 py-0.5 font-mono text-[11px] leading-relaxed">
+                    <span className="text-blue-info shrink-0">▸</span>
+                    <span className="text-blue-info">{chunk.text}</span>
+                  </div>
+                );
+              case 'thinking':
+                return (
+                  <div key={i} className="py-0.5 [&_.markdown-content]:italic [&_.markdown-content_*]:!text-amber-warning">
+                    <MarkdownRenderer content={chunk.text} className="text-[11px]" streaming={isRunning} />
+                  </div>
+                );
+              case 'status':
+                return (
+                  <div key={i} className="py-0.5 font-mono text-[11px] text-text-muted leading-relaxed">
+                    {chunk.text}
+                  </div>
+                );
+              case 'error':
+                return (
+                  <div key={i} className="py-1 px-3 my-1 rounded bg-red-error/10 border border-red-error/20 font-mono text-[11px] text-red-error leading-relaxed">
+                    {chunk.text}
+                  </div>
+                );
+              case 'raw':
+                return (
+                  <div key={i} className="py-0.5 font-mono text-[11px] text-text-muted/60 leading-relaxed">
+                    {chunk.text}
+                  </div>
+                );
+            }
+          })}
+          {chunks.length === 0 && (
+            <span className="text-text-muted text-[11px] font-mono italic">Waiting for output...</span>
+          )}
+          {/* Blinking cursor when running */}
+          {isRunning && chunks.length > 0 && (
+            <span className="inline-block w-2 h-4 bg-green-primary animate-pulse mt-1" />
+          )}
+        </div>
+        {/* Scroll-to-bottom indicator */}
+        {showScrollButton && isRunning && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToBottom();
+            }}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-bg-surface/90 border border-border-primary shadow-lg text-[10px] font-mono text-text-secondary hover:text-text-primary hover:border-green-primary/50 transition-colors backdrop-blur-sm"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            New output
+          </button>
         )}
       </div>
     </div>
   );
-}
+});

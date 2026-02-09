@@ -35,6 +35,22 @@ export interface CouncilRunState {
   isRunning: boolean;
 }
 
+function applyTokenUsage(existing: TokenUsage, parsed: ParsedEvent): TokenUsage {
+  if (!parsed.tokenUsage) return existing;
+  if (parsed.tokenUsageCumulative) {
+    return { ...parsed.tokenUsage };
+  }
+  const prevCost = existing.totalCost ?? 0;
+  const evtCost = parsed.tokenUsage.totalCost ?? 0;
+  return {
+    inputTokens: existing.inputTokens + parsed.tokenUsage.inputTokens,
+    outputTokens: existing.outputTokens + parsed.tokenUsage.outputTokens,
+    totalCost: (prevCost + evtCost) > 0 ? prevCost + evtCost : null,
+  };
+}
+
+const EMPTY_TOKEN_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, totalCost: null };
+
 export function useCouncilRun(
   runId: string | null,
   onComplete?: (record: RunRecord) => void,
@@ -53,6 +69,97 @@ export function useCouncilRun(
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
+  // --- rAF-throttled event batching ---
+  // Buffer high-frequency agent events and juror chunks, flush once per frame.
+  const pendingAgentEventsRef = useRef<Array<{ agentId: string; event: ParsedEvent }>>([]);
+  const pendingJurorChunksRef = useRef<Array<{ model: string; chunk: string }>>([]);
+  const flushRafRef = useRef(0);
+
+  const flushPendingUpdates = useCallback(() => {
+    flushRafRef.current = 0;
+
+    const agentEvents = pendingAgentEventsRef.current;
+    const jurorChunks = pendingJurorChunksRef.current;
+    pendingAgentEventsRef.current = [];
+    pendingJurorChunksRef.current = [];
+
+    if (agentEvents.length === 0 && jurorChunks.length === 0) return;
+
+    setState((prev) => {
+      let agents = prev.agents;
+      let jurors = prev.jurors;
+
+      // Batch apply agent events — group by agentId first
+      if (agentEvents.length > 0) {
+        const grouped = new Map<string, ParsedEvent[]>();
+        for (const { agentId, event } of agentEvents) {
+          let list = grouped.get(agentId);
+          if (!list) {
+            list = [];
+            grouped.set(agentId, list);
+          }
+          list.push(event);
+        }
+
+        for (const [agentId, events] of grouped) {
+          const existing = agents[agentId] ?? {
+            id: agentId,
+            name: agentId,
+            status: 'running' as AgentStatus,
+            events: [],
+            textFragments: [],
+            tokenUsage: EMPTY_TOKEN_USAGE,
+          };
+
+          const newEvents = [...existing.events, ...events];
+          const newFragments = [...existing.textFragments];
+          let tokenUsage = existing.tokenUsage;
+          const status = existing.status === 'queued' ? ('running' as AgentStatus) : existing.status;
+
+          for (const parsed of events) {
+            if (parsed.eventType === 'text') {
+              newFragments.push(parsed.text);
+            }
+            tokenUsage = applyTokenUsage(tokenUsage, parsed);
+          }
+
+          agents = {
+            ...agents,
+            [agentId]: { ...existing, status, events: newEvents, textFragments: newFragments, tokenUsage },
+          };
+        }
+      }
+
+      // Batch apply juror chunks — merge per model
+      if (jurorChunks.length > 0) {
+        const grouped = new Map<string, string>();
+        for (const { model, chunk } of jurorChunks) {
+          grouped.set(model, (grouped.get(model) ?? '') + chunk);
+        }
+
+        for (const [model, combinedChunk] of grouped) {
+          const existing = jurors[model];
+          jurors = {
+            ...jurors,
+            [model]: {
+              status: existing?.status ?? ('evaluating' as JurorStatus),
+              textContent: (existing?.textContent ?? '') + combinedChunk,
+              usage: existing?.usage,
+            },
+          };
+        }
+      }
+
+      return { ...prev, agents, jurors };
+    });
+  }, []);
+
+  const scheduleFlush = useCallback(() => {
+    if (!flushRafRef.current) {
+      flushRafRef.current = requestAnimationFrame(flushPendingUpdates);
+    }
+  }, [flushPendingUpdates]);
+
   useEffect(() => {
     if (!runId) return;
 
@@ -69,7 +176,7 @@ export function useCouncilRun(
           status: 'queued',
           events: [],
           textFragments: [],
-          tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: null },
+          tokenUsage: EMPTY_TOKEN_USAGE,
         };
       }
     }
@@ -86,6 +193,7 @@ export function useCouncilRun(
 
     const cleanups: Array<() => void> = [];
 
+    // Status changes are infrequent — apply immediately (not throttled)
     cleanups.push(
       api.onAgentStatus((agentId: string, status: string, name?: string) => {
         setState((prev) => ({
@@ -93,9 +201,8 @@ export function useCouncilRun(
           agents: {
             ...prev.agents,
             [agentId]: {
-              ...prev.agents[agentId] ?? { id: agentId, name: name ?? agentId, events: [], textFragments: [], tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: null } },
+              ...prev.agents[agentId] ?? { id: agentId, name: name ?? agentId, events: [], textFragments: [], tokenUsage: EMPTY_TOKEN_USAGE },
               status: status as AgentStatus,
-              // Update name if provided (first status event will have it)
               name: name ?? prev.agents[agentId]?.name ?? agentId,
             },
           },
@@ -103,59 +210,11 @@ export function useCouncilRun(
       }),
     );
 
+    // High-frequency: buffer and flush via rAF
     cleanups.push(
       api.onAgentEvent((agentId: string, event: unknown) => {
-        const parsed = event as ParsedEvent;
-        setState((prev) => {
-          // Use pre-populated entry if available (from initialAgents), otherwise
-          // auto-create a fallback entry so events are never silently dropped.
-          const existing = prev.agents[agentId] ?? {
-            id: agentId,
-            name: agentId,
-            status: 'running' as AgentStatus,
-            events: [],
-            textFragments: [],
-            tokenUsage: { inputTokens: 0, outputTokens: 0, totalCost: null },
-          };
-
-          // If agent was queued but we're receiving events, it's now running
-          const status = existing.status === 'queued' ? 'running' : existing.status;
-          const newFragments = parsed.eventType === 'text'
-            ? [...existing.textFragments, parsed.text]
-            : existing.textFragments;
-
-          // Update token usage from events that carry it
-          let tokenUsage = existing.tokenUsage;
-          if (parsed.tokenUsage) {
-            if (parsed.tokenUsageCumulative) {
-              // Cumulative: replace with the latest total (Claude result, Codex turn.completed)
-              tokenUsage = { ...parsed.tokenUsage };
-            } else {
-              // Incremental: sum with previous (OpenCode step_finish)
-              const prevCost = tokenUsage.totalCost ?? 0;
-              const evtCost = parsed.tokenUsage.totalCost ?? 0;
-              tokenUsage = {
-                inputTokens: tokenUsage.inputTokens + parsed.tokenUsage.inputTokens,
-                outputTokens: tokenUsage.outputTokens + parsed.tokenUsage.outputTokens,
-                totalCost: (prevCost + evtCost) > 0 ? prevCost + evtCost : null,
-              };
-            }
-          }
-
-          return {
-            ...prev,
-            agents: {
-              ...prev.agents,
-              [agentId]: {
-                ...existing,
-                status,
-                events: [...existing.events, parsed],
-                textFragments: newFragments,
-                tokenUsage,
-              },
-            },
-          };
-        });
+        pendingAgentEventsRef.current.push({ agentId, event: event as ParsedEvent });
+        scheduleFlush();
       }),
     );
 
@@ -182,23 +241,12 @@ export function useCouncilRun(
       }),
     );
 
+    // High-frequency: buffer and flush via rAF
     cleanups.push(
       api.onJurorChunk((model: string, chunk: string) => {
         if (!chunk) return;
-        setState((prev) => {
-          const existing = prev.jurors[model];
-          return {
-            ...prev,
-            jurors: {
-              ...prev.jurors,
-              [model]: {
-                status: existing?.status ?? 'evaluating',
-                textContent: (existing?.textContent ?? '') + chunk,
-                usage: existing?.usage,
-              },
-            },
-          };
-        });
+        pendingJurorChunksRef.current.push({ model, chunk });
+        scheduleFlush();
       }),
     );
 
@@ -237,8 +285,13 @@ export function useCouncilRun(
 
     return () => {
       cleanups.forEach((fn) => fn());
+      // Cancel any pending rAF flush
+      if (flushRafRef.current) {
+        cancelAnimationFrame(flushRafRef.current);
+        flushRafRef.current = 0;
+      }
     };
-  }, [runId]);
+  }, [runId, scheduleFlush]);
 
   const cancel = useCallback(() => {
     if (runId) api.cancelRun(runId);
