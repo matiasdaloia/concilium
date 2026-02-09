@@ -6,7 +6,7 @@
 
 import { ipcMain, clipboard, type BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
-import type { AgentConfig, AgentInstance, StartRunConfig, Stage1Result } from './services/types';
+import type { AgentConfig, AgentInstance, ModelPerformanceSnapshot, StartRunConfig, Stage1Result, UserRanking } from './services/types';
 import {
   getCouncilConfig,
   saveCouncilConfigPrefs,
@@ -20,7 +20,7 @@ import {
   getAgentInstances,
   saveAgentInstances
 } from './services/storage';
-import { fetchOpenRouterModels } from './services/openrouter';
+import { fetchOpenRouterModels, getCachedOrFallbackModels } from './services/openrouter';
 import { RunController, runAgentsParallel, discoverModelsForAllAgents } from './services/runner';
 import { runCouncilStages } from './services/pipeline';
 import { shutdownEmbeddedServer } from './services/opencode-client';
@@ -263,6 +263,30 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
         }
 
         log.info('run:start: all stages complete, saving run record');
+
+        // Build model performance snapshots from agent timing + cached pricing
+        const modelSnapshots: Record<string, ModelPerformanceSnapshot> = {};
+        const cachedModels = getCachedOrFallbackModels();
+        for (const agent of agentResults) {
+          if (agent.status !== 'success') continue;
+          const latencyMs =
+            agent.startedAt && agent.endedAt
+              ? new Date(agent.endedAt).getTime() - new Date(agent.startedAt).getTime()
+              : 0;
+          const modelInfo = cachedModels.find((m) => agent.name.includes(m.id));
+          const costPer1k = modelInfo
+            ? ((modelInfo.pricing.prompt + modelInfo.pricing.completion) / 2) / 1000
+            : 0;
+          modelSnapshots[agent.name] = {
+            modelId: agent.name,
+            provider: agent.id,
+            costPer1kTokens: costPer1k,
+            latencyMs,
+            speedTier: latencyMs < 15000 ? 'fast' : latencyMs < 60000 ? 'balanced' : 'slow',
+          };
+        }
+        metadata.modelSnapshots = modelSnapshots;
+
         const record = {
           id: runId,
           createdAt: new Date().toISOString(),
@@ -305,5 +329,13 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
       return { success: true };
     }
     return { success: false, error: 'Agent not found or not running' };
+  });
+
+  ipcMain.handle('run:saveUserFeedback', async (_, runId: string, ranking: UserRanking) => {
+    const run = await loadRun(runId);
+    if (!run) throw new Error('Run not found');
+    run.metadata.userFeedback = ranking;
+    await saveRun(run);
+    return { success: true };
   });
 }

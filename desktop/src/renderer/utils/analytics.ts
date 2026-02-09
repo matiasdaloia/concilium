@@ -429,6 +429,87 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
   };
 }
 
+// ─── Cost Evaluation Analytics ───────────────────────────────────────────────
+
+export interface CostInsight {
+  type: 'COST_SAVING' | 'SPEED_OPT' | 'QUALITY_PREF';
+  message: string;
+  runId: string;
+}
+
+export interface CostEvaluationResult {
+  insights: CostInsight[];
+  potentialSavings: number;
+  totalFeedbackRuns: number;
+  agreementRate: number;
+}
+
+export function processCostEvaluations(runs: RunRecord[]): CostEvaluationResult {
+  const insights: CostInsight[] = [];
+  let potentialSavings = 0;
+  let feedbackRuns = 0;
+  let agreements = 0;
+
+  for (const run of runs) {
+    if (!run.metadata.userFeedback) continue;
+    feedbackRuns++;
+
+    const userBestId = run.metadata.userFeedback.rankedModelIds[0];
+    const councilBestId = run.metadata.aggregateRankings[0]?.model;
+
+    if (!councilBestId) continue;
+
+    if (userBestId === councilBestId) {
+      agreements++;
+      continue;
+    }
+
+    const snapshots = run.metadata.modelSnapshots;
+    if (!snapshots) continue;
+
+    const userModel = snapshots[userBestId];
+    const councilModel = snapshots[councilBestId];
+
+    if (!userModel || !councilModel) continue;
+
+    // User picked a cheaper model
+    if (userModel.costPer1kTokens < councilModel.costPer1kTokens) {
+      const saving = councilModel.costPer1kTokens - userModel.costPer1kTokens;
+      potentialSavings += saving;
+      insights.push({
+        type: 'COST_SAVING',
+        message: `User preferred ${userModel.provider} ($${userModel.costPer1kTokens.toFixed(4)}/1k) over council pick ${councilModel.provider} ($${councilModel.costPer1kTokens.toFixed(4)}/1k)`,
+        runId: run.id,
+      });
+    }
+
+    // User picked a faster model
+    if (userModel.speedTier === 'fast' && councilModel.speedTier !== 'fast') {
+      insights.push({
+        type: 'SPEED_OPT',
+        message: `User preferred speed (${(userModel.latencyMs / 1000).toFixed(1)}s) over council consensus (${(councilModel.latencyMs / 1000).toFixed(1)}s)`,
+        runId: run.id,
+      });
+    }
+
+    // User picked a more expensive / slower model (quality preference)
+    if (userModel.costPer1kTokens > councilModel.costPer1kTokens) {
+      insights.push({
+        type: 'QUALITY_PREF',
+        message: `User valued quality from ${userModel.provider} despite higher cost ($${userModel.costPer1kTokens.toFixed(4)} vs $${councilModel.costPer1kTokens.toFixed(4)}/1k)`,
+        runId: run.id,
+      });
+    }
+  }
+
+  return {
+    insights,
+    potentialSavings,
+    totalFeedbackRuns: feedbackRuns,
+    agreementRate: feedbackRuns > 0 ? agreements / feedbackRuns : 0,
+  };
+}
+
 // ─── Formatting Helpers ──────────────────────────────────────────────────────
 
 export function formatTokenCount(n: number): string {

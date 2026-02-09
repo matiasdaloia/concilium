@@ -45,6 +45,11 @@ export interface StartRunResult {
   initialAgents: Array<{ key: string; name: string }>;
 }
 
+export interface UserRanking {
+  rankedModelIds: string[];
+  timestamp: string;
+}
+
 export interface ElectronAPI {
   startRun(config: { prompt: string; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
   cancelRun(runId: string): Promise<void>;
@@ -56,6 +61,7 @@ export interface ElectronAPI {
   discoverModels(): Promise<AgentModelInfo[]>;
   getLastOpencodeModel(): Promise<string | undefined>;
   copyToClipboard(text: string): Promise<void>;
+  saveUserFeedback(runId: string, ranking: UserRanking): Promise<{ success: boolean }>;
 
   // Agent instances (dynamic configuration)
   getAgentInstances(): Promise<AgentInstance[]>;
@@ -89,7 +95,8 @@ const api: ElectronAPI = {
   discoverModels: () => ipcRenderer.invoke('models:discover'),
   getLastOpencodeModel: () => ipcRenderer.invoke('models:lastOpencode'),
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
-  
+  saveUserFeedback: (runId, ranking) => ipcRenderer.invoke('run:saveUserFeedback', runId, ranking),
+
   // Project working directory
   getCwd: () => ipcRenderer.invoke('app:getCwd'),
 

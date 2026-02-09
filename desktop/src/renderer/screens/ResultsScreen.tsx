@@ -2,13 +2,14 @@ import { useState, useCallback, useMemo } from 'react';
 import TitleBar from '../components/TitleBar';
 import Leaderboard from '../components/Leaderboard';
 import MarkdownRenderer from '../components/MarkdownRenderer';
+import ResponseRanker from '../components/ResponseRanker';
 import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Tooltip from '../components/Tooltip';
 import { api } from '../api';
 import type { RunRecord, TokenUsage, CouncilTokenUsage, ParsedEvent } from '../types';
 
-type Tab = 'synthesis' | 'agents' | 'reviews' | 'report';
+type Tab = 'synthesis' | 'agents' | 'reviews' | 'compare' | 'report';
 
 interface ResultsScreenProps {
   record: RunRecord;
@@ -32,6 +33,7 @@ export default function ResultsScreen({ record, onNewRun }: ResultsScreenProps) 
     { id: 'synthesis', label: 'Synthesis' },
     { id: 'agents', label: `Agent Responses (${record.stage1.length})` },
     { id: 'reviews', label: `Peer Reviews (${record.stage2.length})` },
+    { id: 'compare', label: 'Compare & Rank' },
     { id: 'report', label: 'Run Report' },
   ];
 
@@ -161,6 +163,8 @@ export default function ResultsScreen({ record, onNewRun }: ResultsScreenProps) 
             </div>
           </div>
         )}
+
+        {tab === 'compare' && <ResponseRanker run={record} />}
 
         {tab === 'report' && <RunReport record={record} />}
       </div>
