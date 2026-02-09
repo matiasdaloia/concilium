@@ -46,8 +46,9 @@ export interface StartRunResult {
 }
 
 export interface ElectronAPI {
-  startRun(config: { prompt: string; agents: string[]; mode: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
+  startRun(config: { prompt: string; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
   cancelRun(runId: string): Promise<void>;
+  abortAgent(runId: string, agentKey: string): Promise<{ success: boolean; error?: string }>;
   listRuns(): Promise<Array<{ id: string; createdAt: string; promptPreview: string; status: string }>>;
   loadAllRuns(): Promise<unknown[]>;
   loadRun(runId: string): Promise<unknown>;
@@ -55,11 +56,11 @@ export interface ElectronAPI {
   discoverModels(): Promise<AgentModelInfo[]>;
   getLastOpencodeModel(): Promise<string | undefined>;
   copyToClipboard(text: string): Promise<void>;
-  
+
   // Agent instances (dynamic configuration)
   getAgentInstances(): Promise<AgentInstance[]>;
   saveAgentInstances(instances: AgentInstance[]): Promise<void>;
-  
+
   // Project working directory
   getCwd(): Promise<string>;
 
@@ -80,6 +81,7 @@ export interface ElectronAPI {
 const api: ElectronAPI = {
   startRun: (config) => ipcRenderer.invoke('run:start', config),
   cancelRun: (runId) => ipcRenderer.invoke('run:cancel', runId),
+  abortAgent: (runId, agentKey) => ipcRenderer.invoke('agent:abort', runId, agentKey),
   listRuns: () => ipcRenderer.invoke('storage:listRuns'),
   loadAllRuns: () => ipcRenderer.invoke('storage:loadAllRuns'),
   loadRun: (runId) => ipcRenderer.invoke('storage:loadRun', runId),

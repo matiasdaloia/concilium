@@ -244,5 +244,9 @@ export function useCouncilRun(
     if (runId) api.cancelRun(runId);
   }, [runId]);
 
-  return { ...state, cancel };
+  const abortAgent = useCallback((agentKey: string) => {
+    if (runId) api.abortAgent(runId, agentKey);
+  }, [runId]);
+
+  return { ...state, cancel, abortAgent };
 }

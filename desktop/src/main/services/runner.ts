@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { AgentConfig, AgentId, AgentResult, AgentStatus, ParsedEvent, RunMode } from './types';
+import type { AgentConfig, AgentId, AgentResult, AgentStatus, ParsedEvent } from './types';
 import { buildCommand, mergedEnv } from './commands';
 import { parseEventLine } from './parsers';
 import { createLogger } from './logger';
@@ -18,19 +18,19 @@ export interface RunnerCallbacks {
 
 export class RunController {
   private cancelled = false;
-  private children = new Set<ChildProcess>();
+  private agentProcesses = new Map<string, ChildProcess>();
 
-  register(child: ChildProcess) {
-    this.children.add(child);
+  register(agentKey: string, child: ChildProcess) {
+    this.agentProcesses.set(agentKey, child);
   }
 
-  unregister(child: ChildProcess) {
-    this.children.delete(child);
+  unregister(agentKey: string) {
+    this.agentProcesses.delete(agentKey);
   }
 
   cancel() {
     this.cancelled = true;
-    for (const child of this.children) {
+    for (const [, child] of this.agentProcesses) {
       const pid = child.pid;
       if (!pid) continue;
       try {
@@ -50,6 +50,34 @@ export class RunController {
     }
   }
 
+  cancelAgent(agentKey: string): boolean {
+    const child = this.agentProcesses.get(agentKey);
+    if (!child) return false;
+
+    const pid = child.pid;
+    if (!pid) {
+      this.agentProcesses.delete(agentKey);
+      return false;
+    }
+
+    try {
+      // Kill the entire process group so child processes of the agent
+      // (e.g. opencode's internal subprocesses) are also terminated.
+      process.kill(-pid, 'SIGTERM');
+    } catch {
+      // process.kill(-pid) fails if the child isn't a group leader;
+      // fall back to killing just the child.
+      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+    }
+    // Force-kill after 3s if the process ignores SIGTERM
+    setTimeout(() => {
+      try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
+      try { child.kill('SIGKILL'); } catch { /* already exited */ }
+    }, 3000);
+
+    return true;
+  }
+
   get isCancelled() {
     return this.cancelled;
   }
@@ -57,17 +85,16 @@ export class RunController {
 
 export async function runAgentsParallel(options: {
   agents: AgentConfig[];
-  mode: RunMode;
   prompt: string;
   callbacks: RunnerCallbacks;
   controller?: RunController;
 }): Promise<AgentResult[]> {
-  log.info(`runAgentsParallel: starting ${options.agents.length} agents in mode "${options.mode}"`);
+  log.info(`runAgentsParallel: starting ${options.agents.length} agents`);
   log.debug(`runAgentsParallel: agents:`, options.agents.map(a => a.name));
   
   const controller = options.controller ?? new RunController();
   const tasks = options.agents.map((agent) =>
-    runSingleAgent({ agent, mode: options.mode, prompt: options.prompt, callbacks: options.callbacks, controller }),
+    runSingleAgent({ agent, prompt: options.prompt, callbacks: options.callbacks, controller }),
   );
   
   const results = await Promise.all(tasks);
@@ -80,14 +107,12 @@ export async function runAgentsParallel(options: {
 
 async function runSingleAgent(options: {
   agent: AgentConfig;
-  mode: RunMode;
   prompt: string;
   callbacks: RunnerCallbacks;
   controller: RunController;
 }): Promise<AgentResult> {
   const spec = buildCommand({
     agentId: options.agent.id,
-    mode: options.mode,
     cwd: options.agent.cwd,
     prompt: options.prompt,
     model: options.agent.model,
@@ -146,7 +171,7 @@ function runProcess(options: {
     });
 
     log.debug(`runProcess: ${name} spawned with PID ${child.pid}`);
-    controller.register(child);
+    controller.register(agentKey, child);
 
     // Track time-to-first-byte from the subprocess to diagnose streaming delays.
     // If this fires quickly, the model is streaming — any UI lag is downstream.
@@ -187,13 +212,17 @@ function runProcess(options: {
       rl.on('line', handleLine);
     }
 
-    child.on('close', (code) => {
-      controller.unregister(child);
+    child.on('close', (code, signal) => {
+      controller.unregister(agentKey);
 
       let status: AgentStatus;
       if (controller.isCancelled) {
         status = 'cancelled';
         log.warn(`runProcess: ${name} cancelled`);
+      } else if (signal === 'SIGTERM' || signal === 'SIGKILL') {
+        // Process was killed (likely via cancelAgent)
+        status = 'aborted';
+        log.warn(`runProcess: ${name} aborted (killed by signal ${signal})`);
       } else if (code === 0) {
         status = 'success';
         log.info(`runProcess: ${name} completed successfully`);
@@ -224,7 +253,7 @@ function runProcess(options: {
     });
 
     child.on('error', (err) => {
-      controller.unregister(child);
+      controller.unregister(agentKey);
       log.error(`runProcess: ${name} spawn error:`, err.message);
       callbacks.onStatus?.(agentKey, 'error');
       resolve({

@@ -23,7 +23,10 @@ interface HomeScreenProps {
   onOpenAnalytics?: () => void;
 }
 
-export default function HomeScreen({ onStartRun, onOpenAnalytics }: HomeScreenProps) {
+export default function HomeScreen({
+  onStartRun,
+  onOpenAnalytics,
+}: HomeScreenProps) {
   const [prompt, setPrompt] = useState("");
   const [projectCwd, setProjectCwd] = useState("");
   const [isStarting, setIsStarting] = useState(false);
@@ -184,15 +187,9 @@ export default function HomeScreen({ onStartRun, onOpenAnalytics }: HomeScreenPr
 
     setIsStarting(true);
     try {
-      // Pass full instance data to backend for multi-instance support
-      // Cast to `any` to handle both old (string) and new ({ runId, initialAgents })
-      // return formats — the renderer may hot-reload while main process still
-      // returns the old string format if it wasn't restarted.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result: any = await api.startRun({
+      const result = await api.startRun({
         prompt: prompt.trim(),
         agents: enabledInstances.map((inst) => inst.provider),
-        mode: "advanced",
         agentInstances: enabledInstances,
       });
       const runId = typeof result === "string" ? result : result.runId;
@@ -240,9 +237,7 @@ export default function HomeScreen({ onStartRun, onOpenAnalytics }: HomeScreenPr
     <div className="flex flex-col h-screen bg-bg-page overflow-hidden selection:bg-green-primary/30 selection:text-green-primary relative">
       <TitleBar />
 
-      {/* 3D Hero Background removed */}
-
-      <main className="flex-1 flex flex-col px-8 md:px-12 pt-8 pb-8 max-w-5xl mx-auto w-full relative z-10">
+      <main className="flex-1 flex flex-col px-8 md:px-12 pt-8 pb-8 w-full relative z-10">
         {/* Header Branding */}
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-4 opacity-90">
@@ -414,10 +409,22 @@ export default function HomeScreen({ onStartRun, onOpenAnalytics }: HomeScreenPr
             <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono max-w-[50%] overflow-hidden">
               {projectCwd && (
                 <>
-                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  <svg
+                    className="w-3.5 h-3.5 shrink-0"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.5}
+                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                    />
                   </svg>
-                  <span className="truncate" title={projectCwd}>{projectCwd}</span>
+                  <span className="truncate" title={projectCwd}>
+                    {projectCwd}
+                  </span>
                 </>
               )}
             </div>

@@ -1,7 +1,7 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import type { AgentId, CommandSpec, RunMode } from './types';
+import type { AgentId, CommandSpec } from './types';
 
 export function resolveOpenCodeBinary(): string {
   const homeBin = join(homedir(), '.opencode', 'bin', 'opencode');
@@ -19,6 +19,7 @@ INSTRUCTIONS:
 - You MAY read files and search the web to inform your answer
 - Provide a comprehensive, well-researched answer
 - Be thorough and cite sources when possible
+- Return your final plan/answer as markdown text directly in your response (do not write to a file)
 
 USER REQUEST:
 ${prompt}`;
@@ -26,7 +27,6 @@ ${prompt}`;
 
 export function buildCommand(input: {
   agentId: AgentId;
-  mode: RunMode;
   cwd: string;
   prompt: string;
   model?: string | null;
@@ -43,13 +43,8 @@ export function buildCommand(input: {
   }
 }
 
-function buildCodexCommand(input: { mode: RunMode; cwd: string; prompt: string; model?: string | null }): CommandSpec {
-  const args = ['exec', '--json'];
-  if (input.mode === 'safe') {
-    args.push('--sandbox', 'read-only');
-  } else {
-    args.push('--dangerously-bypass-approvals-and-sandbox');
-  }
+function buildCodexCommand(input: { cwd: string; prompt: string; model?: string | null }): CommandSpec {
+  const args = ['exec', '--json', '--sandbox', 'read-only'];
   args.push('--cd', input.cwd);
   if (input.model?.trim()) {
     args.push('--model', input.model.trim());
@@ -58,13 +53,16 @@ function buildCodexCommand(input: { mode: RunMode; cwd: string; prompt: string; 
   return { command: 'codex', args, env: {} };
 }
 
-function buildClaudeCommand(input: { mode: RunMode; prompt: string; model?: string | null }): CommandSpec {
-  const args = ['--verbose', '--print', '--output-format', 'stream-json'];
-  if (input.mode === 'safe') {
-    args.push('--permission-mode', 'plan');
-  } else {
-    args.push('--dangerously-skip-permissions');
-  }
+function buildClaudeCommand(input: { prompt: string; model?: string | null }): CommandSpec {
+  const args = [
+    '--verbose',
+    '--print',
+    '--output-format', 'stream-json',
+    '--permission-mode', 'plan',
+    '--include-partial-messages',
+    '--no-session-persistence',
+    '--disallowedTools', 'Write', 'Edit', 'NotebookEdit'
+  ];
   if (input.model?.trim()) {
     args.push('--model', input.model.trim());
   }
@@ -78,7 +76,28 @@ function buildOpenCodeCommand(input: { prompt: string; model?: string | null }):
     args.push('--model', input.model.trim());
   }
   args.push(wrapPromptForResearch(input.prompt));
-  return { command: resolveOpenCodeBinary(), args, env: {} };
+  return {
+    command: resolveOpenCodeBinary(),
+    args,
+    env: {
+      OPENCODE_EXPERIMENTAL_PLAN_MODE: 'true',
+      OPENCODE_PERMISSION: JSON.stringify({
+        edit: 'deny',
+        write: 'deny',
+        bash: {
+          '*': 'deny',
+          'ls *': 'allow',
+          'cat *': 'allow',
+          'find *': 'allow',
+          'grep *': 'allow',
+          'pwd': 'allow',
+          'head *': 'allow',
+          'tail *': 'allow',
+          'echo *': 'allow'
+        }
+      })
+    }
+  };
 }
 
 export function mergedEnv(commandEnv?: Record<string, string>): Record<string, string> {

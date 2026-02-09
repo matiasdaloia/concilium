@@ -103,9 +103,8 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
   ipcMain.handle('agents:save', (_, instances: AgentInstance[]) => saveAgentInstances(instances));
 
   ipcMain.handle('run:start', async (_, params: StartRunConfig) => {
-    log.info('run:start received', { 
+    log.info('run:start received', {
       prompt: params.prompt.slice(0, 100) + (params.prompt.length > 100 ? '...' : ''),
-      mode: params.mode,
       agents: params.agents,
       agentInstances: params.agentInstances?.length ?? 0,
     });
@@ -199,7 +198,6 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
 
         const agentResults = await runAgentsParallel({
           agents: agentConfigs,
-          mode: params.mode,
           prompt: params.prompt,
           callbacks: {
             onStatus: (agentKey, status) => {
@@ -216,15 +214,23 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
           return;
         }
 
-        // Build Stage1Results from agent output
+        // Build Stage1Results from agent output (exclude aborted agents)
         const stage1Results: Stage1Result[] = agentResults
           .filter((r) => r.status === 'success' && r.normalizedPlan)
           .map((r) => ({ model: r.name, response: r.normalizedPlan }));
 
-        log.info(`run:start: Stage 1 complete - ${stage1Results.length} successful results from ${agentResults.length} agents`);
-        
+        const abortedCount = agentResults.filter((r) => r.status === 'aborted').length;
+        log.info(`run:start: Stage 1 complete - ${stage1Results.length} successful, ${abortedCount} aborted, ${agentResults.length - stage1Results.length - abortedCount} failed`);
+
         for (const r of agentResults) {
           log.debug(`run:start: agent ${r.name}: status=${r.status}, plan length=${r.normalizedPlan?.length ?? 0}`);
+        }
+
+        // Check if we have any results to judge
+        if (stage1Results.length === 0) {
+          log.warn('run:start: no successful agent results to judge');
+          send('run:error', 'All agents failed or were aborted. No responses to judge.');
+          return;
         }
 
         // Stage 2 & 3: Council ranking and synthesis
@@ -259,7 +265,6 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
           createdAt: new Date().toISOString(),
           prompt: params.prompt,
           cwd: workingDir,
-          mode: params.mode,
           selectedAgents: params.agents,
           agents: agentResults,
           stage1: stage1Results,
@@ -288,5 +293,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
     const controller = activeControllers.get(runId);
     controller?.cancel();
     activeControllers.delete(runId);
+  });
+
+  ipcMain.handle('agent:abort', (_, runId: string, agentKey: string) => {
+    const controller = activeControllers.get(runId);
+    if (controller?.cancelAgent(agentKey)) {
+      log.info(`agent:abort: aborted agent ${agentKey} in run ${runId}`);
+      return { success: true };
+    }
+    return { success: false, error: 'Agent not found or not running' };
   });
 }

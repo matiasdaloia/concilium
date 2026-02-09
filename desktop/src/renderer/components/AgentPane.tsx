@@ -10,6 +10,7 @@ interface AgentPaneProps {
   tokenUsage?: TokenUsage;
   focused?: boolean;
   onClick?: () => void;
+  onAbort?: () => void;
   showRawDetails?: boolean;
 }
 
@@ -79,7 +80,7 @@ function groupEvents(events: ParsedEvent[], showRawDetails: boolean): StreamChun
   return chunks;
 }
 
-export default function AgentPane({ name, events, status, elapsed, tokenUsage, focused, onClick, showRawDetails = false }: AgentPaneProps) {
+export default function AgentPane({ name, events, status, elapsed, tokenUsage, focused, onClick, onAbort, showRawDetails = false }: AgentPaneProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,6 +92,7 @@ export default function AgentPane({ name, events, status, elapsed, tokenUsage, f
 
   const isRunning = status === 'running';
   const isError = status === 'error';
+  const isAborted = status === 'aborted';
   const isDone = status === 'success';
 
   return (
@@ -105,7 +107,7 @@ export default function AgentPane({ name, events, status, elapsed, tokenUsage, f
             <svg className="w-3.5 h-3.5 text-green-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-          ) : isError ? (
+          ) : isError || isAborted ? (
             <svg className="w-3.5 h-3.5 text-red-error shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.072 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
@@ -113,7 +115,7 @@ export default function AgentPane({ name, events, status, elapsed, tokenUsage, f
             <div className={`w-2 h-2 rounded-full shrink-0 ${isRunning ? 'bg-green-primary animate-pulse' : 'bg-text-muted'}`} />
           )}
           <span className="text-[13px] font-medium text-text-primary font-mono">{name}</span>
-          <span className={`text-[11px] font-mono ${isError ? 'text-red-error' : isRunning ? 'text-green-primary' : isDone ? 'text-green-primary' : 'text-text-muted'}`}>
+          <span className={`text-[11px] font-mono ${isError || isAborted ? 'text-red-error' : isRunning ? 'text-green-primary' : isDone ? 'text-green-primary' : 'text-text-muted'}`}>
             {status}
           </span>
         </div>
@@ -125,6 +127,18 @@ export default function AgentPane({ name, events, status, elapsed, tokenUsage, f
             </span>
           )}
           {elapsed && <span className="text-[11px] text-text-tertiary font-mono">{elapsed}</span>}
+          {isRunning && onAbort && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAbort();
+              }}
+              className="text-[10px] text-red-error hover:text-red-error/80 font-mono px-2 py-0.5 border border-red-error/30 rounded hover:bg-red-error/10 transition-colors"
+              title="Abort this agent"
+            >
+              abort
+            </button>
+          )}
         </div>
       </div>
 

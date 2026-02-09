@@ -310,6 +310,7 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
                   tokenUsage={run.agents[focusedAgent]?.tokenUsage}
                   showRawDetails={showRawDetails}
                   focused
+                  onAbort={() => run.abortAgent(focusedAgent)}
                 />
               </div>
             ) : (
@@ -326,6 +327,7 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
                     tokenUsage={agent.tokenUsage}
                     showRawDetails={showRawDetails}
                     onClick={() => setFocusedAgent(id)}
+                    onAbort={() => run.abortAgent(id)}
                   />
                 </div>
               ))

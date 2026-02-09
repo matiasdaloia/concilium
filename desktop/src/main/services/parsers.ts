@@ -210,7 +210,13 @@ function parseClaudeAssistantEvent(event: Record<string, unknown>, rawLine: stri
   if (!Array.isArray(content)) return [];
 
   const events: ParsedEvent[] = [];
-  const tokenUsage = extractClaudeUsage(message);
+
+  // Only extract usage from completed turns (stop_reason is set).
+  // With --include-partial-messages, Claude emits multiple assistant events
+  // per API turn. Each partial carries the same turn's usage, but since they
+  // are not marked cumulative the hook sums them — inflating the live count.
+  const stopReason = asString(message.stop_reason);
+  const tokenUsage = stopReason ? extractClaudeUsage(message) : null;
 
   for (const block of content) {
     const b = asRecord(block);
@@ -235,7 +241,6 @@ function parseClaudeAssistantEvent(event: Record<string, unknown>, rawLine: stri
   }
 
   // Emit a status event based on stop_reason so the UI shows turn boundaries
-  const stopReason = asString(message.stop_reason);
   if (stopReason === 'tool_use') {
     events.push(ev('status', 'Executing tools...', rawLine, tokenUsage));
   } else if (stopReason) {

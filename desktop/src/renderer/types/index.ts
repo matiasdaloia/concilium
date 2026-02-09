@@ -7,8 +7,7 @@ export interface AgentInstance {
   model: string;                // Selected model (e.g., "anthropic/claude-sonnet-4")
   enabled: boolean;             // Toggle state
 }
-export type RunMode = 'safe' | 'advanced';
-export type AgentStatus = 'queued' | 'running' | 'success' | 'error' | 'cancelled';
+export type AgentStatus = 'queued' | 'running' | 'success' | 'error' | 'cancelled' | 'aborted';
 export type EventType = 'text' | 'thinking' | 'tool_call' | 'status' | 'raw';
 
 export interface TokenUsage {
@@ -89,7 +88,6 @@ export interface RunRecord {
   createdAt: string;
   prompt: string;
   cwd: string;
-  mode: RunMode;
   selectedAgents: AgentId[];
   agents: AgentResult[];
   stage1: Stage1Result[];
@@ -119,7 +117,6 @@ export interface OpenRouterModelInfo {
 export interface StartRunConfig {
   prompt: string;
   agents: AgentId[];
-  mode: RunMode;
   agentModels?: Partial<Record<AgentId, string>>;
 }
 
