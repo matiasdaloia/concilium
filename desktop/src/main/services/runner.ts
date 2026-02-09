@@ -357,16 +357,18 @@ export async function discoverOpenCodeModels(): Promise<string[]> {
   try {
     const { client } = await ensureOpenCodeServer({});
     const providersRes = await client.config.providers();
-    const providers = providersRes.data;
+    const providersData = providersRes.data;
 
     const models: string[] = [];
-    if (providers && typeof providers === 'object') {
-      // providers is a record of providerID → provider config with models
-      for (const [providerId, provider] of Object.entries(providers as Record<string, unknown>)) {
-        if (provider && typeof provider === 'object' && 'models' in provider) {
-          const providerModels = (provider as { models?: Record<string, unknown> }).models;
-          if (providerModels && typeof providerModels === 'object') {
-            for (const modelId of Object.keys(providerModels)) {
+    // SDK returns { providers: Array<Provider>, default: object }
+    // Provider has: { id, name, source, env, key?, options, models: { [modelId]: Model } }
+    if (providersData && typeof providersData === 'object' && 'providers' in providersData) {
+      const providers = (providersData as { providers?: Array<{ id: string; models?: Record<string, unknown> }> }).providers;
+      if (Array.isArray(providers)) {
+        for (const provider of providers) {
+          const providerId = provider.id;
+          if (provider.models && typeof provider.models === 'object') {
+            for (const modelId of Object.keys(provider.models)) {
               models.push(`${providerId}/${modelId}`);
             }
           }

@@ -12,18 +12,23 @@ import {
   createOpencodeServer,
   type OpencodeClient,
   type Part,
-  type TextPart,
   type ReasoningPart,
-  type ToolPart,
   type StepFinishPart,
-} from '@opencode-ai/sdk';
+  type TextPart,
+  type ToolPart,
+} from "@opencode-ai/sdk";
 /* eslint-enable import/no-unresolved */
-import type { AgentConfig, AgentResult, ParsedEvent, TokenUsage } from './types';
-import type { RunnerCallbacks } from './runner';
-import { wrapPromptForResearch } from './commands';
-import { createLogger } from './logger';
+import { wrapPromptForResearch } from "./commands";
+import { createLogger } from "./logger";
+import type { RunnerCallbacks } from "./runner";
+import type {
+  AgentConfig,
+  AgentResult,
+  ParsedEvent,
+  TokenUsage,
+} from "./types";
 
-const log = createLogger('opencode-client');
+const log = createLogger("opencode-client");
 
 // ── Read-only tool allowlist ──────────────────────────────────────────
 // These are the only tools we enable when prompting via the SDK.
@@ -36,6 +41,7 @@ const READONLY_TOOLS: Record<string, boolean> = {
   webfetch: true,
   websearch: true,
   todoread: true,
+  skill: true,
   // Explicitly deny mutating tools
   write: false,
   edit: false,
@@ -66,12 +72,18 @@ export interface OpenCodeSdkConfig {
 // ── Server lifecycle ──────────────────────────────────────────────────
 
 let embeddedServer: OpenCodeServerHandle | null = null;
-let initPromise: Promise<{ client: OpencodeClient; serverHandle: OpenCodeServerHandle | null }> | null = null;
+let initPromise: Promise<{
+  client: OpencodeClient;
+  serverHandle: OpenCodeServerHandle | null;
+}> | null = null;
 let externalUrl: string | null = null;
 
 export async function ensureOpenCodeServer(
   config: OpenCodeSdkConfig,
-): Promise<{ client: OpencodeClient; serverHandle: OpenCodeServerHandle | null }> {
+): Promise<{
+  client: OpencodeClient;
+  serverHandle: OpenCodeServerHandle | null;
+}> {
   // External server — no lifecycle management needed
   if (config.serverUrl) {
     externalUrl = config.serverUrl;
@@ -89,9 +101,9 @@ export async function ensureOpenCodeServer(
   // Embedded server — deduplicate concurrent init calls with a shared promise
   if (!initPromise) {
     initPromise = (async () => {
-      log.info('Starting embedded OpenCode server');
+      log.info("Starting embedded OpenCode server");
       const server = await createOpencodeServer({
-        hostname: config.hostname ?? '127.0.0.1',
+        hostname: config.hostname ?? "127.0.0.1",
         port: config.port ?? 0, // 0 = random port
       });
       embeddedServer = server;
@@ -106,7 +118,7 @@ export async function ensureOpenCodeServer(
 
 export function shutdownEmbeddedServer() {
   if (embeddedServer) {
-    log.info('Shutting down embedded OpenCode server');
+    log.info("Shutting down embedded OpenCode server");
     embeddedServer.close();
     embeddedServer = null;
   }
@@ -131,7 +143,7 @@ export async function runOpenCodeSdk(options: {
   const errors: string[] = [];
   const rawOutput: string[] = [];
 
-  callbacks.onStatus?.(agentKey, 'running');
+  callbacks.onStatus?.(agentKey, "running");
   log.info(`runOpenCodeSdk: starting ${agent.name} (${agentKey})`);
 
   try {
@@ -143,7 +155,7 @@ export async function runOpenCodeSdk(options: {
     });
     const session = sessionRes.data;
     if (!session) {
-      throw new Error('Failed to create OpenCode session');
+      throw new Error("Failed to create OpenCode session");
     }
     const sessionId = session.id;
     log.info(`runOpenCodeSdk: created session ${sessionId} for ${agent.name}`);
@@ -166,10 +178,12 @@ export async function runOpenCodeSdk(options: {
         toolsMap = fullMap;
       }
     } catch (err) {
-      log.warn('runOpenCodeSdk: could not discover tool IDs, using static allowlist');
+      log.warn(
+        "runOpenCodeSdk: could not discover tool IDs, using static allowlist",
+      );
     }
 
-    log.debug('runOpenCodeSdk: tools config:', toolsMap);
+    log.debug("runOpenCodeSdk: tools config:", toolsMap);
 
     // 4. Subscribe to events BEFORE sending the prompt
     const eventPromise = streamSessionEvents({
@@ -188,14 +202,17 @@ export async function runOpenCodeSdk(options: {
     await client.session.promptAsync({
       path: { id: sessionId },
       body: {
-        parts: [{ type: 'text', text: wrappedPrompt }],
+        parts: [{ type: "text", text: wrappedPrompt }],
         tools: toolsMap,
-        system: 'You are a research advisor in a multi-agent council. Your ONLY job is to propose a plan — NEVER implement it. Return your plan as markdown text in your response. NEVER write, edit, create, or delete files. NEVER use write/edit/bash tools. You may only use read-only tools (read, glob, grep, web search).',
+        system:
+          "You are a research advisor in a multi-agent council. Your ONLY job is to propose a plan — NEVER implement it. Return your plan as markdown text in your response. NEVER write, edit, create, or delete files. NEVER use write/edit/bash tools. You may only use read-only tools (read, glob, grep, web search).",
         ...(modelSpec ? { model: modelSpec } : {}),
       },
     });
 
-    log.info(`runOpenCodeSdk: prompt sent for ${agent.name}, streaming events...`);
+    log.info(
+      `runOpenCodeSdk: prompt sent for ${agent.name}, streaming events...`,
+    );
 
     // 6. Wait for session to complete (session.idle event)
     await eventPromise;
@@ -208,16 +225,17 @@ export async function runOpenCodeSdk(options: {
     let finalTokenUsage: TokenUsage | null = null;
 
     if (Array.isArray(messages)) {
-      const assistantEntry = messages.find((m) => m.info.role === 'assistant');
+      const assistantEntry = messages.find((m) => m.info.role === "assistant");
       if (assistantEntry) {
         const assistantInfo = assistantEntry.info as {
-          role: 'assistant';
+          role: "assistant";
           tokens: { input: number; output: number; reasoning: number };
           cost: number;
         };
         finalTokenUsage = {
           inputTokens: assistantInfo.tokens.input,
-          outputTokens: assistantInfo.tokens.output + assistantInfo.tokens.reasoning,
+          outputTokens:
+            assistantInfo.tokens.output + assistantInfo.tokens.reasoning,
           totalCost: assistantInfo.cost > 0 ? assistantInfo.cost : null,
         };
       }
@@ -225,9 +243,9 @@ export async function runOpenCodeSdk(options: {
 
     if (finalTokenUsage) {
       const usageEvent: ParsedEvent = {
-        eventType: 'status',
-        text: 'Completed',
-        rawLine: '',
+        eventType: "status",
+        text: "Completed",
+        rawLine: "",
         tokenUsage: finalTokenUsage,
         tokenUsageCumulative: true,
       };
@@ -235,40 +253,43 @@ export async function runOpenCodeSdk(options: {
       callbacks.onEvent?.(agentKey, usageEvent);
     }
 
-    const normalizedPlan = planFragments.join('').trim() || 'No plan could be extracted.';
-    callbacks.onStatus?.(agentKey, 'success');
-    log.info(`runOpenCodeSdk: ${agent.name} completed successfully (${normalizedPlan.length} chars)`);
+    const normalizedPlan =
+      planFragments.join("").trim() || "No plan could be extracted.";
+    callbacks.onStatus?.(agentKey, "success");
+    log.info(
+      `runOpenCodeSdk: ${agent.name} completed successfully (${normalizedPlan.length} chars)`,
+    );
 
     return {
       id: agent.id,
       agentKey,
       name: agent.name,
-      status: 'success',
+      status: "success",
       startedAt,
       endedAt: new Date().toISOString(),
       rawOutput,
       normalizedPlan,
       errors,
-      command: ['opencode-sdk', agent.model ?? ''],
+      command: ["opencode-sdk", agent.model ?? ""],
       events,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error(`runOpenCodeSdk: ${agent.name} failed:`, message);
     errors.push(message);
-    callbacks.onStatus?.(agentKey, 'error');
+    callbacks.onStatus?.(agentKey, "error");
 
     return {
       id: agent.id,
       agentKey,
       name: agent.name,
-      status: 'error',
+      status: "error",
       startedAt,
       endedAt: new Date().toISOString(),
       rawOutput,
       normalizedPlan: `Error: ${message}`,
       errors,
-      command: ['opencode-sdk', agent.model ?? ''],
+      command: ["opencode-sdk", agent.model ?? ""],
       events,
     };
   }
@@ -286,7 +307,15 @@ async function streamSessionEvents(options: {
   rawOutput: string[];
   abortSignal?: AbortSignal;
 }): Promise<void> {
-  const { client, sessionId, agentKey, callbacks, events, planFragments, rawOutput } = options;
+  const {
+    client,
+    sessionId,
+    agentKey,
+    callbacks,
+    events,
+    planFragments,
+    rawOutput,
+  } = options;
 
   const { stream } = await client.event.subscribe();
 
@@ -301,14 +330,16 @@ async function streamSessionEvents(options: {
     const eventType = typedEvent.type as string;
 
     // Only process events for our session
-    const properties = typedEvent.properties as Record<string, unknown> | undefined;
+    const properties = typedEvent.properties as
+      | Record<string, unknown>
+      | undefined;
 
-    if (eventType === 'message.part.updated' && properties) {
+    if (eventType === "message.part.updated" && properties) {
       const part = properties.part as Part;
       const delta = properties.delta as string | undefined;
 
       // Only process parts for our session
-      if ('sessionID' in part && part.sessionID !== sessionId) continue;
+      if ("sessionID" in part && part.sessionID !== sessionId) continue;
 
       const parsed = parsePartToEvent(part, delta);
       if (parsed.length > 0) {
@@ -316,27 +347,27 @@ async function streamSessionEvents(options: {
           events.push(p);
           rawOutput.push(JSON.stringify(typedEvent));
           callbacks.onEvent?.(agentKey, p);
-          if (p.eventType === 'text') {
+          if (p.eventType === "text") {
             // Use delta if available for incremental text, otherwise full text
             planFragments.push(delta ?? p.text);
           }
         }
       }
-    } else if (eventType === 'session.idle' && properties) {
+    } else if (eventType === "session.idle" && properties) {
       const idleSessionId = properties.sessionID as string;
       if (idleSessionId === sessionId) {
         log.info(`streamSessionEvents: session ${sessionId} is idle, done`);
         break;
       }
-    } else if (eventType === 'session.status' && properties) {
+    } else if (eventType === "session.status" && properties) {
       const statusSessionId = properties.sessionID as string;
       if (statusSessionId !== sessionId) continue;
 
       const status = properties.status as { type: string; message?: string };
-      if (status.type === 'retry') {
+      if (status.type === "retry") {
         const retryEvent: ParsedEvent = {
-          eventType: 'status',
-          text: `Retrying: ${status.message ?? 'unknown error'}`,
+          eventType: "status",
+          text: `Retrying: ${status.message ?? "unknown error"}`,
           rawLine: JSON.stringify(typedEvent),
         };
         events.push(retryEvent);
@@ -352,50 +383,55 @@ function parsePartToEvent(part: Part, delta?: string): ParsedEvent[] {
   const rawLine = JSON.stringify(part);
 
   switch (part.type) {
-    case 'text': {
+    case "text": {
       const text = delta ?? (part as TextPart).text;
       if (!text) return [];
-      return [{ eventType: 'text', text, rawLine }];
+      return [{ eventType: "text", text, rawLine }];
     }
 
-    case 'reasoning': {
+    case "reasoning": {
       const text = delta ?? (part as ReasoningPart).text;
-      return [{ eventType: 'thinking', text: text || 'Reasoning...', rawLine }];
+      return [{ eventType: "thinking", text: text || "Reasoning...", rawLine }];
     }
 
-    case 'tool': {
+    case "tool": {
       const toolPart = part as ToolPart;
       const toolName = toolPart.tool;
       const state = toolPart.state;
-      let label = toolName ? `Tool: ${toolName}` : 'Tool use';
+      let label = toolName ? `Tool: ${toolName}` : "Tool use";
 
-      if (state.status === 'running' && 'title' in state && state.title) {
+      if (state.status === "running" && "title" in state && state.title) {
         label = truncateLabel(state.title, 80);
-      } else if (state.status === 'completed' && 'title' in state && state.title) {
+      } else if (
+        state.status === "completed" &&
+        "title" in state &&
+        state.title
+      ) {
         label = truncateLabel(state.title, 80);
       }
 
       // Append key input fields for context
-      if ('input' in state && state.input) {
+      if ("input" in state && state.input) {
         const command = asString(state.input.command);
-        const filePath = asString(state.input.file_path) || asString(state.input.path);
+        const filePath =
+          asString(state.input.file_path) || asString(state.input.path);
         const pattern = asString(state.input.pattern);
         if (command) label += ` -> ${truncateLabel(command, 70)}`;
         else if (filePath) label += ` -> ${truncateLabel(filePath, 70)}`;
         else if (pattern) label += ` -> ${truncateLabel(pattern, 70)}`;
       }
 
-      if (state.status !== 'running' && state.status !== 'pending') {
+      if (state.status !== "running" && state.status !== "pending") {
         label += ` (${state.status})`;
       }
 
-      return [{ eventType: 'tool_call', text: label, rawLine }];
+      return [{ eventType: "tool_call", text: label, rawLine }];
     }
 
-    case 'step-start':
-      return [{ eventType: 'status', text: 'Step started', rawLine }];
+    case "step-start":
+      return [{ eventType: "status", text: "Step started", rawLine }];
 
-    case 'step-finish': {
+    case "step-finish": {
       const stepPart = part as StepFinishPart;
       const tokenUsage: TokenUsage = {
         inputTokens: stepPart.tokens.input,
@@ -403,8 +439,10 @@ function parsePartToEvent(part: Part, delta?: string): ParsedEvent[] {
         totalCost: stepPart.cost > 0 ? stepPart.cost : null,
       };
       const reason = stepPart.reason;
-      const statusText = reason ? `Step completed (${reason})` : 'Step completed';
-      return [{ eventType: 'status', text: statusText, rawLine, tokenUsage }];
+      const statusText = reason
+        ? `Step completed (${reason})`
+        : "Step completed";
+      return [{ eventType: "status", text: statusText, rawLine, tokenUsage }];
     }
 
     default:
@@ -414,16 +452,18 @@ function parsePartToEvent(part: Part, delta?: string): ParsedEvent[] {
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
-function parseModelSpec(model?: string | null): { providerID: string; modelID: string } | null {
+function parseModelSpec(
+  model?: string | null,
+): { providerID: string; modelID: string } | null {
   if (!model?.trim()) return null;
 
   // Model format: "providerID/modelID" or "providerID/sub/modelID"
   // e.g., "openrouter/anthropic/claude-sonnet-4" → provider="openrouter", model="anthropic/claude-sonnet-4"
-  const parts = model.split('/');
+  const parts = model.split("/");
   if (parts.length >= 2) {
     return {
       providerID: parts[0],
-      modelID: parts.slice(1).join('/'),
+      modelID: parts.slice(1).join("/"),
     };
   }
 
@@ -431,11 +471,11 @@ function parseModelSpec(model?: string | null): { providerID: string; modelID: s
 }
 
 function truncateLabel(text: string, maxLen: number): string {
-  const oneLine = text.split('\n').join(' ').trim();
-  if (oneLine.length > maxLen) return oneLine.slice(0, maxLen - 3) + '...';
+  const oneLine = text.split("\n").join(" ").trim();
+  if (oneLine.length > maxLen) return oneLine.slice(0, maxLen - 3) + "...";
   return oneLine;
 }
 
 function asString(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return typeof value === "string" ? value : "";
 }
