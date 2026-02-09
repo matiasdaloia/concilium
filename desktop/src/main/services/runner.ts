@@ -1,13 +1,18 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { createInterface } from 'node:readline';
-import type { AgentConfig, AgentResult, AgentStatus, ParsedEvent } from './types';
-import { buildClaudeCommand, mergedEnv } from './commands';
-import { parseClaudeEventLine } from './parsers';
-import { runOpenCodeSdk, ensureOpenCodeServer } from './opencode-client';
-import { runCodexSdk } from './codex-client';
-import { createLogger } from './logger';
+import { spawn, type ChildProcess } from "node:child_process";
+import { createInterface } from "node:readline";
+import { runCodexSdk } from "./codex-client";
+import { buildClaudeCommand, mergedEnv } from "./commands";
+import { createLogger } from "./logger";
+import { ensureOpenCodeServer, runOpenCodeSdk } from "./opencode-client";
+import { parseClaudeEventLine } from "./parsers";
+import type {
+  AgentConfig,
+  AgentResult,
+  AgentStatus,
+  ParsedEvent,
+} from "./types";
 
-const log = createLogger('runner');
+const log = createLogger("runner");
 
 /** agentKey is instanceId if available, otherwise AgentId (provider) for legacy */
 export type StatusCallback = (agentKey: string, status: AgentStatus) => void;
@@ -36,13 +41,25 @@ export class RunController {
       const pid = child.pid;
       if (!pid) continue;
       try {
-        process.kill(-pid, 'SIGTERM');
+        process.kill(-pid, "SIGTERM");
       } catch {
-        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          /* ignore */
+        }
       }
       setTimeout(() => {
-        try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
-        try { child.kill('SIGKILL'); } catch { /* already exited */ }
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          /* already exited */
+        }
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* already exited */
+        }
       }, 3000);
     }
   }
@@ -55,19 +72,35 @@ export class RunController {
     if (!pid) {
       // SDK-based agents register a pseudo-child with no pid; calling kill()
       // triggers the AbortController instead.
-      try { child.kill(); } catch { /* ignore */ }
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
       this.agentProcesses.delete(agentKey);
       return true;
     }
 
     try {
-      process.kill(-pid, 'SIGTERM');
+      process.kill(-pid, "SIGTERM");
     } catch {
-      try { child.kill('SIGTERM'); } catch { /* ignore */ }
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* ignore */
+      }
     }
     setTimeout(() => {
-      try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
-      try { child.kill('SIGKILL'); } catch { /* already exited */ }
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        /* already exited */
+      }
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already exited */
+      }
     }, 3000);
 
     return true;
@@ -85,7 +118,10 @@ export async function runAgentsParallel(options: {
   controller?: RunController;
 }): Promise<AgentResult[]> {
   log.info(`runAgentsParallel: starting ${options.agents.length} agents`);
-  log.debug(`runAgentsParallel: agents:`, options.agents.map(a => a.name));
+  log.debug(
+    `runAgentsParallel: agents:`,
+    options.agents.map((a) => a.name),
+  );
 
   const controller = options.controller ?? new RunController();
   const tasks = options.agents.map((agent) =>
@@ -99,8 +135,10 @@ export async function runAgentsParallel(options: {
 
   const results = await Promise.all(tasks);
 
-  const successCount = results.filter(r => r.status === 'success').length;
-  log.info(`runAgentsParallel: completed - ${successCount}/${results.length} succeeded`);
+  const successCount = results.filter((r) => r.status === "success").length;
+  log.info(
+    `runAgentsParallel: completed - ${successCount}/${results.length} succeeded`,
+  );
 
   return results;
 }
@@ -114,7 +152,7 @@ async function runSingleAgent(options: {
   const { agent } = options;
 
   // OpenCode: always via SDK (server must be initialized at app startup)
-  if (agent.id === 'opencode') {
+  if (agent.id === "opencode") {
     return runViaSdk(options, (abortSignal) =>
       runOpenCodeSdk({
         agent,
@@ -127,7 +165,7 @@ async function runSingleAgent(options: {
   }
 
   // Codex: always via SDK (read-only sandbox)
-  if (agent.id === 'codex') {
+  if (agent.id === "codex") {
     return runViaSdk(options, (abortSignal) =>
       runCodexSdk({
         agent,
@@ -177,7 +215,7 @@ async function runViaSdk(
   try {
     const result = await sdkRunner(abortController.signal);
     if (options.controller.isCancelled) {
-      result.status = 'cancelled';
+      result.status = "cancelled";
     }
     return result;
   } finally {
@@ -200,13 +238,14 @@ function runClaudeProcess(options: {
   controller: RunController;
 }): Promise<AgentResult> {
   return new Promise((resolve) => {
-    const { agentKey, name, command, args, env, callbacks, controller } = options;
+    const { agentKey, name, command, args, env, callbacks, controller } =
+      options;
     const startedAt = new Date().toISOString();
 
     log.debug(`runClaudeProcess: spawning ${name}`);
-    log.debug(`runClaudeProcess: command: ${command} ${args.join(' ')}`);
+    log.debug(`runClaudeProcess: command: ${command} ${args.join(" ")}`);
 
-    callbacks.onStatus?.(agentKey, 'running');
+    callbacks.onStatus?.(agentKey, "running");
 
     const rawOutput: string[] = [];
     const events: ParsedEvent[] = [];
@@ -217,7 +256,7 @@ function runClaudeProcess(options: {
     const child = spawn(command, args, {
       cwd: options.cwd,
       env,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ["ignore", "pipe", "pipe"],
       detached: true,
     });
 
@@ -229,7 +268,9 @@ function runClaudeProcess(options: {
       if (firstDataLogged) return;
       firstDataLogged = true;
       const elapsed = Date.now() - spawnedAt;
-      log.info(`runClaudeProcess: ${name} first data on ${stream} after ${elapsed}ms`);
+      log.info(
+        `runClaudeProcess: ${name} first data on ${stream} after ${elapsed}ms`,
+      );
     };
 
     const handleLine = (line: string) => {
@@ -238,42 +279,47 @@ function runClaudeProcess(options: {
       for (const parsed of parsedEvents) {
         if (events.length < 3) {
           const elapsed = Date.now() - spawnedAt;
-          log.debug(`runClaudeProcess: ${name} event #${events.length} at +${elapsed}ms: type=${parsed.eventType}`);
+          log.debug(
+            `runClaudeProcess: ${name} event #${events.length} at +${elapsed}ms: type=${parsed.eventType}`,
+          );
         }
 
         events.push(parsed);
         callbacks.onEvent?.(agentKey, parsed);
-        if (parsed.eventType === 'text') planFragments.push(parsed.text);
-        if (parsed.eventType === 'raw' && line.toLowerCase().includes('error')) errors.push(line);
+        if (parsed.eventType === "text") planFragments.push(parsed.text);
+        if (parsed.eventType === "raw" && line.toLowerCase().includes("error"))
+          errors.push(line);
       }
     };
 
     if (child.stdout) {
-      child.stdout.once('data', () => logFirstData('stdout'));
+      child.stdout.once("data", () => logFirstData("stdout"));
       const rl = createInterface({ input: child.stdout });
-      rl.on('line', handleLine);
+      rl.on("line", handleLine);
     }
     if (child.stderr) {
-      child.stderr.once('data', () => logFirstData('stderr'));
+      child.stderr.once("data", () => logFirstData("stderr"));
       const rl = createInterface({ input: child.stderr });
-      rl.on('line', handleLine);
+      rl.on("line", handleLine);
     }
 
-    child.on('close', (code, signal) => {
+    child.on("close", (code, signal) => {
       controller.unregister(agentKey);
 
       let status: AgentStatus;
       if (controller.isCancelled) {
-        status = 'cancelled';
+        status = "cancelled";
         log.warn(`runClaudeProcess: ${name} cancelled`);
-      } else if (signal === 'SIGTERM' || signal === 'SIGKILL') {
-        status = 'aborted';
-        log.warn(`runClaudeProcess: ${name} aborted (killed by signal ${signal})`);
+      } else if (signal === "SIGTERM" || signal === "SIGKILL") {
+        status = "aborted";
+        log.warn(
+          `runClaudeProcess: ${name} aborted (killed by signal ${signal})`,
+        );
       } else if (code === 0) {
-        status = 'success';
+        status = "success";
         log.info(`runClaudeProcess: ${name} completed successfully`);
       } else {
-        status = 'error';
+        status = "error";
         log.error(`runClaudeProcess: ${name} exited with code ${code}`);
       }
 
@@ -281,10 +327,12 @@ function runClaudeProcess(options: {
       const normalizedPlan = normalizePlan(planFragments, rawOutput);
       const endedAt = new Date().toISOString();
 
-      log.debug(`runClaudeProcess: ${name} stats - rawOutput: ${rawOutput.length} lines, events: ${events.length}, plan: ${normalizedPlan.length} chars`);
+      log.debug(
+        `runClaudeProcess: ${name} stats - rawOutput: ${rawOutput.length} lines, events: ${events.length}, plan: ${normalizedPlan.length} chars`,
+      );
 
       resolve({
-        id: 'claude',
+        id: "claude",
         agentKey,
         name,
         status,
@@ -298,15 +346,15 @@ function runClaudeProcess(options: {
       });
     });
 
-    child.on('error', (err) => {
+    child.on("error", (err) => {
       controller.unregister(agentKey);
       log.error(`runClaudeProcess: ${name} spawn error:`, err.message);
-      callbacks.onStatus?.(agentKey, 'error');
+      callbacks.onStatus?.(agentKey, "error");
       resolve({
-        id: 'claude',
+        id: "claude",
         agentKey,
         name,
-        status: 'error',
+        status: "error",
         startedAt,
         endedAt: new Date().toISOString(),
         rawOutput,
@@ -323,30 +371,30 @@ function runClaudeProcess(options: {
 
 /** Known Claude Code models (no programmatic listing available) */
 const CLAUDE_MODELS = [
-  'sonnet',
-  'opus',
-  'haiku',
-  'claude-sonnet-4-5-20250929',
-  'claude-opus-4-6',
-  'claude-haiku-4-5-20251001',
+  "sonnet",
+  "opus",
+  "haiku",
+  "claude-sonnet-4-5-20250929",
+  "claude-opus-4-6",
+  "claude-haiku-4-5-20251001",
 ];
 
 /** Known Codex models */
 const CODEX_MODELS = [
-  'gpt-5.2-codex',
-  'gpt-5.3-codex',
-  'gpt-5.1-codex-max',
-  'gpt-5.1-codex',
-  'gpt-5-codex',
-  'gpt-5-codex-mini',
-  'o3-codex',
+  "gpt-5.2-codex",
+  "gpt-5.3-codex",
+  "gpt-5.1-codex-max",
+  "gpt-5.1-codex",
+  "gpt-5-codex",
+  "gpt-5-codex-mini",
+  "o3-codex",
 ];
 
 /** Default models shown when agent is enabled but user hasn't picked one */
 export const DEFAULT_AGENT_MODELS: Record<string, string> = {
-  codex: 'gpt-5.2-codex',
-  claude: 'claude-opus-4-6',
-  opencode: '',
+  codex: "gpt-5.2-codex",
+  claude: "claude-opus-4-6",
+  opencode: "",
 };
 
 /**
@@ -362,12 +410,20 @@ export async function discoverOpenCodeModels(): Promise<string[]> {
     const models: string[] = [];
     // SDK returns { providers: Array<Provider>, default: object }
     // Provider has: { id, name, source, env, key?, options, models: { [modelId]: Model } }
-    if (providersData && typeof providersData === 'object' && 'providers' in providersData) {
-      const providers = (providersData as { providers?: Array<{ id: string; models?: Record<string, unknown> }> }).providers;
+    if (
+      providersData &&
+      typeof providersData === "object" &&
+      "providers" in providersData
+    ) {
+      const providers = (
+        providersData as {
+          providers?: Array<{ id: string; models?: Record<string, unknown> }>;
+        }
+      ).providers;
       if (Array.isArray(providers)) {
         for (const provider of providers) {
           const providerId = provider.id;
-          if (provider.models && typeof provider.models === 'object') {
+          if (provider.models && typeof provider.models === "object") {
             for (const modelId of Object.keys(provider.models)) {
               models.push(`${providerId}/${modelId}`);
             }
@@ -377,15 +433,17 @@ export async function discoverOpenCodeModels(): Promise<string[]> {
     }
 
     log.info(`discoverOpenCodeModels: found ${models.length} models`);
-    if (models.length > 0) {
-      log.debug('discoverOpenCodeModels: models:', models);
-    } else {
-      log.warn('discoverOpenCodeModels: no models found — check OpenCode provider configuration');
+    if (models.length === 0) {
+      log.warn(
+        "discoverOpenCodeModels: no models found — check OpenCode provider configuration",
+      );
     }
-
     return models.sort();
   } catch (err) {
-    log.warn('discoverOpenCodeModels: failed to discover via SDK:', err instanceof Error ? err.message : String(err));
+    log.warn(
+      "discoverOpenCodeModels: failed to discover via SDK:",
+      err instanceof Error ? err.message : String(err),
+    );
     return [];
   }
 }
@@ -407,36 +465,37 @@ export async function discoverModelsForAllAgents(): Promise<AgentModelInfo[]> {
 
   return [
     {
-      id: 'codex',
+      id: "codex",
       models: CODEX_MODELS,
       defaultModel: DEFAULT_AGENT_MODELS.codex,
       supportsDiscovery: false,
     },
     {
-      id: 'claude',
+      id: "claude",
       models: CLAUDE_MODELS,
       defaultModel: DEFAULT_AGENT_MODELS.claude,
       supportsDiscovery: false,
     },
     {
-      id: 'opencode',
+      id: "opencode",
       models: openCodeModels,
-      defaultModel: openCodeModels[0] ?? '',
+      defaultModel: openCodeModels[0] ?? "",
       supportsDiscovery: true,
     },
   ];
 }
 
 function normalizePlan(planFragments: string[], rawOutput: string[]): string {
-  const text = planFragments.join('').trim();
+  const text = planFragments.join("").trim();
   if (text) return text;
 
   const fallbackLines: string[] = [];
   for (const line of rawOutput) {
     const stripped = line.trim();
-    if (!stripped || stripped.startsWith('{') || stripped.startsWith('[')) continue;
+    if (!stripped || stripped.startsWith("{") || stripped.startsWith("["))
+      continue;
     fallbackLines.push(stripped);
   }
-  const fallback = fallbackLines.slice(-80).join('\n').trim();
-  return fallback || 'No normalized plan could be extracted from output.';
+  const fallback = fallbackLines.slice(-80).join("\n").trim();
+  return fallback || "No normalized plan could be extracted from output.";
 }
