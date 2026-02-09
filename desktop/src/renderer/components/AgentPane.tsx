@@ -126,16 +126,20 @@ function useIncrementalChunks(events: ParsedEvent[], showRawDetails: boolean): S
     const newEvents = events.slice(cache.processedCount);
     const chunks = [...cache.chunks];
 
-    // If the last cached chunk is markdown and the first new event is text,
-    // extend that chunk instead of creating a new one
+    // Resume buffers from the last cached chunk if the first new event
+    // continues the same kind, so we extend rather than create a new chunk.
     let mdBuffer = '';
-    if (
-      chunks.length > 0 &&
-      chunks[chunks.length - 1].kind === 'markdown' &&
-      newEvents[0]?.eventType === 'text'
-    ) {
-      const last = chunks.pop() as { kind: 'markdown'; content: string };
-      mdBuffer = last.content;
+    let thinkingBuffer = '';
+    const firstKind = newEvents[0]?.eventType;
+    if (chunks.length > 0) {
+      const last = chunks[chunks.length - 1];
+      if (last.kind === 'markdown' && firstKind === 'text') {
+        chunks.pop();
+        mdBuffer = last.content;
+      } else if (last.kind === 'thinking' && firstKind === 'thinking') {
+        chunks.pop();
+        thinkingBuffer = last.text;
+      }
     }
 
     const flushMd = () => {
@@ -144,26 +148,34 @@ function useIncrementalChunks(events: ParsedEvent[], showRawDetails: boolean): S
         mdBuffer = '';
       }
     };
+    const flushThinking = () => {
+      if (thinkingBuffer) {
+        chunks.push({ kind: 'thinking', text: thinkingBuffer });
+        thinkingBuffer = '';
+      }
+    };
+    const flushAll = () => { flushMd(); flushThinking(); };
 
     for (const ev of newEvents) {
       switch (ev.eventType) {
         case 'text':
+          flushThinking();
           mdBuffer += ev.text;
-          break;
-        case 'tool_call':
-          flushMd();
-          chunks.push({ kind: 'tool', text: ev.text });
           break;
         case 'thinking':
           flushMd();
-          chunks.push({ kind: 'thinking', text: ev.text });
+          thinkingBuffer += ev.text;
+          break;
+        case 'tool_call':
+          flushAll();
+          chunks.push({ kind: 'tool', text: ev.text });
           break;
         case 'status':
-          flushMd();
+          flushAll();
           chunks.push({ kind: 'status', text: ev.text });
           break;
         default: {
-          flushMd();
+          flushAll();
           const lower = ev.rawLine?.toLowerCase() ?? '';
           if (lower.includes('error') || lower.includes('fail')) {
             chunks.push({ kind: 'error', text: ev.text || ev.rawLine });
@@ -173,7 +185,7 @@ function useIncrementalChunks(events: ParsedEvent[], showRawDetails: boolean): S
         }
       }
     }
-    flushMd();
+    flushAll();
 
     cacheRef.current = { chunks, processedCount: events.length, showRaw: showRawDetails };
     return chunks;
@@ -181,9 +193,9 @@ function useIncrementalChunks(events: ParsedEvent[], showRawDetails: boolean): S
 }
 
 export default memo(function AgentPane({ name, events, status, elapsed, tokenUsage, focused, onClick, onAbort, showRawDetails = false }: AgentPaneProps) {
-  const { scrollRef, showScrollButton, scrollToBottom } = useSmartScroll(events.length);
-
   const chunks = useIncrementalChunks(events, showRawDetails);
+
+  const { scrollRef, showScrollButton, scrollToBottom } = useSmartScroll(chunks);
 
   const isRunning = status === 'running';
   const isError = status === 'error';

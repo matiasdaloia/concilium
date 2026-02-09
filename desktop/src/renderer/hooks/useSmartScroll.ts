@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 
 /**
  * Smart auto-scroll hook: auto-scrolls to bottom when the user is already
@@ -14,7 +14,6 @@ export function useSmartScroll<T>(dep: T) {
   const isAtBottomRef = useRef(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const rafCheckRef = useRef(0);
-  const rafScrollRef = useRef(0);
 
   // Flag to distinguish programmatic scrolls (auto-scroll / scrollToBottom)
   // from user-initiated scrolls. Without this, auto-scroll can race with
@@ -59,26 +58,16 @@ export function useSmartScroll<T>(dep: T) {
   }, [onScroll]);
 
   // Auto-scroll when dependency changes, but only if user is at bottom.
-  // Batched via rAF so multiple dep changes per frame cause one scroll.
-  useEffect(() => {
+  // useLayoutEffect fires synchronously after React commits DOM mutations,
+  // so scrollHeight reflects the newly rendered content.
+  useLayoutEffect(() => {
     if (!isAtBottomRef.current) return;
-    if (rafScrollRef.current) return; // already scheduled
-    rafScrollRef.current = requestAnimationFrame(() => {
-      rafScrollRef.current = 0;
-      const el = scrollRef.current;
-      if (el && isAtBottomRef.current) {
-        programmaticScrollRef.current = true;
-        el.scrollTop = el.scrollHeight;
-      }
-    });
+    const el = scrollRef.current;
+    if (el) {
+      programmaticScrollRef.current = true;
+      el.scrollTop = el.scrollHeight;
+    }
   }, [dep]);
-
-  // Cleanup rAF on unmount
-  useEffect(() => {
-    return () => {
-      if (rafScrollRef.current) cancelAnimationFrame(rafScrollRef.current);
-    };
-  }, []);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
