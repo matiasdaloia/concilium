@@ -348,8 +348,13 @@ async function streamSessionEvents(options: {
           rawOutput.push(JSON.stringify(typedEvent));
           callbacks.onEvent?.(agentKey, p);
           if (p.eventType === "text") {
-            // Use delta if available for incremental text, otherwise full text
-            planFragments.push(delta ?? p.text);
+            // Concatenate delta to the last fragment to handle word-by-word streaming
+            const textToAdd = delta ?? p.text;
+            if (planFragments.length > 0) {
+              planFragments[planFragments.length - 1] += textToAdd;
+            } else {
+              planFragments.push(textToAdd);
+            }
           }
         }
       }
