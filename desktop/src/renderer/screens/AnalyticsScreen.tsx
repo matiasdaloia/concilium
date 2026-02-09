@@ -7,12 +7,14 @@ import Tooltip from '../components/Tooltip';
 import type { RunRecord } from '../types';
 import {
   processAnalytics,
+  processCostEvaluations,
   formatTokenCount,
   formatCost,
   formatDuration,
   formatDate,
   type AnalyticsData,
   type ModelStats,
+  type CostEvaluationResult,
 } from '../utils/analytics';
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -173,7 +175,7 @@ function StageTimingBar({ timing }: { timing: AnalyticsData['stageTiming'] }) {
 
 // ─── Tab types ───────────────────────────────────────────────────────────────
 
-type AnalyticsTab = 'overview' | 'models' | 'costs' | 'performance' | 'history';
+type AnalyticsTab = 'overview' | 'models' | 'costs' | 'performance' | 'feedback' | 'history';
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -199,12 +201,16 @@ export default function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
   }, []);
 
   const analytics = useMemo(() => processAnalytics(runs), [runs]);
+  const costEval = useMemo(() => processCostEvaluations(runs), [runs]);
+
+  const feedbackCount = runs.filter((r: RunRecord) => r.metadata.userFeedback).length;
 
   const tabs: Array<{ id: AnalyticsTab; label: string }> = [
     { id: 'overview', label: 'Overview' },
     { id: 'models', label: 'Models' },
     { id: 'costs', label: 'Costs' },
     { id: 'performance', label: 'Performance' },
+    { id: 'feedback', label: `Feedback${feedbackCount > 0 ? ` (${feedbackCount})` : ''}` },
     { id: 'history', label: 'Run History' },
   ];
 
@@ -287,6 +293,7 @@ export default function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
         {tab === 'models' && <ModelsTab analytics={analytics} />}
         {tab === 'costs' && <CostsTab analytics={analytics} />}
         {tab === 'performance' && <PerformanceTab analytics={analytics} />}
+        {tab === 'feedback' && <FeedbackTab costEval={costEval} totalRuns={runs.length} />}
         {tab === 'history' && (
           <HistoryTab
             analytics={analytics}
@@ -875,6 +882,144 @@ function PerformanceTab({ analytics }: { analytics: AnalyticsData }) {
                 displayValue={`rank ${e.avgRank.toFixed(1)} · ${formatCost(e.costPerRun)}/run`}
               />
             ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: Feedback ───────────────────────────────────────────────────────────
+
+const INSIGHT_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  COST_SAVING: { bg: 'bg-green-primary/15', text: 'text-green-primary', label: 'Cost Saving' },
+  SPEED_OPT: { bg: 'bg-blue-info/15', text: 'text-blue-info', label: 'Speed Pick' },
+  QUALITY_PREF: { bg: 'bg-amber-warning/15', text: 'text-amber-warning', label: 'Quality Pick' },
+};
+
+function FeedbackTab({ costEval, totalRuns }: { costEval: CostEvaluationResult; totalRuns: number }) {
+  if (costEval.totalFeedbackRuns === 0) {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center h-64 text-text-muted">
+          <svg className="w-12 h-12 text-text-tertiary mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+          <p className="text-sm font-mono text-text-secondary mb-1">No feedback yet</p>
+          <p className="text-xs font-mono text-text-muted text-center max-w-sm">
+            Use the "Compare & Rank" tab on any run result to rank model responses.
+            Your preferences will appear here as actionable insights.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const coveragePct = totalRuns > 0 ? ((costEval.totalFeedbackRuns / totalRuns) * 100).toFixed(0) : '0';
+  const agreementPct = (costEval.agreementRate * 100).toFixed(0);
+
+  // Count insights by type
+  const typeCounts: Record<string, number> = {};
+  for (const insight of costEval.insights) {
+    typeCounts[insight.type] = (typeCounts[insight.type] ?? 0) + 1;
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard
+          label="Feedback Coverage"
+          value={`${costEval.totalFeedbackRuns} / ${totalRuns}`}
+          sub={`${coveragePct}% of runs have your ranking`}
+          color="text-blue-info"
+        />
+        <StatCard
+          label="Council Agreement"
+          value={`${agreementPct}%`}
+          sub="Runs where your #1 matches the council's"
+          color={Number(agreementPct) >= 50 ? 'text-green-primary' : 'text-amber-warning'}
+        />
+        <StatCard
+          label="Potential Savings"
+          value={costEval.potentialSavings > 0 ? formatCost(costEval.potentialSavings) : '$0.00'}
+          sub="When you preferred cheaper models"
+          color="text-green-primary"
+        />
+        <StatCard
+          label="Disagreements"
+          value={String(costEval.insights.length)}
+          sub={costEval.insights.length === 0 ? 'Perfect alignment with council' : 'Runs where you picked a different #1'}
+          color={costEval.insights.length === 0 ? 'text-green-primary' : 'text-amber-warning'}
+        />
+      </div>
+
+      {/* Insight Type Breakdown */}
+      {costEval.insights.length > 0 && (
+        <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
+          <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Preference Patterns</h3>
+          <p className="text-[10px] text-text-muted mb-4">What drives your disagreements with the council</p>
+          <div className="flex gap-4">
+            {Object.entries(typeCounts).map(([type, count]) => {
+              const style = INSIGHT_COLORS[type] ?? { bg: 'bg-bg-hover', text: 'text-text-muted', label: type };
+              const pct = costEval.insights.length > 0 ? ((count / costEval.insights.length) * 100).toFixed(0) : '0';
+              return (
+                <div key={type} className={`flex-1 rounded-lg p-4 ${style.bg}`}>
+                  <div className={`text-lg font-bold font-mono ${style.text}`}>{count}</div>
+                  <div className={`text-[10px] font-medium ${style.text} mt-0.5`}>{style.label}</div>
+                  <div className="text-[10px] text-text-muted mt-1">{pct}% of disagreements</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Actionable Takeaway */}
+      {costEval.insights.length > 0 && (() => {
+        const costSavings = typeCounts['COST_SAVING'] ?? 0;
+        const speedPicks = typeCounts['SPEED_OPT'] ?? 0;
+        const qualityPicks = typeCounts['QUALITY_PREF'] ?? 0;
+        const dominant = costSavings >= speedPicks && costSavings >= qualityPicks
+          ? 'cost'
+          : speedPicks >= qualityPicks
+            ? 'speed'
+            : 'quality';
+        const takeaway = dominant === 'cost'
+          ? `You tend to prefer cheaper models that the council overlooks. Consider adding lower-cost models to your council, or weighting cost more heavily in your workflow.`
+          : dominant === 'speed'
+            ? `You value fast responses more than the council does. Consider prioritizing low-latency models or adjusting council models to faster tiers.`
+            : `You pick higher-quality (pricier) models than the council recommends. Your council may be under-weighting response depth.`;
+        return (
+          <div className="bg-bg-surface border border-green-primary/30 rounded-lg p-5">
+            <h3 className="text-xs font-medium text-green-primary mb-2 tracking-wide">Recommendation</h3>
+            <p className="text-xs text-text-secondary leading-relaxed">{takeaway}</p>
+          </div>
+        );
+      })()}
+
+      {/* Insight Feed */}
+      {costEval.insights.length > 0 && (
+        <div className="bg-bg-surface border border-border-primary rounded-lg overflow-hidden">
+          <div className="px-5 py-3 border-b border-border-primary flex items-center justify-between">
+            <h3 className="text-xs font-medium text-text-secondary tracking-wide">Insight Log</h3>
+            <span className="text-[10px] text-text-muted font-mono">{costEval.insights.length} insights</span>
+          </div>
+          <div className="divide-y divide-border-primary/50 max-h-80 overflow-y-auto">
+            {costEval.insights.map((insight, i) => {
+              const style = INSIGHT_COLORS[insight.type] ?? { bg: 'bg-bg-hover', text: 'text-text-muted', label: insight.type };
+              return (
+                <div key={`${insight.runId}-${insight.type}-${i}`} className="px-5 py-3 flex items-start gap-3">
+                  <span className={`inline-block px-2 py-0.5 rounded text-[9px] uppercase tracking-wider font-medium shrink-0 mt-0.5 ${style.bg} ${style.text}`}>
+                    {style.label}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] text-text-secondary font-mono">{insight.message}</p>
+                    <p className="text-[10px] text-text-muted font-mono mt-0.5">Run {insight.runId.slice(0, 8)}</p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
