@@ -120,34 +120,10 @@ export interface CommandSpec {
   env: Record<string, string>;
 }
 
-export interface OpenCodeSdkConfig {
-  /** Base URL of a running OpenCode server (e.g. "http://localhost:4096") */
-  serverUrl?: string;
-  /** If true, start an embedded server instead of connecting externally */
-  embedded?: boolean;
-  /** Hostname for embedded server */
-  hostname?: string;
-  /** Port for embedded server */
-  port?: number;
-}
-
-export interface CodexSdkConfig {
-  /** Override the codex binary path (optional) */
-  codexPath?: string;
-  /** Override the API base URL (optional) */
-  baseUrl?: string;
-  /** Override the API key (optional, defaults to env) */
-  apiKey?: string;
-}
-
 export interface StartRunConfig {
   prompt: string;
   agents: AgentId[];
   agentModels?: Partial<Record<AgentId, string>>;
-  /** New: full instance data for multi-instance support */
+  /** Full instance data for multi-instance support */
   agentInstances?: AgentInstance[];
-  /** When set, OpenCode agents use the SDK client instead of CLI subprocess */
-  opencodeSdk?: OpenCodeSdkConfig;
-  /** When set, Codex agents use the SDK instead of CLI subprocess */
-  codexSdk?: CodexSdkConfig;
 }

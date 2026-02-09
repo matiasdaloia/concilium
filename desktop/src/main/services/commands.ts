@@ -1,13 +1,4 @@
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { existsSync } from 'node:fs';
-import type { AgentId, CommandSpec } from './types';
-
-export function resolveOpenCodeBinary(): string {
-  const homeBin = join(homedir(), '.opencode', 'bin', 'opencode');
-  if (existsSync(homeBin)) return homeBin;
-  return 'opencode';
-}
+import type { CommandSpec } from './types';
 
 export function wrapPromptForResearch(prompt: string): string {
   return `You are participating in a multi-agent council. Research and answer the following request thoroughly.
@@ -25,35 +16,14 @@ USER REQUEST:
 ${prompt}`;
 }
 
-export function buildCommand(input: {
-  agentId: AgentId;
-  cwd: string;
+/**
+ * Build a CLI command spec.  Only Claude still uses the subprocess path;
+ * OpenCode and Codex are handled exclusively via their respective SDKs.
+ */
+export function buildClaudeCommand(input: {
   prompt: string;
   model?: string | null;
 }): CommandSpec {
-  switch (input.agentId) {
-    case 'codex':
-      return buildCodexCommand(input);
-    case 'claude':
-      return buildClaudeCommand(input);
-    case 'opencode':
-      return buildOpenCodeCommand(input);
-    default:
-      throw new Error(`Unsupported agent: ${String(input.agentId)}`);
-  }
-}
-
-function buildCodexCommand(input: { cwd: string; prompt: string; model?: string | null }): CommandSpec {
-  const args = ['exec', '--json', '--sandbox', 'read-only'];
-  args.push('--cd', input.cwd);
-  if (input.model?.trim()) {
-    args.push('--model', input.model.trim());
-  }
-  args.push(wrapPromptForResearch(input.prompt));
-  return { command: 'codex', args, env: {} };
-}
-
-function buildClaudeCommand(input: { prompt: string; model?: string | null }): CommandSpec {
   const args = [
     '--verbose',
     '--print',
@@ -68,36 +38,6 @@ function buildClaudeCommand(input: { prompt: string; model?: string | null }): C
   }
   args.push(wrapPromptForResearch(input.prompt));
   return { command: 'claude', args, env: {} };
-}
-
-function buildOpenCodeCommand(input: { prompt: string; model?: string | null }): CommandSpec {
-  const args = ['run', '--format', 'json', '--thinking'];
-  if (input.model?.trim()) {
-    args.push('--model', input.model.trim());
-  }
-  args.push(wrapPromptForResearch(input.prompt));
-  return {
-    command: resolveOpenCodeBinary(),
-    args,
-    env: {
-      OPENCODE_EXPERIMENTAL_PLAN_MODE: 'true',
-      OPENCODE_PERMISSION: JSON.stringify({
-        edit: 'deny',
-        write: 'deny',
-        bash: {
-          '*': 'deny',
-          'ls *': 'allow',
-          'cat *': 'allow',
-          'find *': 'allow',
-          'grep *': 'allow',
-          'pwd': 'allow',
-          'head *': 'allow',
-          'tail *': 'allow',
-          'echo *': 'allow'
-        }
-      })
-    }
-  };
 }
 
 export function mergedEnv(commandEnv?: Record<string, string>): Record<string, string> {

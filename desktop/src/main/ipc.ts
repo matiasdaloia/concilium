@@ -6,11 +6,9 @@
 
 import { ipcMain, clipboard, type BrowserWindow } from 'electron';
 import { randomUUID } from 'node:crypto';
-import type { AgentConfig, AgentInstance, CodexSdkConfig, OpenCodeSdkConfig, StartRunConfig, Stage1Result } from './services/types';
+import type { AgentConfig, AgentInstance, StartRunConfig, Stage1Result } from './services/types';
 import {
   getCouncilConfig,
-  getCouncilConfigSync,
-  getCouncilConfigPrefs,
   saveCouncilConfigPrefs,
   encryptApiKey,
   listRuns,
@@ -201,31 +199,6 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
           send('agent:status', key, 'queued', cfg.name);
         }
 
-        // Resolve OpenCode SDK config: env vars take precedence, then params
-        const opencodeSdkConfig: OpenCodeSdkConfig | undefined = (() => {
-          const envUrl = process.env.OPENCODE_SERVER_URL;
-          if (envUrl) return { serverUrl: envUrl };
-          if (params.opencodeSdk) return params.opencodeSdk;
-          // Auto-detect: if OPENCODE_SDK_EMBEDDED is set, use embedded server
-          if (process.env.OPENCODE_SDK_EMBEDDED === 'true') return { embedded: true };
-          return undefined;
-        })();
-
-        if (opencodeSdkConfig) {
-          log.info('run:start: OpenCode SDK mode enabled', opencodeSdkConfig);
-        }
-
-        // Resolve Codex SDK config: env vars take precedence, then params
-        const codexSdkConfig: CodexSdkConfig | undefined = (() => {
-          if (process.env.CODEX_SDK_ENABLED === 'true') return {};
-          if (params.codexSdk) return params.codexSdk;
-          return undefined;
-        })();
-
-        if (codexSdkConfig) {
-          log.info('run:start: Codex SDK mode enabled', codexSdkConfig);
-        }
-
         const agentResults = await runAgentsParallel({
           agents: agentConfigs,
           prompt: params.prompt,
@@ -237,8 +210,6 @@ export function registerIpcHandlers(mainWindow: BrowserWindow, projectCwd: strin
             onEvent: (agentKey, event) => send('agent:event', agentKey, event),
           },
           controller,
-          opencodeSdk: opencodeSdkConfig,
-          codexSdk: codexSdkConfig,
         });
 
         if (controller.isCancelled) {

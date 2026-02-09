@@ -8,6 +8,10 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { registerIpcHandlers, cancelAllRuns } from './ipc';
+import { ensureOpenCodeServer } from './services/opencode-client';
+import { createLogger } from './services/logger';
+
+const log = createLogger('main');
 
 // Load .env from the application root (where package.json lives)
 // app.getAppPath() is the most reliable way in Electron; cwd and __dirname
@@ -54,10 +58,18 @@ const createWindow = () => {
   }
 };
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  // Start the embedded OpenCode server early so it's ready when agents run.
+  // If OPENCODE_SERVER_URL is set, it connects to an external server instead.
+  const serverUrl = process.env.OPENCODE_SERVER_URL;
+  ensureOpenCodeServer(serverUrl ? { serverUrl } : { embedded: true }).catch(
+    (err) => log.warn('OpenCode server init deferred:', err instanceof Error ? err.message : String(err)),
+  );
 
-// Kill all spawned agent processes (opencode, claude, codex) on app quit.
-// Without this, child processes become orphans that keep running indefinitely.
+  createWindow();
+});
+
+// Cancel active runs and shut down the embedded OpenCode server on app quit.
 app.on('before-quit', () => {
   cancelAllRuns();
 });

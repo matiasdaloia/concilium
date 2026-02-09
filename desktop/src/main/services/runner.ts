@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import type { AgentConfig, AgentId, AgentResult, AgentStatus, CodexSdkConfig, OpenCodeSdkConfig, ParsedEvent } from './types';
-import { buildCommand, mergedEnv } from './commands';
-import { parseEventLine } from './parsers';
+import type { AgentConfig, AgentResult, AgentStatus, ParsedEvent } from './types';
+import { buildClaudeCommand, mergedEnv } from './commands';
+import { parseClaudeEventLine } from './parsers';
 import { runOpenCodeSdk } from './opencode-client';
 import { runCodexSdk } from './codex-client';
 import { createLogger } from './logger';
@@ -36,15 +36,10 @@ export class RunController {
       const pid = child.pid;
       if (!pid) continue;
       try {
-        // Kill the entire process group so child processes of the agent
-        // (e.g. opencode's internal subprocesses) are also terminated.
         process.kill(-pid, 'SIGTERM');
       } catch {
-        // process.kill(-pid) fails if the child isn't a group leader;
-        // fall back to killing just the child.
         try { child.kill('SIGTERM'); } catch { /* ignore */ }
       }
-      // Force-kill after 3s if the process ignores SIGTERM
       setTimeout(() => {
         try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
         try { child.kill('SIGKILL'); } catch { /* already exited */ }
@@ -58,20 +53,18 @@ export class RunController {
 
     const pid = child.pid;
     if (!pid) {
+      // SDK-based agents register a pseudo-child with no pid; calling kill()
+      // triggers the AbortController instead.
+      try { child.kill(); } catch { /* ignore */ }
       this.agentProcesses.delete(agentKey);
-      return false;
+      return true;
     }
 
     try {
-      // Kill the entire process group so child processes of the agent
-      // (e.g. opencode's internal subprocesses) are also terminated.
       process.kill(-pid, 'SIGTERM');
     } catch {
-      // process.kill(-pid) fails if the child isn't a group leader;
-      // fall back to killing just the child.
       try { child.kill('SIGTERM'); } catch { /* ignore */ }
     }
-    // Force-kill after 3s if the process ignores SIGTERM
     setTimeout(() => {
       try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
       try { child.kill('SIGKILL'); } catch { /* already exited */ }
@@ -90,19 +83,9 @@ export async function runAgentsParallel(options: {
   prompt: string;
   callbacks: RunnerCallbacks;
   controller?: RunController;
-  /** When set, OpenCode agents use the SDK client instead of CLI subprocess */
-  opencodeSdk?: OpenCodeSdkConfig;
-  /** When set, Codex agents use the SDK instead of CLI subprocess */
-  codexSdk?: CodexSdkConfig;
 }): Promise<AgentResult[]> {
   log.info(`runAgentsParallel: starting ${options.agents.length} agents`);
   log.debug(`runAgentsParallel: agents:`, options.agents.map(a => a.name));
-  if (options.opencodeSdk) {
-    log.info('runAgentsParallel: OpenCode SDK mode enabled');
-  }
-  if (options.codexSdk) {
-    log.info('runAgentsParallel: Codex SDK mode enabled');
-  }
 
   const controller = options.controller ?? new RunController();
   const tasks = options.agents.map((agent) =>
@@ -111,8 +94,6 @@ export async function runAgentsParallel(options: {
       prompt: options.prompt,
       callbacks: options.callbacks,
       controller,
-      opencodeSdk: options.opencodeSdk,
-      codexSdk: options.codexSdk,
     }),
   );
 
@@ -129,52 +110,47 @@ async function runSingleAgent(options: {
   prompt: string;
   callbacks: RunnerCallbacks;
   controller: RunController;
-  opencodeSdk?: OpenCodeSdkConfig;
-  codexSdk?: CodexSdkConfig;
 }): Promise<AgentResult> {
-  // Route OpenCode agents through the SDK when configured
-  if (options.agent.id === 'opencode' && options.opencodeSdk) {
-    const sdkConfig = options.opencodeSdk;
+  const { agent } = options;
+
+  // OpenCode: always via SDK (server must be initialized at app startup)
+  if (agent.id === 'opencode') {
     return runViaSdk(options, (abortSignal) =>
       runOpenCodeSdk({
-        agent: options.agent,
+        agent,
         prompt: options.prompt,
         callbacks: options.callbacks,
-        sdkConfig,
+        sdkConfig: {},
         abortSignal,
       }),
     );
   }
 
-  // Route Codex agents through the SDK when configured
-  if (options.agent.id === 'codex' && options.codexSdk) {
-    const sdkConfig = options.codexSdk;
+  // Codex: always via SDK (read-only sandbox)
+  if (agent.id === 'codex') {
     return runViaSdk(options, (abortSignal) =>
       runCodexSdk({
-        agent: options.agent,
+        agent,
         prompt: options.prompt,
         callbacks: options.callbacks,
-        sdkConfig,
+        sdkConfig: {},
         abortSignal,
       }),
     );
   }
 
-  const spec = buildCommand({
-    agentId: options.agent.id,
-    cwd: options.agent.cwd,
+  // Claude: still uses CLI subprocess
+  const spec = buildClaudeCommand({
     prompt: options.prompt,
-    model: options.agent.model,
+    model: agent.model,
   });
 
-  // Use instanceId as the unique key if available, otherwise fall back to provider id
-  const agentKey = options.agent.instanceId ?? options.agent.id;
+  const agentKey = agent.instanceId ?? agent.id;
 
-  return runProcess({
-    agentId: options.agent.id,
+  return runClaudeProcess({
     agentKey,
-    name: options.agent.name,
-    cwd: options.agent.cwd,
+    name: agent.name,
+    cwd: agent.cwd,
     command: spec.command,
     args: spec.args,
     env: mergedEnv(spec.env),
@@ -209,9 +185,11 @@ async function runViaSdk(
   }
 }
 
-function runProcess(options: {
-  agentId: AgentId;
-  /** Unique key for callbacks (instanceId or agentId) */
+/**
+ * Spawn a Claude CLI subprocess and stream events.
+ * This is the only agent that still uses process spawning.
+ */
+function runClaudeProcess(options: {
   agentKey: string;
   name: string;
   cwd: string;
@@ -222,13 +200,12 @@ function runProcess(options: {
   controller: RunController;
 }): Promise<AgentResult> {
   return new Promise((resolve) => {
-    const { agentId, agentKey, name, command, args, env, callbacks, controller } = options;
+    const { agentKey, name, command, args, env, callbacks, controller } = options;
     const startedAt = new Date().toISOString();
-    
-    log.debug(`runProcess: spawning ${name} (${agentId})`);
-    log.debug(`runProcess: command: ${command} ${args.join(' ')}`);
-    log.debug(`runProcess: cwd: ${options.cwd}`);
-    
+
+    log.debug(`runClaudeProcess: spawning ${name}`);
+    log.debug(`runClaudeProcess: command: ${command} ${args.join(' ')}`);
+
     callbacks.onStatus?.(agentKey, 'running');
 
     const rawOutput: string[] = [];
@@ -241,32 +218,27 @@ function runProcess(options: {
       cwd: options.cwd,
       env,
       stdio: ['ignore', 'pipe', 'pipe'],
-      // Create a new process group so we can kill the entire tree on cancel.
       detached: true,
     });
 
-    log.debug(`runProcess: ${name} spawned with PID ${child.pid}`);
+    log.debug(`runClaudeProcess: ${name} spawned with PID ${child.pid}`);
     controller.register(agentKey, child);
 
-    // Track time-to-first-byte from the subprocess to diagnose streaming delays.
-    // If this fires quickly, the model is streaming — any UI lag is downstream.
-    // If this fires late, the delay is in the subprocess (OpenCode/model TTFT).
     let firstDataLogged = false;
     const logFirstData = (stream: string) => {
       if (firstDataLogged) return;
       firstDataLogged = true;
       const elapsed = Date.now() - spawnedAt;
-      log.info(`runProcess: ${name} first data on ${stream} after ${elapsed}ms`);
+      log.info(`runClaudeProcess: ${name} first data on ${stream} after ${elapsed}ms`);
     };
 
     const handleLine = (line: string) => {
       rawOutput.push(line);
-      const parsedEvents = parseEventLine(agentId, line);
+      const parsedEvents = parseClaudeEventLine(line);
       for (const parsed of parsedEvents) {
-        // Log timing for the first few parsed events to diagnose streaming latency.
         if (events.length < 3) {
           const elapsed = Date.now() - spawnedAt;
-          log.debug(`runProcess: ${name} event #${events.length} at +${elapsed}ms: type=${parsed.eventType}`);
+          log.debug(`runClaudeProcess: ${name} event #${events.length} at +${elapsed}ms: type=${parsed.eventType}`);
         }
 
         events.push(parsed);
@@ -293,27 +265,26 @@ function runProcess(options: {
       let status: AgentStatus;
       if (controller.isCancelled) {
         status = 'cancelled';
-        log.warn(`runProcess: ${name} cancelled`);
+        log.warn(`runClaudeProcess: ${name} cancelled`);
       } else if (signal === 'SIGTERM' || signal === 'SIGKILL') {
-        // Process was killed (likely via cancelAgent)
         status = 'aborted';
-        log.warn(`runProcess: ${name} aborted (killed by signal ${signal})`);
+        log.warn(`runClaudeProcess: ${name} aborted (killed by signal ${signal})`);
       } else if (code === 0) {
         status = 'success';
-        log.info(`runProcess: ${name} completed successfully`);
+        log.info(`runClaudeProcess: ${name} completed successfully`);
       } else {
         status = 'error';
-        log.error(`runProcess: ${name} exited with code ${code}`);
+        log.error(`runClaudeProcess: ${name} exited with code ${code}`);
       }
 
       callbacks.onStatus?.(agentKey, status);
       const normalizedPlan = normalizePlan(planFragments, rawOutput);
       const endedAt = new Date().toISOString();
-      
-      log.debug(`runProcess: ${name} stats - rawOutput: ${rawOutput.length} lines, events: ${events.length}, plan: ${normalizedPlan.length} chars`);
+
+      log.debug(`runClaudeProcess: ${name} stats - rawOutput: ${rawOutput.length} lines, events: ${events.length}, plan: ${normalizedPlan.length} chars`);
 
       resolve({
-        id: agentId,
+        id: 'claude',
         agentKey,
         name,
         status,
@@ -329,10 +300,10 @@ function runProcess(options: {
 
     child.on('error', (err) => {
       controller.unregister(agentKey);
-      log.error(`runProcess: ${name} spawn error:`, err.message);
+      log.error(`runClaudeProcess: ${name} spawn error:`, err.message);
       callbacks.onStatus?.(agentKey, 'error');
       resolve({
-        id: agentId,
+        id: 'claude',
         agentKey,
         name,
         status: 'error',
@@ -360,7 +331,7 @@ const CLAUDE_MODELS = [
   'claude-haiku-4-5-20251001',
 ];
 
-/** Known Codex models (no programmatic listing available) */
+/** Known Codex models */
 const CODEX_MODELS = [
   'gpt-5.2-codex',
   'gpt-5.3-codex',
@@ -378,80 +349,37 @@ export const DEFAULT_AGENT_MODELS: Record<string, string> = {
   opencode: '',
 };
 
-async function runCapture(command: string, args: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const chunks: string[] = [];
-    if (child.stdout) {
-      const rl = createInterface({ input: child.stdout });
-      rl.on('line', (line) => chunks.push(line));
-    }
-    if (child.stderr) {
-      const rl = createInterface({ input: child.stderr });
-      rl.on('line', (line) => chunks.push(line));
-    }
-    child.on('close', () => resolve(chunks.join('\n')));
-    child.on('error', () => resolve(''));
-    // Timeout after 10s
-    setTimeout(() => {
-      try { child.kill(); } catch { /* ignore */ }
-      resolve(chunks.join('\n'));
-    }, 10_000);
-  });
-}
-
-function parseProviders(raw: string): Set<string> {
-  const providers = new Set<string>();
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (
-      !trimmed
-      || trimmed.toLowerCase().startsWith('opencode')
-      || trimmed.toLowerCase().startsWith('error')
-      || trimmed.includes('service=models.dev')
-      || trimmed.toLowerCase().startsWith('options:')
-      || trimmed.toLowerCase().startsWith('commands:')
-    ) continue;
-    const token = trimmed.split(/\s+/)[0];
-    if (token) providers.add(token.toLowerCase());
-  }
-  return providers;
-}
-
-function parseModels(raw: string): string[] {
-  const models: string[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    // Skip empty lines and error messages
-    if (!trimmed || trimmed.toLowerCase().startsWith('error')) continue;
-    // Valid model IDs contain at least one slash (e.g., google/gemini-2.5-pro or openrouter/anthropic/claude-sonnet-4)
-    if (trimmed.includes('/') && !trimmed.includes(' ')) {
-      models.push(trimmed);
-    }
-  }
-  return models.sort();
-}
-
-import { resolveOpenCodeBinary } from './commands';
-
+/**
+ * Discover available OpenCode models via the SDK.
+ * Requires an OpenCode server to be running (initialized at app startup).
+ */
 export async function discoverOpenCodeModels(): Promise<string[]> {
-  const binary = resolveOpenCodeBinary();
-  const [providersRaw, modelsRaw] = await Promise.all([
-    runCapture(binary, ['auth', 'list']),
-    runCapture(binary, ['models']),
-  ]);
-  const providers = parseProviders(providersRaw);
-  const allModels = parseModels(modelsRaw);
-  if (!allModels.length) return [];
-  if (!providers.size) {
-    const lower = modelsRaw.toLowerCase();
-    if (lower.includes('service=models.dev') || lower.includes('unable to connect') || lower.trim().startsWith('error')) {
-      return [];
+  try {
+    const { ensureOpenCodeServer } = await import('./opencode-client');
+    const { client } = await ensureOpenCodeServer({});
+    const providersRes = await client.config.providers();
+    const providers = providersRes.data;
+
+    const models: string[] = [];
+    if (providers && typeof providers === 'object') {
+      // providers is a record of providerID → provider config with models
+      for (const [providerId, provider] of Object.entries(providers as Record<string, unknown>)) {
+        if (provider && typeof provider === 'object' && 'models' in provider) {
+          const providerModels = (provider as { models?: Record<string, unknown> }).models;
+          if (providerModels && typeof providerModels === 'object') {
+            for (const modelId of Object.keys(providerModels)) {
+              models.push(`${providerId}/${modelId}`);
+            }
+          }
+        }
+      }
     }
-    return allModels;
+
+    return models.sort();
+  } catch (err) {
+    log.warn('discoverOpenCodeModels: failed to discover via SDK:', err instanceof Error ? err.message : String(err));
+    return [];
   }
-  const filtered = allModels.filter((m) => providers.has(m.split('/')[0].toLowerCase()));
-  return filtered.length ? filtered : allModels;
 }
 
 export interface AgentModelInfo {
