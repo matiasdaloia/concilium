@@ -16,6 +16,11 @@ export function useSmartScroll<T>(dep: T) {
   const rafCheckRef = useRef(0);
   const rafScrollRef = useRef(0);
 
+  // Flag to distinguish programmatic scrolls (auto-scroll / scrollToBottom)
+  // from user-initiated scrolls. Without this, auto-scroll can race with
+  // the scroll-position check and falsely disengage.
+  const programmaticScrollRef = useRef(false);
+
   // Threshold in pixels: if the user is within this distance of the bottom,
   // we consider them "at the bottom" and keep auto-scrolling.
   const THRESHOLD = 60;
@@ -26,6 +31,14 @@ export function useSmartScroll<T>(dep: T) {
     if (rafCheckRef.current) return; // already scheduled
     rafCheckRef.current = requestAnimationFrame(() => {
       rafCheckRef.current = 0;
+
+      // If this scroll event was triggered by our own auto-scroll,
+      // skip the check — we know we're pinned to the bottom.
+      if (programmaticScrollRef.current) {
+        programmaticScrollRef.current = false;
+        return;
+      }
+
       const el = scrollRef.current;
       if (!el) return;
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < THRESHOLD;
@@ -54,6 +67,7 @@ export function useSmartScroll<T>(dep: T) {
       rafScrollRef.current = 0;
       const el = scrollRef.current;
       if (el && isAtBottomRef.current) {
+        programmaticScrollRef.current = true;
         el.scrollTop = el.scrollHeight;
       }
     });
@@ -69,6 +83,7 @@ export function useSmartScroll<T>(dep: T) {
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    programmaticScrollRef.current = true;
     el.scrollTop = el.scrollHeight;
     isAtBottomRef.current = true;
     setShowScrollButton(false);
