@@ -50,8 +50,14 @@ export interface UserRanking {
   timestamp: string;
 }
 
+export interface ImageAttachmentData {
+  path?: string;
+  base64?: string;
+  mimeType: string;
+}
+
 export interface ElectronAPI {
-  startRun(config: { prompt: string; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
+  startRun(config: { prompt: string; images?: ImageAttachmentData[]; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
   cancelRun(runId: string): Promise<void>;
   abortAgent(runId: string, agentKey: string): Promise<{ success: boolean; error?: string }>;
   listRuns(): Promise<Array<{ id: string; createdAt: string; promptPreview: string; status: string }>>;
@@ -73,6 +79,9 @@ export interface ElectronAPI {
   // Council configuration
   saveCouncilConfig(config: { chairmanModel?: string; councilModels?: string[]; apiKey?: string }): Promise<{ success: boolean }>;
   fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModelInfo[]>;
+
+  // Voice transcription
+  transcribeAudio(audioData: { buffer: ArrayBuffer; mimeType: string }): Promise<{ success: boolean; transcript?: string; error?: string }>;
 
   onAgentStatus(cb: (agentId: string, status: string, name?: string) => void): () => void;
   onAgentEvent(cb: (agentId: string, event: unknown) => void): () => void;
@@ -107,6 +116,10 @@ const api: ElectronAPI = {
   // Council configuration
   saveCouncilConfig: (config) => ipcRenderer.invoke('config:council:save', config),
   fetchOpenRouterModels: (apiKey) => ipcRenderer.invoke('openrouter:fetchModels', apiKey),
+
+  // Voice transcription
+  transcribeAudio: (audioData: { buffer: ArrayBuffer; mimeType: string }) => 
+    ipcRenderer.invoke('voice:transcribe', audioData),
 
   onAgentStatus: (cb) => {
     const handler = (_: unknown, agentId: string, status: string, name?: string) => cb(agentId, status, name);

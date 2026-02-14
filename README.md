@@ -145,6 +145,47 @@ llm-council/
 └── assets/           # Shared assets (logos, icons)
 ```
 
+## Voice Dictation
+
+Concilium includes offline voice dictation powered by [Whisper](https://github.com/openai/whisper). Speak your prompts instead of typing them.
+
+### Setup
+
+Voice dictation requires a one-time setup to download the Whisper model and build the binary:
+
+```bash
+cd desktop
+
+# Download the Whisper model (~150MB)
+npx nodejs-whisper download
+
+# Build whisper.cpp
+cd node_modules/nodejs-whisper/cpp/whisper.cpp
+cmake -B build -DGGML_CUDA=OFF
+cmake --build build --config Release
+```
+
+### Requirements
+
+- **ffmpeg** (recommended): For audio format conversion
+  ```bash
+  # macOS
+  brew install ffmpeg
+  
+  # Ubuntu/Debian
+  sudo apt install ffmpeg
+  ```
+
+### Usage
+
+1. Click the **Dictate** button next to the prompt input
+2. Speak your prompt
+3. Click **Stop** when finished
+4. Wait 2-3 seconds for transcription
+5. Your text appears in the prompt field
+
+Voice dictation runs **completely offline** — your audio never leaves your machine.
+
 ## Development
 
 ### Desktop App
