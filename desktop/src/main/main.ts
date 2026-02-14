@@ -47,6 +47,18 @@ const createWindow = () => {
     },
   });
 
+  // Handle permission requests for microphone
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (webContents, permission, callback) => {
+      if (permission === 'media') {
+        log.info('Microphone permission requested');
+        callback(true);
+      } else {
+        callback(false);
+      }
+    }
+  );
+
   registerIpcHandlers(mainWindow, resolvedProjectCwd);
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {

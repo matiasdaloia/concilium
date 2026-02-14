@@ -18,12 +18,14 @@ import {
   type ToolPart,
 } from "@opencode-ai/sdk";
 /* eslint-enable import/no-unresolved */
+import { promises as fs } from "node:fs";
 import { wrapPromptForResearch } from "./commands";
 import { createLogger } from "./logger";
 import type { RunnerCallbacks } from "./runner";
 import type {
   AgentConfig,
   AgentResult,
+  ImageAttachment,
   ParsedEvent,
   TokenUsage,
 } from "./types";
@@ -131,6 +133,7 @@ export function shutdownEmbeddedServer() {
 export async function runOpenCodeSdk(options: {
   agent: AgentConfig;
   prompt: string;
+  images?: ImageAttachment[];
   callbacks: RunnerCallbacks;
   sdkConfig: OpenCodeSdkConfig;
   abortSignal?: AbortSignal;
@@ -197,12 +200,45 @@ export async function runOpenCodeSdk(options: {
       abortSignal: options.abortSignal,
     });
 
-    // 5. Send the prompt (async variant — returns immediately, events stream separately)
+    // 5. Build prompt parts with optional images
     const wrappedPrompt = wrapPromptForResearch(prompt);
+    // Build parts array with proper typing for the SDK
+    const textPart = { type: "text" as const, text: wrappedPrompt };
+    const parts: Array<{ type: "text"; text: string } | { type: "image"; image: string; mimeType: string }> = [textPart];
+
+    // Add image parts if provided
+    if (options.images && options.images.length > 0) {
+      log.info(`runOpenCodeSdk: processing ${options.images.length} image(s)`);
+      for (const img of options.images) {
+        try {
+          let imageData: string | undefined;
+          if (img.base64) {
+            imageData = img.base64;
+          } else if (img.path) {
+            imageData = await fs.readFile(img.path, { encoding: "base64" });
+          }
+          if (imageData) {
+            parts.push({
+              type: "image" as const,
+              image: imageData,
+              mimeType: img.mimeType,
+            });
+            log.debug(`runOpenCodeSdk: added image part (${img.mimeType})`);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          log.error(`runOpenCodeSdk: failed to process image: ${message}`);
+          errors.push(`Failed to process image: ${message}`);
+        }
+      }
+    }
+
+    // 6. Send the prompt (async variant — returns immediately, events stream separately)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await client.session.promptAsync({
       path: { id: sessionId },
       body: {
-        parts: [{ type: "text", text: wrappedPrompt }],
+        parts: parts as any,
         tools: toolsMap,
         system:
           "You are a research advisor in a multi-agent council. Your ONLY job is to propose a plan — NEVER implement it. Return your plan as markdown text in your response. NEVER write, edit, create, or delete files. NEVER use write/edit/bash tools. You may only use read-only tools (read, glob, grep, web search).",
@@ -267,7 +303,7 @@ export async function runOpenCodeSdk(options: {
       status: "success",
       startedAt,
       endedAt: new Date().toISOString(),
-      rawOutput,
+      rawOutput: [],
       normalizedPlan,
       errors,
       command: ["opencode-sdk", agent.model ?? ""],
@@ -286,7 +322,7 @@ export async function runOpenCodeSdk(options: {
       status: "error",
       startedAt,
       endedAt: new Date().toISOString(),
-      rawOutput,
+      rawOutput: [],
       normalizedPlan: `Error: ${message}`,
       errors,
       command: ["opencode-sdk", agent.model ?? ""],

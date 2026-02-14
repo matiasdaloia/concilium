@@ -1,16 +1,36 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import Logo from "../assets/concilium-logo.svg";
 import AddAgentButton from "../components/AddAgentButton";
 import AgentCard from "../components/AgentCard";
 import SettingsModal from "../components/SettingsModal";
 import TitleBar from "../components/TitleBar";
+import VoiceInputButton from "../components/VoiceInputButton";
 import type {
   AgentInstance,
   AgentModelInfo,
   AgentProvider,
   CouncilConfig,
 } from "../types";
+
+interface ImageAttachmentData {
+  path?: string;
+  base64?: string;
+  mimeType: string;
+}
+
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
 
 const MAX_AGENTS = 3;
 const MIN_AGENTS = 2;
@@ -47,8 +67,17 @@ export default function HomeScreen({
     null,
   );
 
+  // Image attachments state
+  const [images, setImages] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Debounced save ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Voice input state
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const voiceModeStartedRef = useRef(false);
 
   // Load agent instances, model options, and council config on mount
   useEffect(() => {
@@ -179,6 +208,88 @@ export default function HomeScreen({
     [defaultModels, saveInstances],
   );
 
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files) {
+        setImages((prev) => [...prev, ...Array.from(e.target.files!)]);
+      }
+    },
+    [],
+  );
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    const pastedFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) pastedFiles.push(file);
+      }
+    }
+    if (pastedFiles.length > 0) {
+      e.preventDefault();
+      setImages((prev) => [...prev, ...pastedFiles]);
+    }
+  }, []);
+
+  const removeImage = useCallback((index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  // Voice dictation handlers
+  const handleVoiceTranscript = useCallback(
+    (transcript: string, isFinal: boolean) => {
+      console.log("[Voice Debug] HomeScreen received transcript:", {
+        transcript: transcript.slice(0, 50),
+        isFinal,
+      });
+
+      if (isFinal) {
+        // Final result - append to prompt
+        setPrompt((prev) => {
+          const trimmedTranscript = transcript.trim();
+          const newPrompt = !prev.trim()
+            ? trimmedTranscript
+            : `${prev} ${trimmedTranscript}`;
+          console.log("[Voice Debug] Updating prompt:", {
+            prev: prev.slice(0, 30),
+            new: newPrompt.slice(0, 50),
+          });
+          return newPrompt;
+        });
+        setInterimTranscript("");
+        voiceModeStartedRef.current = false;
+      } else {
+        // Interim result - show preview but don't save yet
+        setInterimTranscript(transcript);
+        if (!voiceModeStartedRef.current) {
+          setIsVoiceMode(true);
+          voiceModeStartedRef.current = true;
+        }
+      }
+    },
+    [],
+  );
+
+  const handleVoiceStop = useCallback(() => {
+    console.log("[Voice Debug] HomeScreen received stop");
+    setIsVoiceMode(false);
+    setInterimTranscript("");
+    voiceModeStartedRef.current = false;
+  }, []);
+
+  // Generate object URLs for image previews
+  const imagePreviews = useMemo(() => {
+    return images.map((file) => URL.createObjectURL(file));
+  }, [images]);
+
+  // Cleanup object URLs on unmount or when images change
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [imagePreviews]);
+
   const handleSubmit = useCallback(async () => {
     if (!prompt.trim() || isStarting) return;
 
@@ -187,20 +298,36 @@ export default function HomeScreen({
 
     setIsStarting(true);
     try {
+      const imageAttachments: ImageAttachmentData[] = await Promise.all(
+        images.map(async (file) => {
+          // @ts-expect-error - Electron File has path property
+          const path = file.path as string | undefined;
+          const attachment: ImageAttachmentData = { mimeType: file.type };
+          if (path) {
+            attachment.path = path;
+          } else {
+            attachment.base64 = await fileToBase64(file);
+          }
+          return attachment;
+        }),
+      );
+
       const result = await api.startRun({
         prompt: prompt.trim(),
+        images: imageAttachments.length > 0 ? imageAttachments : undefined,
         agents: enabledInstances.map((inst) => inst.provider),
         agentInstances: enabledInstances,
       });
       const runId = typeof result === "string" ? result : result.runId;
       const initialAgents =
         typeof result === "string" ? [] : (result.initialAgents ?? []);
+      setImages([]);
       onStartRun(runId, initialAgents);
     } catch (err) {
       console.error("Failed to start run:", err);
       setIsStarting(false);
     }
-  }, [prompt, agentInstances, isStarting, onStartRun]);
+  }, [prompt, images, agentInstances, isStarting, onStartRun]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -237,7 +364,7 @@ export default function HomeScreen({
     <div className="flex flex-col h-screen bg-bg-page overflow-hidden selection:bg-green-primary/30 selection:text-green-primary relative">
       <TitleBar />
 
-      <main className="flex-1 flex flex-col px-8 md:px-12 pt-8 pb-8 w-full relative z-10">
+      <main className="flex-1 flex flex-col px-8 md:px-12 pt-8 pb-8 w-full relative z-10 overflow-auto">
         {/* Header Branding */}
         <div className="flex items-center justify-between mb-12">
           <div className="flex items-center gap-4 opacity-90">
@@ -340,14 +467,113 @@ export default function HomeScreen({
 
           <div className="relative">
             <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              value={
+                isVoiceMode && interimTranscript
+                  ? `${prompt} ${interimTranscript}`.trim()
+                  : prompt
+              }
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                if (isVoiceMode) {
+                  setIsVoiceMode(false);
+                  setInterimTranscript("");
+                  voiceModeStartedRef.current = false;
+                }
+              }}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="Design a distributed key-value store with strong consistency guarantees. Debate the trade-offs between Paxos and Raft consensus algorithms, and propose a sharding strategy for petabyte-scale data..."
               rows={4}
-              className="relative w-full bg-bg-surface border border-white/5 rounded px-5 py-4 text-sm text-text-primary placeholder:text-text-muted/30 resize-y focus:outline-none focus:border-green-primary/50 transition-colors font-mono leading-relaxed"
+              className={`relative w-full bg-bg-surface border rounded px-5 py-4 pr-14 text-sm text-text-primary placeholder:text-text-muted/30 resize-y focus:outline-none transition-colors font-mono leading-relaxed ${
+                isVoiceMode
+                  ? "border-red-500/50 focus:border-red-500/50"
+                  : "border-white/5 focus:border-green-primary/50"
+              }`}
               autoFocus
             />
+
+            {/* Voice input button - positioned inside textarea */}
+            <div className="absolute bottom-4 right-4">
+              <VoiceInputButton
+                onTranscript={handleVoiceTranscript}
+                onStop={handleVoiceStop}
+                disabled={isStarting}
+              />
+            </div>
+          </div>
+
+          {/* Image attachments UI */}
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-3 mt-3">
+              {images.map((file, index) => (
+                <div key={index} className="relative group" title={file.name}>
+                  <div className="w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-bg-surface">
+                    <img
+                      src={imagePreviews[index]}
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeImage(index)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-bg-page border border-white/20 text-text-muted hover:text-red-error hover:border-red-error/50 transition-colors shadow-sm"
+                  >
+                    <svg
+                      className="w-3 h-3"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 mt-3">
+            <input
+              type="file"
+              multiple
+              accept="image/*"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleFileSelect}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-white/5 border border-white/10 text-xs text-text-secondary hover:bg-white/10 hover:border-white/20 transition-colors"
+              title="Attach image"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+              <span>Attach image</span>
+              {images.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-primary/20 text-green-primary text-[10px]">
+                  {images.length}
+                </span>
+              )}
+            </button>
+            <span className="text-[11px] text-text-muted">
+              Paste or click to attach images
+            </span>
           </div>
         </div>
 

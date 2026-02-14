@@ -67,6 +67,7 @@
     "react-markdown": "^10.1.0",
     "react-syntax-highlighter": "^16.1.0",
     "remark-gfm": "^4.0.1",
+    "nodejs-whisper": "^0.2.9",
     "streamdown": "^2.1.0"
   },
   "overrides": {

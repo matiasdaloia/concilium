@@ -45,7 +45,8 @@ export interface AgentResult {
   status: AgentStatus;
   startedAt?: string | null;
   endedAt?: string | null;
-  rawOutput: string[];
+  /** Raw output lines - no longer stored for new runs (kept for backward compatibility) */
+  rawOutput?: string[];
   normalizedPlan: string;
   errors: string[];
   command: string[];
@@ -135,8 +136,15 @@ export interface CommandSpec {
   env: Record<string, string>;
 }
 
+export interface ImageAttachment {
+  path?: string;
+  base64?: string;
+  mimeType: string;
+}
+
 export interface StartRunConfig {
   prompt: string;
+  images?: ImageAttachment[];
   agents: AgentId[];
   agentModels?: Partial<Record<AgentId, string>>;
   /** Full instance data for multi-instance support */

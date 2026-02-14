@@ -9,6 +9,7 @@ import type {
   AgentConfig,
   AgentResult,
   AgentStatus,
+  ImageAttachment,
   ParsedEvent,
 } from "./types";
 
@@ -123,6 +124,7 @@ export class RunController {
 export async function runAgentsParallel(options: {
   agents: AgentConfig[];
   prompt: string;
+  images?: ImageAttachment[];
   callbacks: RunnerCallbacks;
   controller?: RunController;
 }): Promise<AgentResult[]> {
@@ -137,6 +139,7 @@ export async function runAgentsParallel(options: {
     runSingleAgent({
       agent,
       prompt: options.prompt,
+      images: options.images,
       callbacks: options.callbacks,
       controller,
     }),
@@ -155,6 +158,7 @@ export async function runAgentsParallel(options: {
 async function runSingleAgent(options: {
   agent: AgentConfig;
   prompt: string;
+  images?: ImageAttachment[];
   callbacks: RunnerCallbacks;
   controller: RunController;
 }): Promise<AgentResult> {
@@ -166,6 +170,7 @@ async function runSingleAgent(options: {
       runOpenCodeSdk({
         agent,
         prompt: options.prompt,
+        images: options.images,
         callbacks: options.callbacks,
         sdkConfig: {},
         abortSignal,
@@ -347,7 +352,7 @@ function runClaudeProcess(options: {
         status,
         startedAt,
         endedAt,
-        rawOutput,
+        rawOutput: [],
         normalizedPlan,
         errors,
         command: [command, ...args],
@@ -366,7 +371,7 @@ function runClaudeProcess(options: {
         status: "error",
         startedAt,
         endedAt: new Date().toISOString(),
-        rawOutput,
+        rawOutput: [],
         normalizedPlan: `Process error: ${err.message}`,
         errors: [err.message],
         command: [command, ...args],

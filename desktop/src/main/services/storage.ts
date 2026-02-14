@@ -89,7 +89,14 @@ export async function loadAllRuns(): Promise<RunRecord[]> {
       const data: RunRecord = JSON.parse(
         await readFile(join(dir, file), "utf-8"),
       );
-      records.push(data);
+      // Filter out rawOutput for memory efficiency - not used in analytics
+      records.push({
+        ...data,
+        agents: data.agents.map(agent => {
+          const { rawOutput: _, ...rest } = agent;
+          return rest as typeof agent;
+        }),
+      });
     } catch {
       continue;
     }
