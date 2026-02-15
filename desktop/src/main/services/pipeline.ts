@@ -87,19 +87,25 @@ function buildRankingPrompt(
     .map((label, i) => `Response ${label}:\n${stage1Results[i].response}`)
     .join('\n\n');
 
-  const prompt = `You are an impartial evaluator in a blind peer-review process. You are evaluating anonymized responses to a user question. You do NOT know which model or system produced each response.
+  const prompt = `You are a principal software engineer conducting a blind code review. You are evaluating anonymized implementation plans proposed by different engineers for the same task. You do NOT know who authored each plan.
 
-IMPORTANT: Evaluate responses ONLY on their content quality — accuracy, completeness, clarity, and relevance. Ignore stylistic differences, formatting preferences, or any artifacts that might hint at the source. Each response is equally anonymous.
+Evaluate each plan as you would in a real code review — focus on engineering quality, not writing style.
 
-Question: ${userQuery}
+Task being addressed: ${userQuery}
 
-Here are the anonymized responses:
+Here are the anonymized implementation plans:
 
 ${responsesText}
 
-Your task:
-1. First, evaluate each response individually. For each response, explain what it does well and what it does poorly.
-2. Then, at the very end of your response, provide a final ranking.
+Evaluate each plan on these criteria:
+1. **Correctness**: Does the proposed approach actually solve the problem? Are there logical errors, missed edge cases, or incorrect assumptions about the codebase?
+2. **Completeness**: Does it cover the full scope — error handling, type safety, backward compatibility, migrations? Or does it leave gaps?
+3. **Code quality**: Are the proposed changes clean, idiomatic, and maintainable? Does it follow existing patterns in the codebase or introduce unnecessary complexity?
+4. **Architecture**: Does it make sound structural decisions? Will it scale? Does it avoid tight coupling and respect separation of concerns?
+5. **Risk awareness**: Does it identify potential regressions, breaking changes, performance implications, and security concerns?
+6. **Testing**: Does it propose adequate test coverage for the changes?
+
+For each plan, give a concise review highlighting strengths and weaknesses. Be specific — reference concrete details from the plans, not vague generalities.
 
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Start with the line "FINAL RANKING:" (all caps, with colon)
@@ -107,18 +113,12 @@ IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
 - Do not add any other text or explanations in the ranking section
 
-Example of the correct format for your ENTIRE response:
-
-Response A provides good detail on X but misses Y...
-Response B is accurate but lacks depth on Z...
-Response C offers the most comprehensive answer...
-
 FINAL RANKING:
 1. Response C
 2. Response A
 3. Response B
 
-Now provide your evaluation and ranking:`;
+Now provide your code review and ranking:`;
 
   return [prompt, labelToModel];
 }
@@ -138,23 +138,26 @@ function buildSynthesisPrompt(
     .map((r, i) => `Juror ${i + 1} Evaluation:\n${r.ranking}`)
     .join('\n\n');
 
-  return `You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and independent jurors have evaluated and ranked those responses.
+  return `You are the lead architect of a code review council. Multiple engineers have independently proposed implementation plans for the same task, and senior reviewers have evaluated and ranked those plans.
 
-Original Question: ${userQuery}
+Your job is to produce the **single best implementation plan** by synthesizing the strongest elements from all proposals and reviews.
 
-STAGE 1 - Individual Responses (anonymized):
+Original task: ${userQuery}
+
+STAGE 1 - Proposed Implementation Plans (anonymized):
 ${stage1Text}
 
-STAGE 2 - Peer Review Evaluations:
+STAGE 2 - Code Review Evaluations:
 ${stage2Text}
 
-Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their unique insights
-- The peer review evaluations and what they reveal about response quality
-- Any patterns of agreement or disagreement between jurors
-- Correct any errors identified by the jurors while preserving accurate insights
+Synthesize the above into one definitive implementation plan. You should:
+- Take the best architectural decisions, code patterns, and insights from the top-ranked plans
+- Fix any bugs, gaps, or incorrect assumptions that reviewers identified
+- Ensure completeness: file paths, function names, edge cases, error handling, types, and tests
+- Resolve disagreements between reviewers by using your own engineering judgment
+- Include concrete code snippets where they add clarity
 
-Provide a clear, well-reasoned final answer that represents the council's best collective knowledge. Do NOT reference the responses or jurors — write the answer as if you are directly answering the user:`;
+Write the final plan as if you are the author — do NOT reference "Response A" or "Juror 2". Present a single, cohesive implementation plan ready to be executed:`;
 }
 
 /** Estimate cost in USD from token usage and cached model pricing */
