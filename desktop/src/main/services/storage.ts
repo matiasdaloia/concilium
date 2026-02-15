@@ -63,7 +63,9 @@ async function ensureRunsDir(): Promise<string> {
 export async function saveRun(run: RunRecord): Promise<string> {
   const dir = await ensureRunsDir();
   const filePath = join(dir, `${run.id}.json`);
-  await writeFile(filePath, JSON.stringify(run, null, 2), "utf-8");
+  // Use compact JSON (no indentation) to reduce file size — run files with
+  // full event streams can be several MB; pretty-printing roughly doubles that.
+  await writeFile(filePath, JSON.stringify(run), "utf-8");
   return filePath;
 }
 
@@ -83,27 +85,82 @@ export async function loadAllRuns(): Promise<RunRecord[]> {
     return [];
   }
 
+  // Read files in parallel for faster loading
+  const BATCH_SIZE = 20;
   const records: RunRecord[] = [];
-  for (const file of files) {
-    try {
-      const data: RunRecord = JSON.parse(
-        await readFile(join(dir, file), "utf-8"),
-      );
-      // Filter out rawOutput for memory efficiency - not used in analytics
-      records.push({
-        ...data,
-        agents: data.agents.map(agent => {
-          const { rawOutput: _, ...rest } = agent;
-          return rest as typeof agent;
-        }),
-      });
-    } catch {
-      continue;
+
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (file) => {
+        const data: RunRecord = JSON.parse(
+          await readFile(join(dir, file), "utf-8"),
+        );
+        // Strip rawOutput and events for memory efficiency — analytics only
+        // needs token usage (extracted from events) and timing, not the full
+        // event stream which can be thousands of entries per agent.
+        return {
+          ...data,
+          agents: data.agents.map(agent => {
+            const { rawOutput: _raw, events, ...rest } = agent;
+            // Extract final token usage from events before discarding them
+            const usage = extractFinalTokenUsage(events);
+            return {
+              ...rest,
+              rawOutput: undefined,
+              events: usage ? [usage] : [],
+            } as typeof agent;
+          }),
+        };
+      }),
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        records.push(result.value);
+      }
     }
   }
 
   records.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return records;
+}
+
+/**
+ * Extract a single synthetic event containing the final token usage
+ * from an events array. This allows us to discard the full event stream
+ * while preserving the data analytics needs.
+ */
+function extractFinalTokenUsage(events: RunRecord["agents"][0]["events"]): RunRecord["agents"][0]["events"][0] | null {
+  if (!events || events.length === 0) return null;
+
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalCost: number | null = null;
+
+  for (const ev of events) {
+    if (!ev.tokenUsage) continue;
+    if (ev.tokenUsageCumulative) {
+      inputTokens = ev.tokenUsage.inputTokens;
+      outputTokens = ev.tokenUsage.outputTokens;
+      totalCost = ev.tokenUsage.totalCost ?? null;
+    } else {
+      inputTokens += ev.tokenUsage.inputTokens;
+      outputTokens += ev.tokenUsage.outputTokens;
+      const prevCost: number = totalCost ?? 0;
+      const evtCost: number = ev.tokenUsage.totalCost ?? 0;
+      totalCost = (prevCost + evtCost) > 0 ? prevCost + evtCost : null;
+    }
+  }
+
+  if (inputTokens === 0 && outputTokens === 0 && totalCost === null) return null;
+
+  return {
+    eventType: "status",
+    text: "",
+    rawLine: "",
+    tokenUsage: { inputTokens, outputTokens, totalCost },
+    tokenUsageCumulative: true,
+  };
 }
 
 export async function listRuns(): Promise<

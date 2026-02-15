@@ -14,18 +14,33 @@ import { createLogger } from './logger';
 const log = createLogger('pipeline');
 
 export function parseRankingFromText(rankingText: string): string[] {
-  if (rankingText.includes('FINAL RANKING:')) {
-    const rankingSection = rankingText.split('FINAL RANKING:').slice(1).join('');
-    const numberedMatches = rankingSection.match(/\d+\.\s*Response [A-Z]/g);
+  // Normalize matches to canonical "Response X" format
+  const normalize = (matches: string[]): string[] =>
+    matches.map((m) => {
+      const letter = m.match(/[A-Za-z]$/)?.[0]?.toUpperCase();
+      return letter ? `Response ${letter}` : m;
+    });
+
+  // Case-insensitive search for "FINAL RANKING:" section
+  const finalRankingIdx = rankingText.search(/FINAL RANKING:/i);
+  if (finalRankingIdx !== -1) {
+    const rankingSection = rankingText.slice(finalRankingIdx);
+    // Match numbered entries like "1. Response A" (case-insensitive)
+    const numberedMatches = rankingSection.match(/\d+\.\s*[Rr]esponse\s+[A-Za-z]/g);
     if (numberedMatches) {
-      return numberedMatches
-        .map((m) => m.match(/Response [A-Z]/)?.[0])
-        .filter((m): m is string => m != null);
+      return normalize(
+        numberedMatches
+          .map((m) => m.match(/[Rr]esponse\s+[A-Za-z]/)?.[0] ?? '')
+          .filter(Boolean),
+      );
     }
-    const fallback = rankingSection.match(/Response [A-Z]/g);
-    return fallback ?? [];
+    // Fallback: any "Response X" mention in the ranking section
+    const fallback = rankingSection.match(/[Rr]esponse\s+[A-Za-z]/g);
+    return fallback ? normalize(fallback) : [];
   }
-  return rankingText.match(/Response [A-Z]/g) ?? [];
+  // No FINAL RANKING header — try to extract from full text
+  const allMatches = rankingText.match(/[Rr]esponse\s+[A-Za-z]/g);
+  return allMatches ? normalize(allMatches) : [];
 }
 
 export function calculateAggregateRankings(
@@ -35,7 +50,10 @@ export function calculateAggregateRankings(
   const modelPositions: Record<string, number[]> = {};
 
   for (const ranking of stage2Results) {
-    const parsed = parseRankingFromText(ranking.ranking);
+    // Use the already-parsed ranking to avoid re-parsing and inconsistency
+    const parsed = ranking.parsedRanking.length > 0
+      ? ranking.parsedRanking
+      : parseRankingFromText(ranking.ranking);
     for (let i = 0; i < parsed.length; i++) {
       const label = parsed[i];
       const modelName = labelToModel[label];
@@ -69,11 +87,13 @@ function buildRankingPrompt(
     .map((label, i) => `Response ${label}:\n${stage1Results[i].response}`)
     .join('\n\n');
 
-  const prompt = `You are evaluating different responses to the following question:
+  const prompt = `You are an impartial evaluator in a blind peer-review process. You are evaluating anonymized responses to a user question. You do NOT know which model or system produced each response.
+
+IMPORTANT: Evaluate responses ONLY on their content quality — accuracy, completeness, clarity, and relevance. Ignore stylistic differences, formatting preferences, or any artifacts that might hint at the source. Each response is equally anonymous.
 
 Question: ${userQuery}
 
-Here are the responses from different models (anonymized):
+Here are the anonymized responses:
 
 ${responsesText}
 
@@ -108,29 +128,33 @@ function buildSynthesisPrompt(
   stage1Results: Stage1Result[],
   stage2Results: Stage2Result[],
 ): string {
-  const stage1Text = stage1Results
-    .map((r) => `Model: ${r.model}\nResponse: ${r.response}`)
+  // Use the same anonymized labels as the ranking stage for consistency
+  const labels = stage1Results.map((_, i) => String.fromCharCode(65 + i));
+
+  const stage1Text = labels
+    .map((label, i) => `Response ${label}:\n${stage1Results[i].response}`)
     .join('\n\n');
   const stage2Text = stage2Results
-    .map((r) => `Model: ${r.model}\nRanking: ${r.ranking}`)
+    .map((r, i) => `Juror ${i + 1} Evaluation:\n${r.ranking}`)
     .join('\n\n');
 
-  return `You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and then ranked each other's responses.
+  return `You are the Chairman of an LLM Council. Multiple AI models have provided responses to a user's question, and independent jurors have evaluated and ranked those responses.
 
 Original Question: ${userQuery}
 
-STAGE 1 - Individual Responses:
+STAGE 1 - Individual Responses (anonymized):
 ${stage1Text}
 
-STAGE 2 - Peer Rankings:
+STAGE 2 - Peer Review Evaluations:
 ${stage2Text}
 
 Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
-- The individual responses and their insights
-- The peer rankings and what they reveal about response quality
-- Any patterns of agreement or disagreement
+- The individual responses and their unique insights
+- The peer review evaluations and what they reveal about response quality
+- Any patterns of agreement or disagreement between jurors
+- Correct any errors identified by the jurors while preserving accurate insights
 
-Provide a clear, well-reasoned final answer that represents the council's collective wisdom:`;
+Provide a clear, well-reasoned final answer that represents the council's best collective knowledge. Do NOT reference the responses or jurors — write the answer as if you are directly answering the user:`;
 }
 
 /** Estimate cost in USD from token usage and cached model pricing */
