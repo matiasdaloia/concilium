@@ -13,6 +13,14 @@ interface RunViewProps {
 }
 
 export function RunView({ state }: RunViewProps) {
+  // Build a map of juror model → estimatedCost from the record (available at completion)
+  const jurorCosts = new Map<string, number>();
+  if (state.record) {
+    for (const s of state.record.stage2) {
+      if (s.estimatedCost != null) jurorCosts.set(s.model, s.estimatedCost);
+    }
+  }
+
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
       <StageIndicator currentStage={state.stage} summary={state.stageSummary} />
@@ -26,6 +34,9 @@ export function RunView({ state }: RunViewProps) {
               status={agent.status}
               elapsed={agent.startedAt ? Date.now() - agent.startedAt : undefined}
               eventCount={agent.eventCount}
+              inputTokens={agent.inputTokens}
+              outputTokens={agent.outputTokens}
+              totalCost={agent.totalCost}
             />
           ))}
         </Box>
@@ -40,6 +51,8 @@ export function RunView({ state }: RunViewProps) {
               model={juror.model}
               status={juror.status}
               chunkCount={juror.chunkCount}
+              usage={juror.usage}
+              estimatedCost={jurorCosts.get(juror.model)}
             />
           ))}
         </Box>

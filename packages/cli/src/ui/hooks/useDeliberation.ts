@@ -14,12 +14,16 @@ export interface AgentState {
   status: AgentStatus;
   eventCount: number;
   startedAt?: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalCost: number | null;
 }
 
 export interface JurorState {
   model: string;
   status: string;
   chunkCount: number;
+  usage?: CouncilTokenUsage;
 }
 
 export interface DeliberationState {
@@ -58,6 +62,9 @@ export function deliberationReducer(state: DeliberationState, action: Action): D
         status: action.status,
         eventCount: existing?.eventCount ?? 0,
         startedAt: action.status === 'running' ? Date.now() : existing?.startedAt,
+        inputTokens: existing?.inputTokens ?? 0,
+        outputTokens: existing?.outputTokens ?? 0,
+        totalCost: existing?.totalCost ?? null,
       });
       return { ...state, agents };
     }
@@ -66,7 +73,30 @@ export function deliberationReducer(state: DeliberationState, action: Action): D
       const agents = new Map(state.agents);
       const existing = agents.get(action.key);
       if (existing) {
-        agents.set(action.key, { ...existing, eventCount: existing.eventCount + 1 });
+        const usage = action.event.tokenUsage;
+        let { inputTokens, outputTokens, totalCost } = existing;
+        if (usage) {
+          if (action.event.tokenUsageCumulative) {
+            // Cumulative: replace totals
+            inputTokens = usage.inputTokens;
+            outputTokens = usage.outputTokens;
+            totalCost = usage.totalCost ?? null;
+          } else {
+            // Incremental: sum
+            inputTokens += usage.inputTokens;
+            outputTokens += usage.outputTokens;
+            if (usage.totalCost) {
+              totalCost = (totalCost ?? 0) + usage.totalCost;
+            }
+          }
+        }
+        agents.set(action.key, {
+          ...existing,
+          eventCount: existing.eventCount + 1,
+          inputTokens,
+          outputTokens,
+          totalCost,
+        });
       }
       return { ...state, agents };
     }
@@ -98,6 +128,7 @@ export function deliberationReducer(state: DeliberationState, action: Action): D
         model: action.model,
         status: action.success ? 'complete' : 'failed',
         chunkCount: existing?.chunkCount ?? 0,
+        usage: action.usage,
       });
       return { ...state, jurors };
     }
