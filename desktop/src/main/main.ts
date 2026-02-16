@@ -8,8 +8,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { registerIpcHandlers, cancelAllRuns } from './ipc';
-import { ensureOpenCodeServer } from './services/opencode-client';
-import { createLogger } from './services/logger';
+import { ensureOpenCodeServer, createLogger } from '@concilium/core';
 
 const log = createLogger('main');
 
