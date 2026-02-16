@@ -23,3 +23,6 @@ package-lock.json
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Vercel build output
+.vercel/
