@@ -9,7 +9,8 @@ export function wrapPromptForResearch(prompt: string): string {
 2. **NEVER use write/edit/bash tools.** You do not have permission. If you try, the tool will fail.
 3. **NEVER execute code, run shell commands, or change any state** — no git commits, no npm install, nothing.
 4. **DO NOT implement the solution.** Do not write code blocks intended to be saved to files. You are proposing a plan, not executing it.
-5. **DO use read-only tools** (file reading, grep, glob, web search) to research and understand the codebase.
+5. **NEVER ask the user questions or request clarification.** You are running autonomously without any user interaction. Do not use AskUserQuestion, prompts, confirmations, or any interactive tool. If you are uncertain, make your best judgment and document your assumptions in the plan.
+6. **DO use read-only tools** (file reading, grep, glob, web search) to research and understand the codebase.
 
 ## YOUR TASK
 

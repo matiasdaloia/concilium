@@ -20,6 +20,7 @@ import { createLogger } from '../shared/logger.js';
 const log = createLogger('deliberation-service');
 
 export interface DeliberationInput {
+  runId?: string;
   prompt: string;
   images?: ImageAttachment[];
   agentInstances: AgentInstance[];
@@ -44,7 +45,7 @@ export class DeliberationService {
   }
 
   async run(input: DeliberationInput): Promise<RunRecord> {
-    const runId = randomUUID();
+    const runId = input.runId ?? randomUUID();
     log.info(`run: starting ${runId}`);
 
     const controller = new RunController();

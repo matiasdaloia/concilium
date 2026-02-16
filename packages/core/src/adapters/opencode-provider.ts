@@ -202,11 +202,26 @@ async function streamSessionEvents(options: {
     );
   });
 
+  let inactivityTimer: ReturnType<typeof setTimeout>;
+  let inactivityResolve: ((v: { done: true; value: undefined }) => void) | null = null;
+  const resetInactivityTimeout = () => {
+    clearTimeout(inactivityTimer);
+    if (inactivityResolve) inactivityResolve = null;
+    return new Promise<{ done: true; value: undefined }>((resolve) => {
+      inactivityResolve = resolve;
+      inactivityTimer = setTimeout(() => {
+        log.warn(`streamSessionEvents: inactivity timeout (120s) for ${agentKey}`);
+        resolve({ done: true, value: undefined });
+      }, 120_000);
+    });
+  };
+  let inactivityPromise = resetInactivityTimeout();
+
   const assistantMessageIds = new Set<string>();
   const iterator = stream[Symbol.asyncIterator]();
 
   while (true) {
-    const result = await Promise.race([iterator.next(), abortPromise]);
+    const result = await Promise.race([iterator.next(), abortPromise, inactivityPromise]);
 
     if (result.done || options.abortSignal?.aborted) {
       if (options.abortSignal?.aborted) {
@@ -251,12 +266,14 @@ async function streamSessionEvents(options: {
           }
         }
       }
+      inactivityPromise = resetInactivityTimeout();
     } else if (eventType === 'session.idle' && properties) {
       const idleSessionId = properties.sessionID as string;
       if (idleSessionId === sessionId) {
         log.info(`streamSessionEvents: session ${sessionId} is idle, done`);
         break;
       }
+      inactivityPromise = resetInactivityTimeout();
     } else if (eventType === 'session.status' && properties) {
       const statusSessionId = properties.sessionID as string;
       if (statusSessionId !== sessionId) continue;
@@ -271,8 +288,11 @@ async function streamSessionEvents(options: {
         events.push(retryEvent);
         callbacks.onEvent?.(agentKey, retryEvent);
       }
+      inactivityPromise = resetInactivityTimeout();
     }
   }
+
+  clearTimeout(inactivityTimer!);
 }
 
 export class OpenCodeProvider implements AgentProvider {
@@ -392,7 +412,7 @@ export class OpenCodeProvider implements AgentProvider {
         body: {
           parts: parts as any,
           tools: toolsMap,
-          system: 'You are a research advisor in a multi-agent council. Your ONLY job is to propose a plan — NEVER implement it. Return your plan as markdown text in your response. NEVER write, edit, create, or delete files. NEVER use write/edit/bash tools. You may only use read-only tools (read, glob, grep, web search).',
+          system: 'You are a research advisor in a multi-agent council. Your ONLY job is to propose a plan — NEVER implement it. Return your plan as markdown text in your response. NEVER write, edit, create, or delete files. NEVER use write/edit/bash tools. You may only use read-only tools (read, glob, grep, web search). Never ask the user questions or request clarification. You are running autonomously. Make your best judgment and state any assumptions.',
           ...(modelSpec ? { model: modelSpec } : {}),
         },
       });

@@ -1,4 +1,4 @@
-export default function TitleBar({ subtitle }: { subtitle?: string }) {
+export default function TitleBar() {
   return (
     <div
       className="flex items-center justify-between px-6 h-10 shrink-0 select-none"

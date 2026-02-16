@@ -186,6 +186,7 @@ export function registerIpcHandlers(
     setImmediate(async () => {
       try {
         await deliberationService!.run({
+          runId,
           prompt: params.prompt,
           images: params.images,
           agentInstances,

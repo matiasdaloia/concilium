@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import {
   Codex,
   type ThreadEvent,
@@ -13,6 +15,48 @@ import { createLogger } from '../shared/logger.js';
 import { CODEX_MODELS, DEFAULT_AGENT_MODELS } from '../domain/agent/agent-executor.js';
 
 const log = createLogger('codex-provider');
+
+// ── Codex binary resolution ──────────────────────────────────────────
+// The SDK resolves the codex binary via import.meta.url, which points to
+// the Vite build output directory instead of node_modules when bundled.
+// We resolve it manually and pass codexPathOverride to the constructor.
+
+function resolveCodexBinaryPath(): string | undefined {
+  try {
+    const { platform, arch } = process;
+    const triples: Record<string, Record<string, string>> = {
+      linux:  { x64: 'x86_64-unknown-linux-musl', arm64: 'aarch64-unknown-linux-musl' },
+      darwin: { x64: 'x86_64-apple-darwin',       arm64: 'aarch64-apple-darwin' },
+      win32:  { x64: 'x86_64-pc-windows-msvc',    arm64: 'aarch64-pc-windows-msvc' },
+    };
+    const triple = triples[platform]?.[arch];
+    if (!triple) return undefined;
+
+    const binaryName = platform === 'win32' ? 'codex.exe' : 'codex';
+
+    // Walk up from cwd to find node_modules/@openai/codex-sdk/vendor.
+    // Works for both monorepo (hoisted) and single-package layouts.
+    let dir = process.cwd();
+    while (dir !== path.dirname(dir)) {
+      const candidate = path.join(
+        dir, 'node_modules', '@openai', 'codex-sdk', 'vendor', triple, 'codex', binaryName,
+      );
+      if (existsSync(candidate)) {
+        log.info(`resolveCodexBinaryPath: found at ${candidate}`);
+        return candidate;
+      }
+      dir = path.dirname(dir);
+    }
+
+    log.warn('resolveCodexBinaryPath: binary not found in any ancestor node_modules');
+    return undefined;
+  } catch (err) {
+    log.warn(`resolveCodexBinaryPath: resolution failed: ${err}`);
+    return undefined;
+  }
+}
+
+const codexBinaryPath = resolveCodexBinaryPath();
 
 function truncateLabel(text: string, maxLen: number): string {
   const oneLine = text.split('\n').join(' ').trim();
@@ -107,7 +151,9 @@ export class CodexProvider implements AgentProvider {
     log.info(`execute: starting ${agent.name} (${agentKey})`);
 
     try {
-      const codex = new Codex({});
+      const codex = new Codex({
+        ...(codexBinaryPath ? { codexPathOverride: codexBinaryPath } : {}),
+      });
 
       const threadOptions: ThreadOptions = {
         sandboxMode: 'read-only',
