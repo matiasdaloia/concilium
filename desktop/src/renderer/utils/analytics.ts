@@ -158,7 +158,8 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
   let timedRunCount = 0;
   let successfulRuns = 0;
 
-  // Stage timing accumulators
+  // Stage timing accumulators — track wall-clock time per run (max of
+  // parallel operations), not the sum of individual agent/juror durations.
   let stage1TotalSeconds = 0;
   let stage1Count = 0;
   let stage2TotalSeconds = 0;
@@ -213,11 +214,8 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
 
       if (agentDuration > 0) {
         runHasTiming = true;
-        // For parallel agents, use the max duration
+        // For parallel agents, use the max duration as the wall-clock time
         runDuration = Math.max(runDuration, agentDuration);
-
-        stage1TotalSeconds += agentDuration;
-        stage1Count++;
       }
 
       // Update model stats
@@ -245,6 +243,12 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
       modelStatsMap.set(modelName, existing);
     }
 
+    // Stage 1 wall-clock time is the max agent duration (agents run in parallel)
+    if (runDuration > 0) {
+      stage1TotalSeconds += runDuration;
+      stage1Count++;
+    }
+
     // Process rankings
     for (const ranking of run.metadata.aggregateRankings) {
       const stats = modelStatsMap.get(ranking.model);
@@ -264,6 +268,8 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
     }
 
     // Process council model stats (jurors)
+    // Track max juror duration per run for wall-clock Stage 2 timing
+    let maxJurorDuration = 0;
     for (const s2 of run.stage2) {
       const key = `juror:${s2.model}`;
       const existing = councilStatsMap.get(key) ?? {
@@ -285,10 +291,14 @@ export function processAnalytics(runs: RunRecord[]): AnalyticsData {
       if (jurorDuration > 0) {
         existing.totalDurationSeconds += jurorDuration;
         existing.timedAppearances++;
-        stage2TotalSeconds += jurorDuration;
-        stage2Count++;
+        maxJurorDuration = Math.max(maxJurorDuration, jurorDuration);
       }
       councilStatsMap.set(key, existing);
+    }
+    // Stage 2 wall-clock time is the max juror duration (jurors run in parallel)
+    if (maxJurorDuration > 0) {
+      stage2TotalSeconds += maxJurorDuration;
+      stage2Count++;
     }
 
     // Process council model stats (chairman)
