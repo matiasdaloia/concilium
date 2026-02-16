@@ -1,6 +1,6 @@
 {
   "name": "@concilium/cli",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "CLI for the Concilium multi-LLM deliberation platform",
   "type": "module",
   "main": "./dist/src/index.js",
