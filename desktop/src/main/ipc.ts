@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { app, clipboard, ipcMain, type BrowserWindow } from "electron";
+import { app, clipboard, dialog, ipcMain, type BrowserWindow } from "electron";
 import {
   createLogger,
   DeliberationService,
@@ -45,8 +45,9 @@ function buildProviders(): Map<string, AgentProvider> {
 
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
-  projectCwd: string,
+  initialCwd: string,
 ) {
+  let projectCwd = initialCwd;
   // Core dependencies
   const dataDir = app.getPath("userData");
   const secretStore = new ElectronSecretStore();
@@ -95,6 +96,19 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle("app:getCwd", () => projectCwd);
+
+  ipcMain.handle("app:selectCwd", async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      defaultPath: projectCwd,
+      title: "Select working directory",
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+    projectCwd = result.filePaths[0];
+    return projectCwd;
+  });
 
   // Storage handlers
   ipcMain.handle("storage:listRuns", () => runRepository.list());

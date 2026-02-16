@@ -5,7 +5,7 @@
   "description": "Multi-LLM deliberation platform with peer review and synthesis",
   "main": ".vite/build/main.js",
   "bin": {
-    "concilium": "./bin/concilium.js"
+    "concilium-desktop": "./bin/concilium.js"
   },
   "private": true,
   "scripts": {
