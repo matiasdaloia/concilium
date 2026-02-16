@@ -11,6 +11,7 @@
   "dependencies": {
     "@astrojs/react": "^4.2.1",
     "@astrojs/sitemap": "^3.3.1",
+    "@astrojs/vercel": "^9.0.4",
     "@fontsource/jetbrains-mono": "^5.1.6",
     "@react-three/drei": "^10.0.0",
     "@react-three/fiber": "^9.0.0",

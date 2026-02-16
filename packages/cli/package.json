@@ -1,0 +1,52 @@
+{
+  "name": "@concilium/cli",
+  "version": "2.1.1",
+  "description": "CLI for the Concilium multi-LLM deliberation platform",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "concilium": "./dist/bin/concilium.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matiasdaloia/concilium.git",
+    "directory": "packages/cli"
+  },
+  "author": "Matias Daloia <matidaloia@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "prepack": "npm run build",
+    "dev": "tsx bin/concilium.ts"
+  },
+  "dependencies": {
+    "@concilium/core": "^2.0.0",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "ink": "^6.7.0",
+    "ink-spinner": "^5.0.0",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0",
+    "react": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.13",
+    "tsx": "^4.19.0",
+    "typescript": "~5.7.0"
+  }
+}

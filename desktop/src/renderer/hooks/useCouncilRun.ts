@@ -196,6 +196,15 @@ export function useCouncilRun(
     // Status changes are infrequent — apply immediately (not throttled)
     cleanups.push(
       api.onAgentStatus((agentId: string, status: string, name?: string) => {
+        // Flush buffered events (including token data) before terminal status
+        // so token counts are applied before the UI renders the final state
+        if (['success', 'error', 'aborted', 'cancelled'].includes(status)) {
+          if (flushRafRef.current) {
+            cancelAnimationFrame(flushRafRef.current);
+            flushRafRef.current = 0;
+          }
+          flushPendingUpdates();
+        }
         setState((prev) => ({
           ...prev,
           agents: {

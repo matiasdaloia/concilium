@@ -1,0 +1,41 @@
+{
+  "name": "@concilium/core",
+  "version": "2.1.1",
+  "description": "Core domain logic for the Concilium multi-LLM deliberation platform",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matiasdaloia/concilium.git",
+    "directory": "packages/core"
+  },
+  "author": "Matias Daloia <matidaloia@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "prepack": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.98.0",
+    "@opencode-ai/sdk": "^1.1.53"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0",
+    "vitest": "^4.0.18"
+  }
+}

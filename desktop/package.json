@@ -5,7 +5,7 @@
   "description": "Multi-LLM deliberation platform with peer review and synthesis",
   "main": ".vite/build/main.js",
   "bin": {
-    "concilium": "./bin/concilium.js"
+    "concilium-desktop": "./bin/concilium.js"
   },
   "private": true,
   "scripts": {
@@ -54,6 +54,7 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
+    "@concilium/core": "^2.0.0",
     "@openai/codex-sdk": "^0.98.0",
     "@opencode-ai/sdk": "^1.1.53",
     "@radix-ui/react-dialog": "^1.1.15",

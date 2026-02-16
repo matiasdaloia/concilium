@@ -632,28 +632,31 @@ export default function HomeScreen({
         {/* Action bar */}
         <div className="w-full mt-auto pt-12 border-t border-white/5 pb-8">
           <div className="flex items-center justify-between gap-6">
-            <div className="flex items-center gap-2 text-[11px] text-text-muted font-mono max-w-[50%] overflow-hidden">
-              {projectCwd && (
-                <>
-                  <svg
-                    className="w-3.5 h-3.5 shrink-0"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                    />
-                  </svg>
-                  <span className="truncate" title={projectCwd}>
-                    {projectCwd}
-                  </span>
-                </>
-              )}
-            </div>
+            <button
+              onClick={async () => {
+                const selected = await api.selectCwd();
+                if (selected) setProjectCwd(selected);
+              }}
+              className="flex items-center gap-2 text-[11px] text-text-muted font-mono max-w-[50%] overflow-hidden hover:text-text-secondary transition-colors cursor-pointer"
+              title={projectCwd ? `${projectCwd}\nClick to change` : "Select working directory"}
+            >
+              <svg
+                className="w-3.5 h-3.5 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+              <span className="truncate">
+                {projectCwd || "Select directory…"}
+              </span>
+            </button>
             <button
               onClick={handleSubmit}
               disabled={!canRun}

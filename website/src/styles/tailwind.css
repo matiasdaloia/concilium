@@ -36,6 +36,7 @@ html, body {
   padding: 0;
   height: 100%;
   width: 100%;
+  overflow-x: hidden;
   background-color: var(--color-bg-page);
   /* "War Room" radial gradient matching the app */
   background-image: radial-gradient(circle at 50% 0%, #171717 0%, #050505 80%);

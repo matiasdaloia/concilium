@@ -15,7 +15,14 @@ wheels/
 # Data files
 data/
 
+# Dependencies
+node_modules/
+package-lock.json
+
 # Frontend
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# Vercel build output
+.vercel/

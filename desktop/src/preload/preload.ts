@@ -75,6 +75,7 @@ export interface ElectronAPI {
 
   // Project working directory
   getCwd(): Promise<string>;
+  selectCwd(): Promise<string | null>;
 
   // Council configuration
   saveCouncilConfig(config: { chairmanModel?: string; councilModels?: string[]; apiKey?: string }): Promise<{ success: boolean }>;
@@ -108,6 +109,7 @@ const api: ElectronAPI = {
 
   // Project working directory
   getCwd: () => ipcRenderer.invoke('app:getCwd'),
+  selectCwd: () => ipcRenderer.invoke('app:selectCwd') as Promise<string | null>,
 
   // Agent instances (dynamic configuration)
   getAgentInstances: () => ipcRenderer.invoke('agents:get'),

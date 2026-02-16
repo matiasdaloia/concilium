@@ -8,8 +8,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { registerIpcHandlers, cancelAllRuns } from './ipc';
-import { ensureOpenCodeServer } from './services/opencode-client';
-import { createLogger } from './services/logger';
+import { ensureOpenCodeServer, createLogger } from '@concilium/core';
 
 const log = createLogger('main');
 
@@ -71,6 +70,22 @@ const createWindow = () => {
 };
 
 app.whenReady().then(async () => {
+  // In dev, kill stale opencode processes from previous crashed sessions.
+  // These leak ~300MB each and accumulate since they have no parent to reap them.
+  if (!app.isPackaged) {
+    try {
+      const { execSync } = await import('node:child_process');
+      const result = execSync('pgrep -f "opencode serve" 2>/dev/null || true', { encoding: 'utf8' }).trim();
+      if (result) {
+        const count = result.split('\n').filter(Boolean).length;
+        log.info(`Cleaning up ${count} stale opencode process(es) from previous sessions`);
+        execSync('pkill -f "opencode serve" 2>/dev/null || true');
+      }
+    } catch {
+      // Ignore cleanup errors — non-critical
+    }
+  }
+
   // Start the embedded OpenCode server early so it's ready when agents run.
   // If OPENCODE_SERVER_URL is set, it connects to an external server instead.
   const serverUrl = process.env.OPENCODE_SERVER_URL;
@@ -82,9 +97,24 @@ app.whenReady().then(async () => {
 });
 
 // Cancel active runs and shut down the embedded OpenCode server on app quit.
+// We use `will-quit` (fires after all windows are closed and the app WILL quit)
+// in addition to `before-quit` to cover all exit paths.
 app.on('before-quit', () => {
   cancelAllRuns();
 });
+
+app.on('will-quit', () => {
+  cancelAllRuns();
+});
+
+// Handle OS signals (Ctrl+C in dev, SIGTERM from process managers)
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    log.info(`Received ${signal}, shutting down`);
+    cancelAllRuns();
+    app.quit();
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

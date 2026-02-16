@@ -69,7 +69,7 @@ npm run dev  # Start development server
 ## Project Structure
 
 ```
-llm-council/
+concilium/
 ├── desktop/              # Electron application
 │   ├── src/
 │   │   ├── main/         # Main process (Node.js)
