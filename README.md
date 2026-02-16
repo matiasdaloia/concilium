@@ -55,17 +55,41 @@ Concilium automates the entire process:
   - [Codex](https://github.com/openai/codex) (OpenAI)
   - [OpenCode](https://github.com/sst/opencode)
 
-### 1. Clone and install
+### Installation (users)
+
+Install the CLI globally from npm:
+
+```bash
+npm install -g @concilium/cli
+```
+
+Then configure your API key and run:
+
+```bash
+concilium config set api-key sk-or-...
+concilium models                # verify agents are detected
+concilium run "Refactor the auth module to use JWT tokens"
+```
+
+### Development (contributors)
+
+Clone and build from source:
 
 ```bash
 git clone https://github.com/matiasdaloia/concilium.git
 cd concilium
 npm install
+npm run build        # builds core, then CLI (in order)
 ```
 
-### 2. Configure your API key
+Run the CLI in dev mode (uses `tsx`, no build step needed):
 
-**CLI:**
+```bash
+npm run dev -w @concilium/cli -- run "your prompt"
+```
+
+Configure your API key:
+
 ```bash
 npx concilium config set api-key sk-or-...
 ```
@@ -77,25 +101,7 @@ echo "OPENROUTER_API_KEY=sk-or-..." > desktop/.env
 
 Or set `OPENROUTER_API_KEY` as an environment variable — it takes priority everywhere.
 
-### 3. Verify your setup
-
-Make sure at least one coding agent is installed and detected:
-
-```bash
-npx concilium models
-```
-
-This lists all available agents and their models. If nothing shows up, install one of the [supported agents](#prerequisites) first.
-
-### 4. Run a deliberation
-
-**From the terminal (CLI):**
-
-```bash
-npx concilium run "Refactor the auth module to use JWT tokens"
-```
-
-**With the desktop GUI:**
+Launch the desktop GUI:
 
 ```bash
 npm run start -w concilium     # opens the Electron desktop app
@@ -148,7 +154,6 @@ concilium run --stage1-only "Generate test fixtures"
 | `concilium config set jurors <m1,m2,...>` | Set juror models |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
-| `concilium gui [path]` | Launch the desktop GUI |
 
 For detailed usage, flags, configuration, and the programmatic API, see the **[CLI documentation](packages/cli/README.md)**.
 
@@ -274,11 +279,19 @@ npm run build -w @concilium/core        # Build core first
 npm run build -w @concilium/cli         # Then build CLI
 ```
 
-### CLI
+### CLI (dev mode)
 
 ```bash
-npx concilium run "your prompt"         # Run via workspace
-npm run dev -w @concilium/cli           # Dev mode with tsx (auto-rebuilds)
+npm run dev -w @concilium/cli -- run "your prompt"   # Dev mode with tsx (no build needed)
+npx concilium run "your prompt"                      # Run from workspace (needs build)
+```
+
+### Publishing
+
+```bash
+npm run publish:core        # Publish @concilium/core to npm
+npm run publish:cli         # Publish @concilium/cli to npm
+npm run publish:all         # Publish both (core first)
 ```
 
 ### Desktop App

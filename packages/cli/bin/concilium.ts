@@ -1,8 +1,7 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env node
 
 import { Command } from "commander";
 import { registerConfigCommand } from "../src/commands/config.js";
-import { registerGuiCommand } from "../src/commands/gui.js";
 import { registerHistoryCommand } from "../src/commands/history.js";
 import { registerModelsCommand } from "../src/commands/models.js";
 import { registerRunCommand } from "../src/commands/run.js";
@@ -18,6 +17,4 @@ registerRunCommand(program);
 registerHistoryCommand(program);
 registerConfigCommand(program);
 registerModelsCommand(program);
-registerGuiCommand(program);
-
 program.parse();

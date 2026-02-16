@@ -4,17 +4,27 @@ Terminal interface for the Concilium multi-LLM deliberation platform. Run delibe
 
 ## Installation
 
-From the monorepo root:
+Install globally from npm:
 
 ```bash
-npm install
-npm link -w @concilium/cli    # makes `concilium` available globally
+npm install -g @concilium/cli
 ```
 
-Or run directly without linking:
+Then use `concilium` anywhere:
 
 ```bash
-npx concilium run "your prompt"
+concilium run "your prompt"
+```
+
+### From source
+
+If you're developing from the monorepo:
+
+```bash
+git clone https://github.com/matiasdaloia/concilium.git
+cd concilium
+npm install
+npm run dev -w @concilium/cli -- run "your prompt"   # dev mode (tsx, no build needed)
 ```
 
 ## Quick start
@@ -205,16 +215,6 @@ concilium models --council
 # JSON for scripting
 concilium models --council --json | jq '.[].id'
 ```
-
-### `concilium gui`
-
-Launch the Electron desktop application.
-
-```
-concilium gui [path]
-```
-
-Opens the desktop GUI in the given project directory (defaults to current directory).
 
 ## Configuration
 
