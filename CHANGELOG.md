@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-02-16
+
+### Added
+- **Monorepo architecture**: Extracted `@concilium/core` (domain logic) and `@concilium/cli` (terminal interface) from the desktop app into separate packages
+- **Full CLI**: `concilium run`, `concilium history`, `concilium config`, `concilium models`, `concilium gui` commands with comprehensive flag support
+- **Programmatic API**: `deliberate()` function exported from `@concilium/cli` for embedding in scripts, CI pipelines, and agent skills
+- **Agent specification**: `--agents claude,codex,opencode` flag with optional model override (`claude:opus`)
+- **Council customization**: `--juror-models`, `--jurors`, `--chairman` flags to override default juror and chairman models per run
+- **Output formats**: `--json`, `--format md|plain`, `--output <file>` for flexible output handling
+- **Run history**: `concilium history` with `--last`, `--synthesis`, `--json` flags
+- **Configuration management**: `concilium config set|show|reset|path` with XDG Base Directory support
+- **Model discovery**: `concilium models` discovers installed agent models; `--council` lists OpenRouter catalog
+- **CLI documentation**: Comprehensive `packages/cli/README.md` with full command reference, flags, programmatic API, and architecture docs
+- **Website CLI section**: Terminal mockup, command cards, and programmatic API showcase on the marketing site
+- **Website Cloud waitlist**: "Concilium Cloud" section with email signup backed by Supabase, feature cards, and Hero teaser link
+- **Website waitlist API**: Server-side `POST /api/waitlist` route (Astro hybrid output + Vercel adapter)
+- **Navigation updates**: "CLI" and "Cloud" links added to website navigation
+
+### Changed
+- Repository restructured from single `desktop/` app to `packages/core` + `packages/cli` + `desktop/` monorepo
+- README.md rewritten to cover both CLI and desktop workflows, updated repository structure, workspace-based development commands
+- AGENTS.md updated with monorepo structure, hexagonal architecture guide, CLI patterns, environment variables, and website conventions
+- Website switched from static output to hybrid output (`@astrojs/vercel` adapter) to support server-side API routes
+- GetStarted section number bumped from 04 → 07 to accommodate new sections
+
+### Technical
+- Hexagonal (ports-and-adapters) architecture: `@concilium/core` defines port interfaces (`SecretStore`, `ConfigStore`, `RunRepository`, `DeliberationEvents`); CLI and desktop each provide their own adapters
+- CLI built with Commander.js (commands) and Ink (React terminal UI)
+- XDG Base Directory Specification for config (`~/.config/concilium/`), data (`~/.local/share/concilium/`), and cache paths
+- Waitlist API uses plain `fetch()` against Supabase REST API (no `@supabase/supabase-js` dependency)
+
 ## [1.2.0] - 2026-02-08
 
 ### Added
@@ -97,7 +128,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenRouter API integration
 - Local JSON storage for runs and preferences
 
-[Unreleased]: https://github.com/matiasdaloia/concilium/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/matiasdaloia/concilium/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/matiasdaloia/concilium/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/matiasdaloia/concilium/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/matiasdaloia/concilium/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/matiasdaloia/concilium/compare/v1.0.0...v1.0.1
