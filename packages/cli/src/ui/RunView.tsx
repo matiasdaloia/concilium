@@ -25,6 +25,7 @@ export function RunView({ state }: RunViewProps) {
               name={agent.name}
               status={agent.status}
               elapsed={agent.startedAt ? Date.now() - agent.startedAt : undefined}
+              eventCount={agent.eventCount}
             />
           ))}
         </Box>

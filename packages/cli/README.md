@@ -113,6 +113,50 @@ concilium run --cwd ~/projects/backend "add rate limiting to the API"
 concilium run --verbose "debug the connection timeout"
 ```
 
+### CI/CD and automation
+
+When stdout is not a TTY (pipes, CI runners, scripts), the CLI automatically disables the interactive Ink UI and falls back to plain text output. You can also force specific modes:
+
+```bash
+# JSON mode — machine-readable, pipe-friendly
+concilium run --json "prompt" | jq '.stage3.response'
+
+# Quiet mode — errors only
+concilium run --quiet --output result.md "prompt"
+
+# Explicit non-interactive in a GitHub Action
+concilium run --json "review this PR" --output review.md
+```
+
+**Behavior by mode:**
+
+| Condition | Output style | Notes |
+|-----------|-------------|-------|
+| TTY (normal terminal) | Live Ink UI with spinners and progress | Default interactive experience |
+| `--json` | Full `RunRecord` as JSON to stdout | Best for scripting and pipelines |
+| `--quiet` | Errors only | Combine with `--output` to capture synthesis |
+| Non-TTY (pipe, CI) | Plain text with unicode status icons | Automatic fallback, no Ink |
+
+**GitHub Actions example:**
+
+```yaml
+- name: Run deliberation
+  run: |
+    npx concilium run --json \
+      --agents claude,opencode \
+      --output synthesis.md \
+      "Review the changes in this PR and suggest improvements" \
+      > deliberation.json
+```
+
+**Environment variables for CI:**
+
+| Variable | Description |
+|----------|-------------|
+| `OPENROUTER_API_KEY` | Required — your OpenRouter API key |
+| `LOG_LEVEL` | Set to `error` to suppress info logs (default in production) |
+| `NODE_ENV` | Set to `production` to default log level to `info` instead of `debug` |
+
 ### `concilium history`
 
 Browse and view past deliberation runs.

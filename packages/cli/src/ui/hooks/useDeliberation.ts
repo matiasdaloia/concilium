@@ -33,7 +33,7 @@ export interface DeliberationState {
   done: boolean;
 }
 
-type Action =
+export type Action =
   | { type: 'STAGE_CHANGE'; stage: number; summary: string }
   | { type: 'AGENT_STATUS'; key: string; status: AgentStatus; name?: string }
   | { type: 'AGENT_EVENT'; key: string; event: ParsedEvent }
@@ -44,7 +44,7 @@ type Action =
   | { type: 'COMPLETE'; record: RunRecord }
   | { type: 'ERROR'; error: string };
 
-function deliberationReducer(state: DeliberationState, action: Action): DeliberationState {
+export function deliberationReducer(state: DeliberationState, action: Action): DeliberationState {
   switch (action.type) {
     case 'STAGE_CHANGE':
       return { ...state, stage: action.stage, stageSummary: action.summary };
@@ -121,7 +121,7 @@ function deliberationReducer(state: DeliberationState, action: Action): Delibera
   }
 }
 
-const initialState: DeliberationState = {
+export const initialState: DeliberationState = {
   stage: 0,
   stageSummary: '',
   agents: new Map(),

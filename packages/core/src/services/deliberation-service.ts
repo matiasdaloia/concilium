@@ -64,7 +64,7 @@ export class DeliberationService {
           return {
             id: inst.provider,
             instanceId: inst.instanceId,
-            name: `${inst.provider} \u00B7 ${shortModel}`,
+            name: shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider,
             enabled: true,
             model: inst.model || null,
             cwd: workingDir,

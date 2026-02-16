@@ -6,153 +6,230 @@ import SectionHeader from '../components/SectionHeader.astro';
 <section class="py-24 md:py-32 bg-bg-surface/30" id="get-started">
   <div class="max-w-4xl mx-auto px-6">
     <div class="text-center mb-16">
-      <SectionHeader title="Get Started" subtitle="Run it locally in minutes" num="07" />
+      <SectionHeader title="Get Started" subtitle="Up and running in minutes" num="07" />
       <p class="text-lg text-text-secondary max-w-2xl mx-auto mt-6">
-        Concilium is open source and ready to build. Clone the repo, configure your environment, and build the app.
+        Install the CLI globally, build the desktop app, or embed deliberations programmatically — pick the path that fits your workflow.
       </p>
     </div>
 
-    <div class="space-y-8">
-      
-       <!-- Step 1: Requirements -->
-      <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
-         <div class="flex items-center gap-4 mb-4">
-          <div class="w-8 h-8 rounded-full bg-provider-opencode/10 border border-provider-opencode/20 flex items-center justify-center text-provider-opencode font-bold text-sm">1</div>
-          <h3 class="text-lg font-semibold text-text-primary">Prerequisites</h3>
-        </div>
-        <ul class="space-y-3 text-sm text-text-secondary ml-12">
-          <li class="flex items-center gap-3">
-            <div class="w-1.5 h-1.5 rounded-full bg-green-primary"></div>
-            <span>Node.js 18+ installed</span>
-          </li>
-          <li class="flex items-center gap-3">
-            <div class="w-1.5 h-1.5 rounded-full bg-green-primary"></div>
-            <span>macOS 12+ (Apple Silicon or Intel) or Linux</span>
-          </li>
-          <li class="flex items-start gap-3">
-            <div class="w-1.5 h-1.5 rounded-full bg-green-primary mt-1.5"></div>
-            <span>At least one CLI agent: <code class="text-provider-claude bg-provider-claude/10 px-1.5 py-0.5 rounded text-xs border border-provider-claude/20">claude</code>, <code class="text-provider-codex bg-provider-codex/10 px-1.5 py-0.5 rounded text-xs border border-provider-codex/20">codex</code>, or <code class="text-provider-opencode bg-provider-opencode/10 px-1.5 py-0.5 rounded text-xs border border-provider-opencode/20">opencode</code></span>
-          </li>
-        </ul>
+    <!-- Tab navigation -->
+    <div class="get-started-tabs">
+      <!-- Hidden radio inputs for CSS-only tab switching -->
+      <input type="radio" name="gs-tab" id="gs-tab-cli" class="hidden peer/cli" checked />
+      <input type="radio" name="gs-tab" id="gs-tab-desktop" class="hidden peer/desktop" />
+      <input type="radio" name="gs-tab" id="gs-tab-api" class="hidden peer/api" />
+
+      <div class="flex gap-2 mb-8 justify-center flex-wrap">
+        <label for="gs-tab-cli" class="gs-tab-label gs-tab-cli-label cursor-pointer px-5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase tracking-wider transition-all duration-300">
+          <span class="inline-flex items-center gap-2">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            CLI
+          </span>
+        </label>
+        <label for="gs-tab-desktop" class="gs-tab-label gs-tab-desktop-label cursor-pointer px-5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase tracking-wider transition-all duration-300">
+          <span class="inline-flex items-center gap-2">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+            Desktop
+          </span>
+        </label>
+        <label for="gs-tab-api" class="gs-tab-label gs-tab-api-label cursor-pointer px-5 py-2.5 rounded-lg border text-xs font-mono font-bold uppercase tracking-wider transition-all duration-300">
+          <span class="inline-flex items-center gap-2">
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+            API
+          </span>
+        </label>
       </div>
 
-      <!-- Step 2: Clone -->
-      <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
-        <div class="flex items-center gap-4 mb-4">
-          <div class="w-8 h-8 rounded-full bg-provider-opencode/10 border border-provider-opencode/20 flex items-center justify-center text-provider-opencode font-bold text-sm">2</div>
-          <h3 class="text-lg font-semibold text-text-primary">Clone the repository</h3>
-        </div>
-        <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto group relative">
-          <div class="flex items-center">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">git clone https://github.com/matiasdaloia/concilium.git</span>
+      <!-- CLI Tab Panel -->
+      <div class="gs-panel gs-panel-cli">
+        <div class="space-y-6">
+
+          <!-- Step 1: Install -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-green-primary/10 border border-green-primary/20 flex items-center justify-center text-green-primary font-bold text-sm">1</div>
+              <h3 class="text-lg font-semibold text-text-primary">Install globally</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">npm install -g @concilium/cli</span>
+              </div>
+            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              Requires <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">Node.js 18+</code> and at least one CLI agent installed:
+              <code class="text-provider-claude bg-provider-claude/10 px-1.5 py-0.5 rounded text-xs border border-provider-claude/20">claude</code>,
+              <code class="text-provider-codex bg-provider-codex/10 px-1.5 py-0.5 rounded text-xs border border-provider-codex/20">codex</code>, or
+              <code class="text-provider-opencode bg-provider-opencode/10 px-1.5 py-0.5 rounded text-xs border border-provider-opencode/20">opencode</code>.
+            </p>
           </div>
+
+          <!-- Step 2: Configure -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-green-primary/10 border border-green-primary/20 flex items-center justify-center text-green-primary font-bold text-sm">2</div>
+              <h3 class="text-lg font-semibold text-text-primary">Set your API key</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">concilium config set api-key sk-or-...</span>
+              </div>
+            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              Uses <a href="https://openrouter.ai" target="_blank" rel="noopener noreferrer" class="text-green-primary hover:underline">OpenRouter</a> to access models for peer review and synthesis.
+            </p>
+          </div>
+
+          <!-- Step 3: Run -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-green-primary/10 border border-green-primary/20 flex items-center justify-center text-green-primary font-bold text-sm">3</div>
+              <h3 class="text-lg font-semibold text-text-primary">Run a deliberation</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center mb-2">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">cd ~/my-project</span>
+              </div>
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">concilium run "Refactor auth to use JWT tokens"</span>
+              </div>
+            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              Agents run in parallel, review each other's work, and a chairman synthesizes the best answer.
+            </p>
+          </div>
+
         </div>
       </div>
 
-       <!-- Step 3: Configure Environment -->
-      <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
-        <div class="flex items-center gap-4 mb-4">
-          <div class="w-8 h-8 rounded-full bg-provider-opencode/10 border border-provider-opencode/20 flex items-center justify-center text-provider-opencode font-bold text-sm">3</div>
-          <h3 class="text-lg font-semibold text-text-primary">Configure Environment</h3>
-        </div>
-        <p class="text-sm text-text-secondary mb-4">
-          Create a <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">.env</code> file in the <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">desktop</code> directory with your OpenRouter API key.
-        </p>
-        <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
-          <div class="flex items-center mb-2">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">cd concilium/desktop</span>
-          </div>
-          <div class="flex items-center">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">echo "OPENROUTER_API_KEY=sk-or-..." > .env</span>
-          </div>
-        </div>
-      </div>
+      <!-- Desktop Tab Panel -->
+      <div class="gs-panel gs-panel-desktop">
+        <div class="space-y-6">
 
-      <!-- Step 4: Install & Build -->
-      <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
-        <div class="flex items-center gap-4 mb-4">
-          <div class="w-8 h-8 rounded-full bg-provider-opencode/10 border border-provider-opencode/20 flex items-center justify-center text-provider-opencode font-bold text-sm">4</div>
-          <h3 class="text-lg font-semibold text-text-primary">Install & Build</h3>
-        </div>
-        <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
-          <div class="flex items-center mb-2">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">npm install</span>
+          <!-- Step 1: Clone -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-purple-accent/10 border border-purple-accent/20 flex items-center justify-center text-purple-accent font-bold text-sm">1</div>
+              <h3 class="text-lg font-semibold text-text-primary">Clone the repository</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">git clone https://github.com/matiasdaloia/concilium.git</span>
+              </div>
+            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              Requires <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">Node.js 18+</code> and <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">macOS 12+</code> or Linux.
+            </p>
           </div>
-          <div class="flex items-center">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">npm run build</span>
-          </div>
-        </div>
-        <p class="mt-4 text-sm text-text-muted">
-          This will install dependencies and package the application into the <code class="text-text-primary bg-white/5 px-1.5 py-0.5 rounded">out/</code> directory.
-        </p>
-      </div>
 
-       <!-- Step 5: Run from anywhere -->
-      <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
-        <div class="flex items-center gap-4 mb-4">
-          <div class="w-8 h-8 rounded-full bg-provider-opencode/10 border border-provider-opencode/20 flex items-center justify-center text-provider-opencode font-bold text-sm">5</div>
-          <h3 class="text-lg font-semibold text-text-primary">Run from anywhere</h3>
-        </div>
-        <p class="text-sm text-text-secondary mb-4">
-          Link the CLI to your PATH, then launch Concilium from any project directory.
-        </p>
+          <!-- Step 2: Configure & Build -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-purple-accent/10 border border-purple-accent/20 flex items-center justify-center text-purple-accent font-bold text-sm">2</div>
+              <h3 class="text-lg font-semibold text-text-primary">Configure & build</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center mb-2">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">cd concilium/desktop</span>
+              </div>
+              <div class="flex items-center mb-2">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">echo "OPENROUTER_API_KEY=sk-or-..." > .env</span>
+              </div>
+              <div class="flex items-center mb-2">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">npm install</span>
+              </div>
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">npm run build</span>
+              </div>
+            </div>
+          </div>
 
-        <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
-          <div class="flex items-center mb-2">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">npm link</span>
-          </div>
-          <div class="flex items-center mb-2">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">cd ~/my-project</span>
-          </div>
-          <div class="flex items-center">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">concilium</span>
-          </div>
-        </div>
-
-        <p class="mt-4 text-sm text-text-secondary">
-          Or specify a path directly:
-        </p>
-        <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto mt-2">
-          <div class="flex items-center">
-            <span class="select-none text-text-muted mr-3">$</span>
-            <span class="text-text-primary">concilium ./backend</span>
-          </div>
-        </div>
-
-        <!-- Alternative: manual launch -->
-        <div class="mt-6 pt-4 border-t border-border-primary">
-          <p class="text-[11px] text-text-muted uppercase tracking-wider font-semibold mb-3">Alternative: manual launch</p>
-          <div class="space-y-3">
-            <div>
-              <span class="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1 block">macOS</span>
-              <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 font-mono text-sm text-text-secondary overflow-x-auto">
-                <div class="flex items-center">
-                  <span class="select-none text-text-muted mr-3">$</span>
-                  <span class="text-text-primary">open out/Concilium-darwin-arm64/Concilium.app</span>
+          <!-- Step 3: Launch -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-purple-accent/10 border border-purple-accent/20 flex items-center justify-center text-purple-accent font-bold text-sm">3</div>
+              <h3 class="text-lg font-semibold text-text-primary">Launch the app</h3>
+            </div>
+            <div class="space-y-3">
+              <div>
+                <span class="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1 block">macOS</span>
+                <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 font-mono text-sm text-text-secondary overflow-x-auto">
+                  <div class="flex items-center">
+                    <span class="select-none text-text-muted mr-3">$</span>
+                    <span class="text-text-primary">open out/Concilium-darwin-arm64/Concilium.app</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <span class="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1 block">Linux</span>
+                <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 font-mono text-sm text-text-secondary overflow-x-auto">
+                  <div class="flex items-center">
+                    <span class="select-none text-text-muted mr-3">$</span>
+                    <span class="text-text-primary">./out/Concilium-linux-x64/concilium</span>
+                  </div>
                 </div>
               </div>
             </div>
-            <div>
-              <span class="text-[10px] text-text-muted uppercase tracking-wider font-semibold mb-1 block">Linux</span>
-              <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 font-mono text-sm text-text-secondary overflow-x-auto">
-                <div class="flex items-center">
-                  <span class="select-none text-text-muted mr-3">$</span>
-                  <span class="text-text-primary">./out/Concilium-linux-x64/concilium</span>
-                </div>
-              </div>
-            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              At least one CLI agent must be installed:
+              <code class="text-provider-claude bg-provider-claude/10 px-1.5 py-0.5 rounded text-xs border border-provider-claude/20">claude</code>,
+              <code class="text-provider-codex bg-provider-codex/10 px-1.5 py-0.5 rounded text-xs border border-provider-codex/20">codex</code>, or
+              <code class="text-provider-opencode bg-provider-opencode/10 px-1.5 py-0.5 rounded text-xs border border-provider-opencode/20">opencode</code>.
+            </p>
           </div>
+
         </div>
       </div>
 
+      <!-- API Tab Panel -->
+      <div class="gs-panel gs-panel-api">
+        <div class="space-y-6">
+
+          <!-- Step 1: Install -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-blue-info/10 border border-blue-info/20 flex items-center justify-center text-blue-info font-bold text-sm">1</div>
+              <h3 class="text-lg font-semibold text-text-primary">Add to your project</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-4 font-mono text-sm text-text-secondary overflow-x-auto">
+              <div class="flex items-center">
+                <span class="select-none text-text-muted mr-3">$</span>
+                <span class="text-text-primary">npm install @concilium/cli</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Use -->
+          <div class="bg-bg-page border border-border-primary rounded-xl p-6 md:p-8 hover:border-border-secondary transition-colors duration-300">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-8 h-8 rounded-full bg-blue-info/10 border border-blue-info/20 flex items-center justify-center text-blue-info font-bold text-sm">2</div>
+              <h3 class="text-lg font-semibold text-text-primary">Call deliberate()</h3>
+            </div>
+            <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 md:p-5 font-mono text-xs md:text-sm overflow-x-auto">
+              <div class="text-provider-codex/80">import</div>
+              <div class="text-text-primary ml-2">{`{ deliberate }`} <span class="text-provider-codex/80">from</span> <span class="text-green-primary">'@concilium/cli'</span>;</div>
+              <div class="mt-3 text-provider-codex/80">const</div>
+              <div class="text-text-primary ml-2">result = <span class="text-provider-codex/80">await</span> <span class="text-text-primary">deliberate</span>({`{`}</div>
+              <div class="text-text-secondary ml-4">prompt: <span class="text-green-primary">'Add error handling to the payment service'</span>,</div>
+              <div class="text-text-secondary ml-4">agents: [{`{ provider: 'claude' }, { provider: 'opencode' }`}],</div>
+              <div class="text-text-primary ml-2">{`}`});</div>
+              <div class="mt-3 text-text-secondary">console.log(result.stage3?.response);</div>
+            </div>
+            <p class="mt-4 text-sm text-text-muted">
+              Embed deliberations in scripts, CI pipelines, or agent skills with one function call.
+            </p>
+          </div>
+
+        </div>
+      </div>
     </div>
 
     <div class="mt-16 text-center">
@@ -162,3 +239,42 @@ import SectionHeader from '../components/SectionHeader.astro';
     </div>
   </div>
 </section>
+
+<style>
+  /* Tab label default state */
+  .gs-tab-label {
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #737373;
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .gs-tab-label:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+    color: #A3A3A3;
+  }
+
+  /* Active tab styles using :has() - CLI green, Desktop purple, API blue */
+  .get-started-tabs:has(#gs-tab-cli:checked) .gs-tab-cli-label {
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #22C55E;
+    background: rgba(34, 197, 94, 0.08);
+    box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+  }
+  .get-started-tabs:has(#gs-tab-desktop:checked) .gs-tab-desktop-label {
+    border-color: rgba(168, 85, 247, 0.4);
+    color: #A855F7;
+    background: rgba(168, 85, 247, 0.08);
+    box-shadow: 0 0 12px rgba(168, 85, 247, 0.15);
+  }
+  .get-started-tabs:has(#gs-tab-api:checked) .gs-tab-api-label {
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #3B82F6;
+    background: rgba(59, 130, 246, 0.08);
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+  }
+
+  /* Panel visibility */
+  .gs-panel { display: none; }
+  .get-started-tabs:has(#gs-tab-cli:checked) .gs-panel-cli { display: block; }
+  .get-started-tabs:has(#gs-tab-desktop:checked) .gs-panel-desktop { display: block; }
+  .get-started-tabs:has(#gs-tab-api:checked) .gs-panel-api { display: block; }
+</style>

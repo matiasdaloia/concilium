@@ -27,7 +27,7 @@ export function CostSummary({ record }: CostSummaryProps) {
   if (record.stage3?.usage) totalTokens += record.stage3.usage.totalTokens;
 
   return (
-    <Box marginTop={1}>
+    <Box flexDirection="column" marginTop={1}>
       <Text color="gray">{'─'.repeat(60)}</Text>
       <Text>
         {totalCost > 0 ? `  Cost: $${totalCost.toFixed(4)}` : ''}

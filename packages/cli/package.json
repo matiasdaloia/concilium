@@ -35,18 +35,18 @@
   },
   "dependencies": {
     "@concilium/core": "^2.0.0",
-    "commander": "^13.1.0",
-    "ink": "^5.2.0",
-    "ink-spinner": "^5.0.0",
-    "react": "^19.2.4",
     "chalk": "^5.4.1",
-    "marked": "^15.0.0",
+    "cli-table3": "^0.6.5",
+    "commander": "^13.1.0",
+    "ink": "^6.7.0",
+    "ink-spinner": "^5.0.0",
+    "marked": "^15.0.12",
     "marked-terminal": "^7.3.0",
-    "cli-table3": "^0.6.5"
+    "react": "^19.2.4"
   },
   "devDependencies": {
     "@types/react": "^19.2.13",
-    "typescript": "~5.7.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "~5.7.0"
   }
 }

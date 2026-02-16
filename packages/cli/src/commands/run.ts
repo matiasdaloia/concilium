@@ -1,5 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import React from 'react';
+import { render as inkRender } from 'ink';
 import type { Command } from 'commander';
 import {
   DeliberationService,
@@ -9,7 +11,6 @@ import {
   OpenCodeProvider,
   JsonRunRepository,
   JsonConfigStore,
-  PlaintextSecretStore,
   ConfigService,
   setLogLevel,
   type AgentInstance,
@@ -19,6 +20,13 @@ import {
 import { createCallbackEventBridge } from '../adapters/callback-event-bridge.js';
 import { TerminalSecretStore } from '../adapters/terminal-secret-store.js';
 import { getConfigDir, getDataDir } from '../adapters/xdg-paths.js';
+import { App } from '../ui/App.js';
+import {
+  deliberationReducer,
+  initialState,
+  type Action,
+  type DeliberationState,
+} from '../ui/hooks/useDeliberation.js';
 
 interface RunOptions {
   file?: string;
@@ -128,7 +136,72 @@ export function registerRunCommand(program: Command): void {
         ? { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] }
         : new JsonRunRepository(getDataDir());
 
-      // Event bridge for terminal output
+      const isInteractive = process.stdout.isTTY && !isJson && !isQuiet;
+
+      // --- Interactive mode: Ink UI ---
+      if (isInteractive) {
+        // Suppress info/debug logs that would corrupt Ink's rendering.
+        // Errors still flow to stderr which Ink tolerates.
+        if (!opts.verbose) setLogLevel('error');
+
+        let state: DeliberationState = { ...initialState };
+
+        const dispatch = (action: Action) => {
+          state = deliberationReducer(state, action);
+          ink.rerender(React.createElement(App, { state }));
+        };
+
+        const ink = inkRender(React.createElement(App, { state }));
+
+        const events = createCallbackEventBridge({
+          onStageChange: (stage, summary) => dispatch({ type: 'STAGE_CHANGE', stage, summary }),
+          onAgentStatus: (key, status, name) => dispatch({ type: 'AGENT_STATUS', key, status, name }),
+          onAgentEvent: (key, event) => dispatch({ type: 'AGENT_EVENT', key, event }),
+          onJurorStatus: (model, status) => dispatch({ type: 'JUROR_STATUS', model, status }),
+          onJurorChunk: (model) => dispatch({ type: 'JUROR_CHUNK', model }),
+          onJurorComplete: (model, success, usage) => dispatch({ type: 'JUROR_COMPLETE', model, success, usage }),
+          onSynthesisStart: () => dispatch({ type: 'SYNTHESIS_START' }),
+          onComplete: (record) => {
+            dispatch({ type: 'COMPLETE', record });
+
+            if (opts.output && record.stage3?.response) {
+              writeFileSync(resolve(opts.output), record.stage3.response, 'utf-8');
+            }
+
+            // Brief delay so the final frame renders before unmount
+            setTimeout(() => ink.unmount(), 100);
+          },
+          onError: (error) => {
+            dispatch({ type: 'ERROR', error });
+            setTimeout(() => {
+              ink.unmount();
+              process.exit(1);
+            }, 100);
+          },
+        });
+
+        const service = new DeliberationService({
+          providers,
+          llmGateway,
+          configStore,
+          secretStore,
+          runRepository,
+          events,
+        });
+
+        try {
+          await service.run({ prompt, images: [], agentInstances, cwd });
+          await ink.waitUntilExit();
+        } catch (err) {
+          ink.unmount();
+          console.error(`\nDeliberation failed: ${err instanceof Error ? err.message : String(err)}`);
+          process.exit(1);
+        }
+
+        return;
+      }
+
+      // --- Non-interactive mode: plain console output (JSON / quiet / no TTY) ---
       let currentStage = 0;
       const agentNames = new Map<string, string>();
 
@@ -147,18 +220,14 @@ export function registerRunCommand(program: Command): void {
             console.log(`  ${icon} ${displayName}: ${status}`);
           }
         },
-        onAgentEvent: () => {
-          // Events streamed silently in non-interactive mode
-        },
+        onAgentEvent: () => {},
         onJurorStatus: (model, status) => {
           if (!isJson && !isQuiet) {
             const icon = status === 'complete' ? '\u2713' : status === 'evaluating' ? '\u25B6' : '\u25CB';
             console.log(`  ${icon} ${model}: ${status}`);
           }
         },
-        onJurorChunk: () => {
-          // Chunks streamed silently in non-interactive mode
-        },
+        onJurorChunk: () => {},
         onJurorComplete: () => {},
         onSynthesisStart: () => {
           if (!isJson && !isQuiet) {
@@ -175,7 +244,6 @@ export function registerRunCommand(program: Command): void {
             console.log(record.stage3?.response ?? 'No synthesis available.');
             console.log('\n' + '-'.repeat(60));
 
-            // Cost summary
             const stage2Costs = record.stage2.reduce((sum, r) => sum + (r.estimatedCost ?? 0), 0);
             const stage3Cost = record.stage3?.estimatedCost ?? 0;
             const totalCost = stage2Costs + stage3Cost;
@@ -186,10 +254,8 @@ export function registerRunCommand(program: Command): void {
             console.log();
           }
 
-          // Write to output file if requested
           if (opts.output && record.stage3?.response) {
-            const fs = require('node:fs');
-            fs.writeFileSync(resolve(opts.output), record.stage3.response, 'utf-8');
+            writeFileSync(resolve(opts.output), record.stage3.response, 'utf-8');
             if (!isJson) {
               console.log(`  Synthesis saved to: ${opts.output}`);
             }
