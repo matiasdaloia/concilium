@@ -1,0 +1,82 @@
+---
+import SectionHeader from '../components/SectionHeader.astro';
+import WaitlistForm from '../islands/WaitlistForm';
+
+const features = [
+  {
+    icon: '&#x26A1;',
+    title: 'Zero Setup',
+    description: 'No API keys to manage, no local agents to install. Sign in and start deliberating in seconds.',
+  },
+  {
+    icon: '&#x1F465;',
+    title: 'Team Collaboration',
+    description: 'Share deliberation results, manage team API usage, and build shared prompt libraries across your org.',
+  },
+  {
+    icon: '&#x007B;&#x007D;',
+    title: 'REST API',
+    description: 'Trigger deliberations from CI/CD pipelines, scripts, or agent skills with a single API call.',
+  },
+];
+---
+
+<section class="py-24 md:py-32 relative" id="cloud">
+  <div class="max-w-7xl mx-auto px-6">
+    <SectionHeader
+      title="Concilium Cloud"
+      subtitle="Coming Soon"
+      num="06"
+    />
+
+    <p class="text-lg text-text-secondary max-w-2xl mt-6 mb-16">
+      The same multi-model deliberation engine — without the setup.
+      Concilium Cloud brings team collaboration, API access, and managed
+      infrastructure so you can focus on shipping better code.
+    </p>
+
+    <!-- Feature cards -->
+    <div class="grid md:grid-cols-3 gap-6 mb-16">
+      {features.map((feature) => (
+        <div class="rounded-xl border border-border-primary bg-white/[0.02] p-6 hover:border-green-primary/30 transition-all duration-300 hover:scale-[1.01] backdrop-blur-sm">
+          <div class="w-10 h-10 rounded-lg bg-green-primary/10 border border-green-primary/20 flex items-center justify-center text-lg mb-4">
+            <span set:html={feature.icon} />
+          </div>
+          <h3 class="text-sm font-bold font-mono tracking-wide text-text-primary uppercase mb-2">
+            {feature.title}
+          </h3>
+          <p class="text-sm text-text-secondary leading-relaxed font-light">
+            {feature.description}
+          </p>
+        </div>
+      ))}
+    </div>
+
+    <!-- Waitlist signup panel -->
+    <div class="max-w-2xl mx-auto">
+      <div class="rounded-xl border border-border-primary bg-white/[0.02] backdrop-blur-sm p-8 md:p-10 text-center">
+        <h3 class="text-lg font-bold text-text-primary uppercase tracking-wide font-mono mb-2">
+          Get Early Access
+        </h3>
+        <p class="text-sm text-text-secondary mb-8">
+          Be the first to try Concilium Cloud when it launches.
+        </p>
+
+        <WaitlistForm client:visible />
+
+        <!-- Social proof -->
+        <div class="mt-6 flex items-center justify-center gap-2 text-[11px] text-text-muted font-mono">
+          <div class="flex -space-x-1.5">
+            <div class="w-4 h-4 rounded-full bg-provider-opencode/20 border border-provider-opencode/40"></div>
+            <div class="w-4 h-4 rounded-full bg-provider-codex/20 border border-provider-codex/40"></div>
+            <div class="w-4 h-4 rounded-full bg-provider-claude/20 border border-provider-claude/40"></div>
+          </div>
+          <span>Join 50+ developers on the waitlist</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Background glow -->
+  <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-green-primary/[0.03] rounded-full blur-[120px] pointer-events-none -z-10"></div>
+</section>
