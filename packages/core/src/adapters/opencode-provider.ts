@@ -235,6 +235,23 @@ async function streamSessionEvents(options: {
     const eventType = typedEvent.type as string;
     const properties = typedEvent.properties as Record<string, unknown> | undefined;
 
+    // Register assistant message IDs from message.updated events so we can
+    // distinguish assistant text from user prompt echo in message.part.updated.
+    // This is critical: some models (e.g. Gemini) emit text parts before any
+    // tool/reasoning parts, so we can't rely solely on part types to identify
+    // assistant messages.
+    if (eventType === 'message.updated' && properties) {
+      const info = properties.info as Record<string, unknown> | undefined;
+      if (info) {
+        const msgSessionId = info.sessionID as string | undefined;
+        const msgRole = info.role as string | undefined;
+        const msgId = info.id as string | undefined;
+        if (msgSessionId === sessionId && msgRole === 'assistant' && msgId) {
+          assistantMessageIds.add(msgId);
+        }
+      }
+    }
+
     if (eventType === 'message.part.updated' && properties) {
       const part = properties.part as Part;
       const delta = properties.delta as string | undefined;
@@ -248,9 +265,7 @@ async function streamSessionEvents(options: {
         assistantMessageIds.add(messageID);
       }
 
-      if (part.type === 'text' && messageID && !assistantMessageIds.has(messageID)) {
-        continue;
-      }
+      if (part.type === 'text' && messageID && !assistantMessageIds.has(messageID)) continue;
 
       const parsed = parsePartToEvent(part, delta);
       for (const p of parsed) {
@@ -288,6 +303,8 @@ async function streamSessionEvents(options: {
         events.push(retryEvent);
         callbacks.onEvent?.(agentKey, retryEvent);
       }
+      inactivityPromise = resetInactivityTimeout();
+    } else {
       inactivityPromise = resetInactivityTimeout();
     }
   }
@@ -383,7 +400,8 @@ export class OpenCodeProvider implements AgentProvider {
 
       const wrappedPrompt = wrapPromptForResearch(prompt);
       const textPart = { type: 'text' as const, text: wrappedPrompt };
-      const parts: Array<{ type: 'text'; text: string } | { type: 'image'; image: string; mimeType: string }> = [textPart];
+      // OpenCode SDK uses FilePartInput for images: { type: "file", mime, url: "data:..." }
+      const parts: Array<{ type: 'text'; text: string } | { type: 'file'; mime: string; url: string }> = [textPart];
 
       if (config.images && config.images.length > 0) {
         log.info(`execute: processing ${config.images.length} image(s)`);
@@ -396,7 +414,8 @@ export class OpenCodeProvider implements AgentProvider {
               imageData = await fs.readFile(img.path, { encoding: 'base64' });
             }
             if (imageData) {
-              parts.push({ type: 'image' as const, image: imageData, mimeType: img.mimeType });
+              const dataUri = `data:${img.mimeType};base64,${imageData}`;
+              parts.push({ type: 'file' as const, mime: img.mimeType, url: dataUri });
             }
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -416,7 +435,6 @@ export class OpenCodeProvider implements AgentProvider {
           ...(modelSpec ? { model: modelSpec } : {}),
         },
       });
-
       await eventPromise;
 
       const messagesRes = await client.session.messages({ path: { id: sessionId } });
