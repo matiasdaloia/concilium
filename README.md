@@ -67,7 +67,7 @@ npm install
 
 **CLI:**
 ```bash
-concilium config set api-key sk-or-...
+npx concilium config set api-key sk-or-...
 ```
 
 **Desktop (alternative):** Create a `.env` file in the `desktop/` directory:
@@ -77,19 +77,28 @@ echo "OPENROUTER_API_KEY=sk-or-..." > desktop/.env
 
 Or set `OPENROUTER_API_KEY` as an environment variable — it takes priority everywhere.
 
-### 3. Run a deliberation
+### 3. Verify your setup
+
+Make sure at least one coding agent is installed and detected:
+
+```bash
+npx concilium models
+```
+
+This lists all available agents and their models. If nothing shows up, install one of the [supported agents](#prerequisites) first.
+
+### 4. Run a deliberation
 
 **From the terminal (CLI):**
 
 ```bash
-concilium run "Refactor the auth module to use JWT tokens"
+npx concilium run "Refactor the auth module to use JWT tokens"
 ```
 
 **With the desktop GUI:**
 
 ```bash
-concilium gui                  # opens the Electron app in the current directory
-concilium gui ./my-project     # or specify a project path
+npm run start -w concilium     # opens the Electron desktop app
 ```
 
 > See the [CLI documentation](packages/cli/README.md) for the full command reference.
@@ -250,13 +259,26 @@ All packages are managed as an npm workspace from the repo root.
 npm install          # Install all workspace dependencies
 ```
 
+### Building
+
+Core must be built before the CLI, since `@concilium/cli` depends on `@concilium/core`:
+
+```bash
+npm run build                           # Builds core, then CLI (in order)
+```
+
+Or build individually:
+
+```bash
+npm run build -w @concilium/core        # Build core first
+npm run build -w @concilium/cli         # Then build CLI
+```
+
 ### CLI
 
 ```bash
 npx concilium run "your prompt"         # Run via workspace
-npm run dev -w @concilium/cli           # Dev mode with tsx
-npm run build -w @concilium/core        # Build core first
-npm run build -w @concilium/cli         # Then build CLI
+npm run dev -w @concilium/cli           # Dev mode with tsx (auto-rebuilds)
 ```
 
 ### Desktop App
@@ -271,8 +293,8 @@ npm run test -w concilium               # Run desktop tests
 ### Website
 
 ```bash
-npm run dev -w website                  # Start dev server
-npm run build -w website                # Build for production
+npm run dev -w concilium-website        # Start dev server
+npm run build -w concilium-website      # Build for production
 ```
 
 ## Contributing

@@ -69,10 +69,10 @@ const commands = [
         <span class="text-[10px] text-text-muted font-mono ml-2">~/my-project</span>
       </div>
       <!-- Terminal content -->
-      <div class="p-6 font-mono text-sm leading-relaxed overflow-x-auto">
+      <div class="p-4 md:p-6 font-mono text-xs md:text-sm leading-relaxed overflow-x-auto">
         <!-- Command -->
         <div class="flex items-center">
-          <span class="select-none text-green-primary mr-2">$</span>
+          <span class="select-none text-green-primary mr-2 shrink-0">$</span>
           <span class="text-text-primary">concilium run "Add rate limiting to the API endpoints"</span>
         </div>
 
@@ -84,19 +84,19 @@ const commands = [
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
             <span class="text-provider-opencode">opencode</span>
-            <span class="text-text-muted">&#183; opencode-0</span>
+            <span class="text-text-muted">&#183; moonshotai/kimi-2.5</span>
             <span class="text-text-muted ml-auto text-xs">12.4s</span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
             <span class="text-provider-claude">claude</span>
-            <span class="text-text-muted">&#183; claude-opus-4</span>
+            <span class="text-text-muted">&#183; claude-opus-4.6</span>
             <span class="text-text-muted ml-auto text-xs">18.1s</span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
             <span class="text-provider-codex">codex</span>
-            <span class="text-text-muted">&#183; codex-mini</span>
+            <span class="text-text-muted">&#183; gpt-5.3-codex</span>
             <span class="text-text-muted ml-auto text-xs">15.7s</span>
           </div>
         </div>
@@ -108,17 +108,17 @@ const commands = [
         <div class="mt-2 space-y-1 ml-2">
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
-            <span class="text-text-secondary">anthropic/claude-sonnet-4</span>
+            <span class="text-text-secondary">anthropic/claude-sonnet-4.5</span>
             <span class="text-text-muted ml-auto text-xs">complete</span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
-            <span class="text-text-secondary">openai/gpt-4.1</span>
+            <span class="text-text-secondary">openai/gpt-5.2-codex</span>
             <span class="text-text-muted ml-auto text-xs">complete</span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-green-primary">&#x2713;</span>
-            <span class="text-text-secondary">google/gemini-2.5-pro</span>
+            <span class="text-text-secondary">google/gemini-3-pro-preview</span>
             <span class="text-text-muted ml-auto text-xs">complete</span>
           </div>
         </div>
@@ -129,10 +129,10 @@ const commands = [
         </div>
 
         <!-- Divider -->
-        <div class="mt-4 text-text-muted">
-          <span class="text-green-primary">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;</span>
+        <div class="mt-4 text-text-muted whitespace-nowrap overflow-hidden">
+          <span class="text-green-primary">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;<span class="hidden md:inline">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;</span></span>
           <span class="text-text-primary font-bold mx-2">SYNTHESIS</span>
-          <span class="text-green-primary">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;</span>
+          <span class="text-green-primary">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;<span class="hidden md:inline">&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;&#x2550;</span></span>
         </div>
         <div class="mt-2 text-text-secondary text-xs leading-relaxed">
           <p>The recommended approach combines a token bucket algorithm</p>
@@ -156,9 +156,9 @@ const commands = [
     <div class="grid md:grid-cols-2 gap-6">
       {commands.map((cmd) => (
         <div class="rounded-xl border border-border-primary bg-white/[0.02] p-6 hover:border-green-primary/30 transition-all duration-300 hover:scale-[1.01] backdrop-blur-sm">
-          <div class="flex items-center gap-3 mb-3">
+          <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mb-3">
             <code class="text-green-primary font-mono font-bold text-sm">{cmd.name}</code>
-            <span class="text-text-muted text-xs">&#8212;</span>
+            <span class="text-text-muted text-xs hidden sm:inline">&#8212;</span>
             <span class="text-text-secondary text-sm">{cmd.description}</span>
           </div>
 
@@ -184,7 +184,7 @@ const commands = [
     </div>
 
     <!-- Programmatic API -->
-    <div class="mt-16 rounded-xl border border-border-primary bg-white/[0.02] p-8 backdrop-blur-sm">
+    <div class="mt-16 rounded-xl border border-border-primary bg-white/[0.02] p-4 md:p-8 backdrop-blur-sm">
       <div class="flex items-center gap-3 mb-2">
         <div class="w-8 h-8 rounded-full bg-provider-claude/10 border border-provider-claude/20 flex items-center justify-center">
           <span class="text-provider-claude text-xs font-bold font-mono">{`{}`}</span>
@@ -195,7 +195,7 @@ const commands = [
         Embed deliberations in scripts, CI pipelines, or agent skills with one function call.
       </p>
 
-      <div class="bg-bg-surface border border-border-secondary rounded-lg p-5 font-mono text-sm overflow-x-auto">
+      <div class="bg-bg-surface border border-border-secondary rounded-lg p-3 md:p-5 font-mono text-xs md:text-sm overflow-x-auto">
         <div class="text-provider-codex/80">import</div>
         <div class="text-text-primary ml-2">{`{ deliberate }`} <span class="text-provider-codex/80">from</span> <span class="text-green-primary">'@concilium/cli'</span>;</div>
         <div class="mt-3 text-provider-codex/80">const</div>
