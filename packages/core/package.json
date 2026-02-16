@@ -1,6 +1,6 @@
 {
   "name": "@concilium/core",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Core domain logic for the Concilium multi-LLM deliberation platform",
   "type": "module",
   "main": "./dist/index.js",
