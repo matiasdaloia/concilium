@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Nav from '../sections/Nav.astro';
 import Hero from '../sections/Hero.astro';
+import CICD from '../sections/CICD.astro';
 import TheProblem from '../sections/TheProblem.astro';
 import HowItWorks from '../sections/HowItWorks.astro';
 import WhyItMatters from '../sections/WhyItMatters.astro';
@@ -22,6 +23,8 @@ import AnalyticsShowcase from '../islands/AnalyticsShowcase';
 
   <main>
     <Hero />
+
+    <CICD />
 
     <TheProblem />
     <BeforeAfter client:visible />

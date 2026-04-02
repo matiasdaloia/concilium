@@ -1,0 +1,126 @@
+name: 'Concilium Verify'
+description: 'Multi-agent AI code review with confidence scoring. Runs 3 models on your PR, has them peer-review each other, and posts a verdict.'
+author: 'Matias Daloia'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  openrouter-api-key:
+    description: 'OpenRouter API key (provides access to all models)'
+    required: true
+  github-token:
+    description: 'GitHub token for posting review comments (optional — uses GITHUB_TOKEN by default)'
+    required: false
+    default: ${{ github.token }}
+  threshold:
+    description: 'Confidence threshold (0-100) for PASS/FAIL verdict'
+    required: false
+    default: '70'
+  models:
+    description: 'Comma-separated OpenRouter model IDs for review agents'
+    required: false
+  preset:
+    description: 'Model preset: fast (free models), balanced (mid-tier), thorough (top-tier)'
+    required: false
+    default: 'fast'
+  fail-on-low-confidence:
+    description: 'Fail the GitHub check when verdict is FAIL'
+    required: false
+    default: 'true'
+  no-post:
+    description: 'Skip posting review comment to the PR'
+    required: false
+    default: 'false'
+  focus-files:
+    description: 'Comma-separated list of files to focus the review on'
+    required: false
+  custom-instructions:
+    description: 'Additional review instructions (or use .concilium/review.md in your repo)'
+    required: false
+
+outputs:
+  verdict:
+    description: 'PASS or FAIL'
+  confidence:
+    description: 'Confidence score (0-100)'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install OpenCode
+      shell: bash
+      run: curl -fsSL https://opencode.ai/install | bash
+
+    - name: Install Concilium CLI
+      shell: bash
+      run: npm install -g @concilium/cli@latest
+
+    - name: Run Concilium Verify
+      id: verify
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter-api-key }}
+      run: |
+        ARGS="--pr https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+        ARGS="$ARGS --threshold ${{ inputs.threshold }}"
+        ARGS="$ARGS --preset ${{ inputs.preset }}"
+        ARGS="$ARGS --format json"
+
+        if [ -n "${{ inputs.models }}" ]; then
+          ARGS="$ARGS --models ${{ inputs.models }}"
+        fi
+
+        if [ "${{ inputs.no-post }}" = "true" ]; then
+          ARGS="$ARGS --no-post"
+        fi
+
+        if [ -n "${{ inputs.focus-files }}" ]; then
+          ARGS="$ARGS --focus-files ${{ inputs.focus-files }}"
+        fi
+
+        if [ -n "${{ inputs.custom-instructions }}" ]; then
+          ARGS="$ARGS --custom-instructions '${{ inputs.custom-instructions }}'"
+        fi
+
+        set +e
+        OUTPUT=$(concilium verify $ARGS 2>/tmp/concilium-stderr.txt)
+        EXIT_CODE=$?
+        set -e
+
+        # Print stderr for debugging
+        cat /tmp/concilium-stderr.txt >&2
+
+        if [ $EXIT_CODE -eq 2 ]; then
+          echo "::error::Concilium verify failed with a pipeline error"
+          exit 1
+        fi
+
+        VERDICT=$(echo "$OUTPUT" | jq -r '.verdict')
+        CONFIDENCE=$(echo "$OUTPUT" | jq -r '.confidence')
+
+        echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+        echo "confidence=$CONFIDENCE" >> $GITHUB_OUTPUT
+
+        # Write step summary
+        echo "## Concilium Review" >> $GITHUB_STEP_SUMMARY
+        if [ "$VERDICT" = "PASS" ]; then
+          echo "### ✅ PASS (confidence: ${CONFIDENCE}%)" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ❌ FAIL (confidence: ${CONFIDENCE}%)" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Threshold: ${{ inputs.threshold }}% | Preset: ${{ inputs.preset }}" >> $GITHUB_STEP_SUMMARY
+
+    - name: Fail on low confidence
+      if: ${{ inputs.fail-on-low-confidence == 'true' && steps.verify.outputs.verdict == 'FAIL' }}
+      shell: bash
+      run: |
+        echo "::error::Concilium verdict: FAIL (confidence: ${{ steps.verify.outputs.confidence }}%, threshold: ${{ inputs.threshold }}%)"
+        exit 1

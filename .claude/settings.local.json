@@ -14,7 +14,11 @@
       "Bash(opencode run:*)",
       "Bash(/Users/matiasdaloia/.opencode/bin/opencode run:*)",
       "Bash(/Users/matiasdaloia/.opencode/bin/opencode:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep -E \"\\\\.tsx?$\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

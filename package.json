@@ -13,5 +13,8 @@
     "publish:core": "npm publish --workspace=@concilium/core --access public",
     "publish:cli": "npm publish --workspace=@concilium/cli --access public",
     "publish:all": "npm run publish:core && npm run publish:cli"
+  },
+  "dependencies": {
+    "puppeteer": "^24.37.3"
   }
 }

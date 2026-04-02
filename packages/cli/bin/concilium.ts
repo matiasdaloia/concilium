@@ -6,6 +6,7 @@ import { registerConfigCommand } from "../src/commands/config.js";
 import { registerHistoryCommand } from "../src/commands/history.js";
 import { registerModelsCommand } from "../src/commands/models.js";
 import { registerRunCommand } from "../src/commands/run.js";
+import { registerVerifyCommand } from "../src/commands/verify.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../../package.json");
@@ -18,6 +19,7 @@ program
   .version(version);
 
 registerRunCommand(program);
+registerVerifyCommand(program);
 registerHistoryCommand(program);
 registerConfigCommand(program);
 registerModelsCommand(program);

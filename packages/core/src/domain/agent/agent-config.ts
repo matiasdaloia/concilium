@@ -1,5 +1,8 @@
-export type AgentId = 'codex' | 'claude' | 'opencode';
-export type AgentProviderType = 'opencode' | 'codex' | 'claude';
+export type BuiltinAgentId = 'codex' | 'claude' | 'opencode';
+export type McpAgentId = `mcp-${string}`;
+export type AgentId = BuiltinAgentId | McpAgentId;
+export type BuiltinProviderType = 'opencode' | 'codex' | 'claude';
+export type AgentProviderType = BuiltinProviderType | 'mcp';
 
 export interface AgentInstance {
   instanceId: string;

@@ -3,6 +3,8 @@ import type { AgentResult } from '../agent/agent-result.js';
 import type { Stage1Result, Stage2Result, Stage3Result } from '../council/stage-results.js';
 import type { RunMetadata } from './run-metadata.js';
 
+export type RunMode = 'run' | 'verify';
+
 export interface RunRecord {
   id: string;
   createdAt: string;
@@ -14,4 +16,7 @@ export interface RunRecord {
   stage2: Stage2Result[];
   stage3?: Stage3Result | null;
   metadata: RunMetadata;
+  mode?: RunMode;
+  verdict?: 'PASS' | 'FAIL';
+  confidence?: number;
 }
