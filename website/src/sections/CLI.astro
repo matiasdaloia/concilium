@@ -3,6 +3,16 @@ import SectionHeader from '../components/SectionHeader.astro';
 
 const commands = [
   {
+    name: 'verify',
+    description: 'Review a PR with multi-agent consensus',
+    example: 'concilium verify --pr https://github.com/org/repo/pull/42',
+    flags: [
+      { flag: '--threshold', desc: 'Confidence cutoff for PASS/FAIL (default: 70)' },
+      { flag: '--tier', desc: 'Model tier: free, pro, enterprise' },
+      { flag: '--format', desc: 'Output: json, text, or markdown' },
+    ],
+  },
+  {
     name: 'run',
     description: 'Run a full deliberation from the terminal',
     example: 'concilium run "Refactor auth to use JWT tokens"',
@@ -30,16 +40,6 @@ const commands = [
       { flag: 'set api-key', desc: 'Store your OpenRouter key' },
       { flag: 'set jurors', desc: 'Default juror models' },
       { flag: 'set chairman', desc: 'Default chairman model' },
-    ],
-  },
-  {
-    name: 'models',
-    description: 'Discover available models from agents and OpenRouter',
-    example: 'concilium models --council',
-    flags: [
-      { flag: '--agent', desc: 'Filter by agent provider' },
-      { flag: '--council', desc: 'Browse OpenRouter catalog' },
-      { flag: '--json', desc: 'JSON output for scripting' },
     ],
   },
 ];

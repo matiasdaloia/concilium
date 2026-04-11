@@ -1,4 +1,95 @@
 import type { Stage1Result, Stage2Result } from '../council/stage-results.js';
+import type { PrDiff } from '../../ports/github-gateway.js';
+
+export interface VerifyPromptOptions {
+  focusFiles?: string[];
+  maxDiffLines?: number;
+  customInstructions?: string;
+  /** Pre-formatted project context from discoverContext() + formatDiscoveredContext() */
+  projectContext?: string;
+}
+
+export function buildVerifyPrompt(diff: PrDiff, options?: VerifyPromptOptions): string {
+  const maxLines = options?.maxDiffLines ?? 2000;
+
+  const fileList = diff.files
+    .map((f) => `- ${f.filename} (${f.status}, +${f.additions} -${f.deletions})`)
+    .join('\n');
+
+  let diffContent = diff.rawDiff;
+  let truncated = false;
+  const diffLines = diffContent.split('\n');
+  if (diffLines.length > maxLines) {
+    diffContent = diffLines.slice(0, maxLines).join('\n');
+    truncated = true;
+  }
+
+  if (options?.focusFiles && options.focusFiles.length > 0) {
+    const focus = new Set(options.focusFiles);
+    const filteredPatches = diff.files
+      .filter((f) => focus.has(f.filename))
+      .map((f) => f.patch ?? '')
+      .filter(Boolean)
+      .join('\n\n');
+
+    const omitted = diff.files
+      .filter((f) => !focus.has(f.filename))
+      .map((f) => f.filename);
+
+    diffContent = filteredPatches;
+    if (omitted.length > 0) {
+      diffContent += `\n\n[Omitted files (not in focus): ${omitted.join(', ')}]`;
+    }
+  }
+
+  const bodySummary = diff.body ? diff.body.slice(0, 500) : '(no description)';
+
+  let prompt = `You are a senior software engineer conducting a code review on a pull request.
+
+## PR Information
+- **Title**: ${diff.title}
+- **Repository**: ${diff.owner}/${diff.repo}
+- **PR #${diff.prNumber}**
+- **Description**: ${bodySummary}
+
+## Changed Files
+${fileList}
+
+## Diff
+\`\`\`diff
+${diffContent}
+\`\`\`
+${truncated ? `\n[Diff truncated to ${maxLines} lines. Full diff not shown — focus on the files listed above.]` : ''}
+
+## Your Task
+
+Review this pull request as a code reviewer. For each issue you find, be specific about the file and line.
+
+Focus on:
+1. **Bugs**: Logic errors, off-by-one errors, null/undefined risks, race conditions
+2. **Security**: Injection vulnerabilities, exposed secrets, auth bypass, unsafe deserialization
+3. **Logic errors**: Incorrect assumptions, missing edge cases, wrong control flow
+4. **Code quality**: Naming, readability, unnecessary complexity, violation of existing patterns
+5. **Suggestions**: Better approaches, missing tests, documentation needs
+
+Do NOT rewrite the code. Identify and explain problems. For each finding, state:
+- File and approximate location
+- What the issue is
+- Why it matters (severity: critical / warning / suggestion)
+- How to fix it (brief guidance, not full implementation)
+
+End with an overall assessment: is this PR safe to merge?`;
+
+  if (options?.projectContext) {
+    prompt += `\n\n# Project Standards (auto-discovered from repository)\n\n${options.projectContext}`;
+  }
+
+  if (options?.customInstructions) {
+    prompt += `\n\n## Additional Instructions\n${options.customInstructions}`;
+  }
+
+  return prompt;
+}
 
 export function wrapPromptForResearch(prompt: string): string {
   return `You are a senior software engineer participating in a multi-agent code review council. Your ONLY job is to PROPOSE an implementation plan — you must NEVER implement it.

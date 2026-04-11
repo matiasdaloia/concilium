@@ -62,8 +62,11 @@ export class DeliberationService {
           const modelParts = inst.model?.split('/') ?? [];
           const shortModel =
             modelParts.length > 1 ? modelParts.slice(1).join('/') : (inst.model ?? '');
+          const id = inst.provider === 'mcp'
+            ? `mcp-${inst.instanceId}` as const
+            : inst.provider;
           return {
-            id: inst.provider,
+            id,
             instanceId: inst.instanceId,
             name: shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider,
             enabled: true,

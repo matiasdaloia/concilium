@@ -16,23 +16,23 @@ import Hero3D from "../components/Hero3D";
                 <h1
                     class="text-4xl md:text-5xl lg:text-[3.5rem] font-bold tracking-tight animate-fade-up leading-[1.15]"
                 >
-                    Every model gives you<br class="hidden md:block" />
-                    a different answer.<br />
+                    The peer-review step<br class="hidden md:block" />
+                    your AI pipeline<br />
                     <span
                         class="text-transparent bg-clip-text bg-gradient-to-r from-green-primary to-green-400"
-                        >Get the right one.</span
+                        >is missing.</span
                     >
                 </h1>
 
-                {/* Subheadline - the REAL pain */}
+                {/* Subheadline - CI/CD quality gate */}
                 <p
                     class="mt-8 text-text-secondary text-base md:text-lg max-w-xl leading-relaxed animate-fade-up animate-delay-200"
                 >
-                    Stop copy-pasting prompts across OpenAI, Claude, and Codex.
-                    Stop comparing outputs in different tabs.
+                    AI-generated code ships with bugs no single model catches.
                     <span class="text-text-primary font-medium">Concilium</span> runs
-                    them all in parallel, has them peer-review each other's work,
-                    and gives you one validated answer &mdash; in a single interface.
+                    multiple agents on every PR, has them peer-review each other
+                    blindly, and gives you a confidence-scored verdict &mdash;
+                    as a GitHub Action, CLI command, or programmatic API.
                 </p>
 
                 {/* CTAs */}
@@ -62,14 +62,14 @@ import Hero3D from "../components/Hero3D";
                     </Button>
                 </div>
 
-                {/* Cloud waitlist teaser */}
+                {/* CI/CD teaser */}
                 <div class="mt-4 animate-fade-up animate-delay-500">
                     <a
-                        href="#cloud"
+                        href="#ci-cd"
                         class="text-[11px] text-text-secondary hover:text-green-primary transition-colors font-mono inline-flex items-center gap-2 group"
                     >
                         <span class="w-1.5 h-1.5 bg-green-primary rounded-full animate-pulse"></span>
-                        Concilium Cloud &mdash; join the waitlist
+                        New &mdash; GitHub Action for automated PR reviews
                         <span class="text-text-muted group-hover:text-green-primary transition-colors">&rarr;</span>
                     </a>
                 </div>
@@ -97,7 +97,7 @@ import Hero3D from "../components/Hero3D";
                             </div>
                         </div>
                         <span class="text-[11px] text-text-muted"
-                            >3 agents, 1 answer</span
+                            >3 agents, 1 verdict</span
                         >
                     </div>
                     <div class="h-4 w-px bg-white/10"></div>
