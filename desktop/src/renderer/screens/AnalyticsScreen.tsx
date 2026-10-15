@@ -252,7 +252,7 @@ export default function AnalyticsScreen({ onBack }: AnalyticsScreenProps) {
 
   return (
     <div className="flex flex-col h-screen bg-bg-page overflow-hidden">
-      <TitleBar subtitle="analytics" />
+      <TitleBar />
 
       {/* Header */}
       <div className="px-6 py-3 flex items-center justify-between border-b border-border-primary shrink-0">

@@ -39,7 +39,7 @@ export default function ResultsScreen({ record, onNewRun }: ResultsScreenProps) 
 
   return (
     <div className="flex flex-col h-screen">
-      <TitleBar subtitle="results" />
+      <TitleBar />
 
       {/* Leaderboard */}
       <div className="px-6 py-3">
