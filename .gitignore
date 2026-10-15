@@ -26,3 +26,9 @@ frontend/.vite/
 
 # Vercel build output
 .vercel/
+
+# TypeScript incremental build state
+*.tsbuildinfo
+
+# Local agent settings
+.claude/settings.local.json
