@@ -191,12 +191,14 @@ function printSynthesis(record: CodeRunRecord): void {
   }
   console.log(`\n  Synthesis (base ${s.base!.candidateId}; grafts named by ${s.picker?.provider ?? 'no CLI'}, each re-verified with the gates and the valid adversarial tests):`);
   if (s.picker?.sameFamily) console.log(`    Warning: same-family graft picker: ${s.picker.sameFamilyReason}`);
+  const d = s.divergence;
+  if (d) console.log(`    Divergence: disjoint-survival on ${d.tests.join(', ')}, so grafting was tried first; ${d.resolved ? 'resolved' : 'not resolved'}: ${d.reason}`);
   for (const g of s.grafts) console.log(`    ${graftLine(g)}`);
   if (s.grafts.length === 0) console.log('    no graft');
-  for (const d of s.dropouts) console.log(`    dropout ${d.candidateId}: ${d.reason}`);
+  for (const dropout of s.dropouts) console.log(`    dropout ${dropout.candidateId}: ${dropout.reason}`);
   for (const note of s.notes) console.log(`    ${note}`);
   console.log(`    Integration branch: ${s.branch ?? '-'}`);
-  console.log(`    Patch: ${s.patchPath ?? '-'}`);
+  console.log(`    Patch: ${d && !d.resolved ? 'none, the divergence is not resolved' : s.patchPath ?? '-'}`);
   console.log(`    Mergeable: ${s.mergeable ? 'yes' : 'no'}${s.mergeCheck ? `, git apply --check against HEAD ${s.mergeCheck.targetSha.slice(0, 12)}${s.mergeCheck.applies ? '' : `: ${s.mergeCheck.output.split('\n')[0]}`}` : ''}`);
   if (s.synthesisPath) console.log(`    Report: ${s.synthesisPath}`);
 }
@@ -209,6 +211,8 @@ function printReframe(record: CodeRunRecord): void {
     console.log(`    ${d.trigger}: ${d.detail}`);
     for (const c of d.conflicts) console.log(`      "${c.clause}": ${c.evidence.join('; ')}`);
   }
+  const g = r.grafting;
+  if (g) console.log(`    Grafting was tried first on ${g.branch} (${g.applied} applied, ${g.rejected} rejected): ${g.outcome}; the branch is kept for inspection`);
   console.log(`\n  Questions (${r.source === 'phraser' ? `phrased by ${r.phraser}` : 'written from the evidence'}):`);
   r.questions.forEach((q, i) => console.log(`    ${i + 1}. On "${q.clause}": ${q.question}`));
   for (const note of r.notes) console.log(`    ${note}`);

@@ -45,6 +45,7 @@ describe('detectDivergence', () => {
       trigger: 'disjoint-survival',
       detail: 'each candidate that passes the gates fails different adversarial tests: claude fails openai-1; codex fails anthropic-1',
       conflicts: [{ clause: LINE, evidence: ['claude passes anthropic-1, fails openai-1', 'codex passes openai-1, fails anthropic-1'] }],
+      tests: ['openai-1', 'anthropic-1'],
     }]);
   });
 
@@ -156,5 +157,16 @@ describe('reframe questions', () => {
     expect(md).toContain(`1. On "${LINE}": Hyphen or underscore?`);
     expect(md).toContain('## Notes\n\n- a note');
     expect(reframeMarkdown({ ...reframe, source: 'fallback' }, { id: 'r1', task: 't', baseSha: 'abc' })).toContain('Written from the evidence, without a phraser\'s answer.');
+    expect(md).not.toContain('## Grafting');
+  });
+
+  it('should say in reframe.md that grafting was tried first, what it left, and where the integration branch is', () => {
+    const reframe: Reframe = {
+      divergence: [divergence], questions: [], phraser: null, source: 'fallback', notes: [], reportPath: null,
+      grafting: { branch: 'concilium/r1/integration', headSha: 'f00d', applied: 1, rejected: 1, outcome: 'at the integration head openai-1 is fail', synthesisPath: '/runs/r1/synthesis.md' },
+    };
+    expect(reframeMarkdown(reframe, { id: 'r1', task: 't', baseSha: 'abc' })).toContain(
+      '## Grafting\n\nGrafting was tried first on `concilium/r1/integration` (1 applied, 1 rejected): at the integration head openai-1 is fail. The branch is kept at `f00d` for inspection; see `/runs/r1/synthesis.md`.',
+    );
   });
 });

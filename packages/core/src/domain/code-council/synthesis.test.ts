@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { graftPrompt, integratorBrief, parseGraftAnswer, synthesisMarkdown, type Graft, type Synthesis } from './synthesis.js';
+import { graftPrompt, integratorBrief, parseGraftAnswer, settleDivergence, synthesisMarkdown, type Graft, type Synthesis } from './synthesis.js';
 
 describe('graftPrompt', () => {
   it('should hold the task, the base and each other candidate by letter with its evidence and diff, and ask for JSON only', () => {
@@ -104,6 +104,20 @@ describe('synthesisMarkdown', () => {
     expect(md).toContain('- gate test: pass\n- adversarial test openai-1: pass');
     expect(md).toContain('- Patch: `/data/runs/r/result.patch` (`bbbbbbbbbbbb..r2`)');
     expect(md).toContain('- Mergeable: yes, `git apply --check` against `HEAD` at `tip`');
+  });
+
+  it('should say when grafting was tried to settle a divergence, and whether it did', () => {
+    const resolved = settleDivergence({ sha: 'h', gates: { test: 'pass', lint: 'fail' }, tests: { 'openai-1': 'pass' } }, ['openai-1'], { test: 'pass', lint: 'fail' });
+    expect(resolved).toEqual({ tests: ['openai-1'], resolved: true, reason: 'the integration head passes the gates and every conflicting test (openai-1)' });
+    const md = synthesisMarkdown({ ...synthesis, divergence: resolved }, { id: 'r', task: 't', baseSha: 'b' });
+    expect(md).toContain('## Divergence\n\nThe candidates diverged (disjoint-survival on openai-1), so grafting was tried before a reframe.\n\nResolved: the integration head passes the gates and every conflicting test (openai-1).');
+
+    // A gate that passes on the base and not here, or a conflicting test that does not pass, leaves it unresolved.
+    const open = settleDivergence({ sha: 'h', gates: { test: 'fail' }, tests: { 'openai-1': 'pass' } }, ['openai-1', 'anthropic-1'], { test: 'pass' });
+    expect(open).toEqual({ tests: ['openai-1', 'anthropic-1'], resolved: false, reason: 'at the integration head gate test is fail, anthropic-1 is error' });
+    const unresolved = synthesisMarkdown({ ...synthesis, divergence: open, patchPath: null, mergeable: false, mergeCheck: null }, { id: 'r', task: 't', baseSha: 'b' });
+    expect(unresolved).toContain('Not resolved: at the integration head gate test is fail, anthropic-1 is error. No patch was kept: the run needs a reframe (see `reframe.md`).');
+    expect(unresolved).toContain('- Patch: none');
   });
 
   it('should say why it was skipped, and why a patch is not mergeable', () => {
