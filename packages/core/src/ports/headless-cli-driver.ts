@@ -15,6 +15,8 @@ export type CliDetection = {
   version?: string;
   auth?: CliAuth;
   notes?: string;
+  /** A reason not to pick this CLI by default, such as a login its vendor's terms do not cover. */
+  warning?: string;
 };
 
 export type DriverRunOptions = {

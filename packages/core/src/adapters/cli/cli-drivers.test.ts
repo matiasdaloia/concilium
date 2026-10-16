@@ -50,8 +50,10 @@ describe('status parsers', () => {
     const list = '┌  Credentials ~/.local/share/opencode/auth.json\n│\n\x1B[2m●\x1B[0m  Anthropic oauth\n│\n●  OpenAI api\n│\n└  2 credentials';
     expect(parseOpenCodeAuthList(ok(list))).toEqual({
       auth: 'subscription',
-      notes: 'oauth: Anthropic; Anthropic terms do not cover Claude subscription login in OpenCode',
+      notes: 'oauth: Anthropic',
+      warning: 'Anthropic terms do not cover Claude subscription login in OpenCode',
     });
+    expect(parseOpenCodeAuthList(ok('●  OpenAI oauth\n└  1 credentials'))).toEqual({ auth: 'subscription', notes: 'oauth: OpenAI' });
     expect(parseOpenCodeAuthList(ok('●  OpenAI api\n└  1 credentials')).auth).toBe('api-key');
     expect(parseOpenCodeAuthList(ok('┌  Credentials\n└  0 credentials')).auth).toBe('none');
   });

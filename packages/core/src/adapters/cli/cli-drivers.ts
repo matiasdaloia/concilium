@@ -17,7 +17,7 @@ import { captureSubprocess } from './subprocess.js';
 /** Every registered provider is a headless CLI. */
 export type HeadlessCliId = AgentProviderType;
 
-export type AuthStatus = { auth: CliAuth; notes?: string };
+export type AuthStatus = { auth: CliAuth; notes?: string; warning?: string };
 export type StatusOutput = { code: number | null; stdout: string; stderr: string };
 
 const PROBE_TIMEOUT_MS = 10_000;
@@ -60,8 +60,11 @@ export function parseOpenCodeAuthList(out: StatusOutput): AuthStatus {
   const oauth = lines.flatMap((line) => line.match(/●\s+(.+?)\s+oauth\s*$/i)?.[1] ?? []);
   if (oauth.length > 0) {
     const anthropic = oauth.some((p) => /anthropic|claude/i.test(p));
-    const notes = `oauth: ${oauth.join(', ')}${anthropic ? '; Anthropic terms do not cover Claude subscription login in OpenCode' : ''}`;
-    return { auth: 'subscription', notes };
+    return {
+      auth: 'subscription',
+      notes: `oauth: ${oauth.join(', ')}`,
+      ...(anthropic && { warning: 'Anthropic terms do not cover Claude subscription login in OpenCode' }),
+    };
   }
   if (lines.some((line) => /●\s+.+\s+api\s*$/i.test(line) || /_API_KEY\b/.test(line))) return { auth: 'api-key' };
   if (lines.some((line) => /\b0 credentials\b/i.test(line))) return { auth: 'none', notes: 'no credentials: run `opencode auth login`' };
