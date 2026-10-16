@@ -36,23 +36,24 @@ export async function runCouncilStages(options: {
   stage1Results: Stage1Result[];
   callbacks?: CouncilProgressCallbacks;
   llmGateway: LlmGateway;
+  /** Aborts the juror and chairman calls when the run is cancelled. */
+  signal?: AbortSignal;
 }): Promise<[Stage2Result[], Stage3Result, RunMetadata]> {
-  const { config, userPrompt, stage1Results, callbacks, llmGateway } = options;
+  const { config, userPrompt, stage1Results, callbacks, llmGateway, signal } = options;
   const notes: string[] = [];
 
   log.info(`runCouncilStages: starting with ${stage1Results.length} stage1 results`);
   log.debug(`runCouncilStages: council models:`, config.councilModels);
   log.debug(`runCouncilStages: chairman model:`, config.chairmanModel);
-  log.debug(`runCouncilStages: API key present:`, !!config.openRouterApiKey);
 
-  if (!config.openRouterApiKey) {
-    log.error('runCouncilStages: OPENROUTER_API_KEY is missing!');
-    notes.push('OPENROUTER_API_KEY is missing, Stage 2 and Stage 3 were skipped.');
+  if (config.councilModels.length === 0) {
+    log.error('runCouncilStages: no juror is available!');
+    notes.push('No juror is available, Stage 2 and Stage 3 were skipped.');
     return [
       [],
       {
         model: 'chairman-unavailable',
-        response: 'Stage 2/3 are unavailable because OPENROUTER_API_KEY is not configured. Showing Stage 1 output only.',
+        response: 'Stage 2/3 are unavailable because no juror is available. Showing Stage 1 output only.',
       },
       { labelToModel: {}, aggregateRankings: [], notes },
     ];
@@ -90,6 +91,7 @@ export async function runCouncilStages(options: {
       if (timing) timing.endedAt = new Date().toISOString();
       callbacks?.onRankingModelComplete?.(model, success, usage);
     },
+    signal,
   );
 
   log.debug('runCouncilStages: ranking queries completed, processing results...');
@@ -144,7 +146,7 @@ export async function runCouncilStages(options: {
   log.debug(`runCouncilStages: synthesis prompt length: ${synthesisPrompt.length} chars`);
 
   const chairmanStartedAt = new Date().toISOString();
-  const synthesis = await llmGateway.query(config.chairmanModel, [{ role: 'user', content: synthesisPrompt }], 180_000);
+  const synthesis = await llmGateway.query(config.chairmanModel, [{ role: 'user', content: synthesisPrompt }], 180_000, signal);
   const chairmanEndedAt = new Date().toISOString();
 
   if (!synthesis) {

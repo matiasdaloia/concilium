@@ -40,6 +40,8 @@ export interface DeliberationDeps {
   config: CouncilConfig;
   runRepository: RunRepository;
   events: DeliberationEvents;
+  /** Notes from choosing the council (`resolveCouncil`), added to every run's notes. */
+  councilNotes?: string[];
 }
 
 export class DeliberationService {
@@ -131,6 +133,7 @@ export class DeliberationService {
         userPrompt: input.prompt,
         stage1Results,
         llmGateway: this.deps.llmGateway,
+        signal: controller.signal,
         callbacks: {
           onRankingModelStart: (model) => this.deps.events.onJurorStatus(model, 'evaluating'),
           onRankingModelChunk: (model, chunk) => this.deps.events.onJurorChunk(model, chunk),
@@ -166,6 +169,8 @@ export class DeliberationService {
         };
       }
       metadata.modelSnapshots = modelSnapshots;
+      const notes = [...(this.deps.councilNotes ?? []), ...(metadata.notes ?? [])];
+      if (notes.length > 0) metadata.notes = notes;
 
       const selectedAgents = agentConfigs.map((c) => c.id);
 

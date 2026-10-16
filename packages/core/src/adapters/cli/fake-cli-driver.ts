@@ -14,6 +14,8 @@ export type FakeCliDriverOptions = {
   detection?: CliDetection;
   /** Streamed in order by every run. */
   events?: RunEvent[];
+  /** Picks the events per run instead of `events`, e.g. a fake juror that reads the brief. */
+  respond?: (brief: Brief) => RunEvent[] | Promise<RunEvent[]>;
   /** Defaults to `rate_limited` if a rate_limit event was streamed, `error` if an error was, else `ok`. */
   status?: ReportStatus;
 };
@@ -37,8 +39,9 @@ export class FakeCliDriver implements HeadlessCliDriver {
     const startedAt = Date.now();
     const streamed: RunEvent[] = [];
     let status = this.options.status;
+    const events = this.options.respond ? await this.options.respond(brief) : (this.options.events ?? []);
 
-    for (const event of this.options.events ?? []) {
+    for (const event of events) {
       if (opts.signal.aborted) {
         status = 'aborted';
         break;

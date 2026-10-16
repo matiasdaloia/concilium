@@ -15,7 +15,9 @@ export { RunController, runAgentsParallel, agentBrief, toParsedEvent, AGENT_TIME
 export type { AgentModelInfo, RunnerCallbacks } from './domain/agent/agent-executor.js';
 
 export type { CouncilConfig } from './domain/council/council-config.js';
-export { DEFAULT_COUNCIL_MODELS, DEFAULT_CHAIRMAN_MODEL, OPENROUTER_API_URL } from './domain/council/council-config.js';
+export { OPENROUTER_API_URL } from './domain/council/council-config.js';
+export { parseCouncilMember, memberFamily, resolveCouncil } from './domain/council/council-members.js';
+export type { CouncilMember, ResolvedCouncil } from './domain/council/council-members.js';
 export type { Stage1Result, Stage2Result, Stage3Result, CouncilTokenUsage } from './domain/council/stage-results.js';
 export type { OpenRouterModelInfo } from './domain/council/model-info.js';
 export { formatPricing, getProviderFromId } from './domain/council/model-info.js';
@@ -50,6 +52,7 @@ export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
 export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
 export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
 export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
+export { CliCouncilGateway, councilBrief, COUNCIL_PROMPT_FILE, COUNCIL_TIMEOUT_MS } from './adapters/cli/cli-council-gateway.js';
 export { CliDriver, createHeadlessCliDrivers, parseOpenCodeModels } from './adapters/cli/cli-drivers.js';
 export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';

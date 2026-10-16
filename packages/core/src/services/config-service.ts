@@ -1,9 +1,5 @@
 import type { CouncilConfig } from '../domain/council/council-config.js';
-import {
-  DEFAULT_COUNCIL_MODELS,
-  DEFAULT_CHAIRMAN_MODEL,
-  OPENROUTER_API_URL,
-} from '../domain/council/council-config.js';
+import { OPENROUTER_API_URL } from '../domain/council/council-config.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { SecretStore } from '../ports/secret-store.js';
 import { createLogger } from '../shared/logger.js';
@@ -16,7 +12,10 @@ export class ConfigService {
     private secretStore: SecretStore,
   ) {}
 
-  /** Per setting, highest first: `overrides` (CLI flags, `deliberate()` options), env var, saved config, default. */
+  /**
+   * Per setting, highest first: `overrides` (CLI flags, `deliberate()` options), env var, saved config, default.
+   * Jurors and chairman default to empty, which the runtime fills in from the installed agent CLIs.
+   */
   async resolve(overrides: Partial<CouncilConfig> = {}): Promise<CouncilConfig> {
     // Check environment variables first
     const envApiKey = process.env.OPENROUTER_API_KEY ?? '';
@@ -44,21 +43,15 @@ export class ConfigService {
     const apiKey = envApiKey || prefApiKey;
     const apiUrl = envApiUrl || OPENROUTER_API_URL;
 
-    let councilModels: string[];
-    if (envCouncilModels) {
-      councilModels = envCouncilModels.split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (prefCouncilModels.length > 0) {
-      councilModels = prefCouncilModels;
-    } else {
-      councilModels = DEFAULT_COUNCIL_MODELS;
-    }
+    const envCouncil = envCouncilModels.split(',').map((s) => s.trim()).filter(Boolean);
+    const councilModels = envCouncil.length > 0 ? envCouncil : prefCouncilModels;
 
-    const chairmanModel = envChairmanModel || prefs.chairmanModel || DEFAULT_CHAIRMAN_MODEL;
+    const chairmanModel = envChairmanModel || prefs.chairmanModel || '';
 
     return {
       openRouterApiKey: apiKey,
       openRouterApiUrl: apiUrl,
-      councilModels: councilModels.length > 0 ? councilModels : DEFAULT_COUNCIL_MODELS,
+      councilModels,
       chairmanModel,
       ...overrides,
     };
