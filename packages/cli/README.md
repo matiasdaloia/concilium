@@ -199,12 +199,13 @@ concilium config [subcommand]
 | `reset` | Reset all config to defaults |
 | `path` | Print the config directory path |
 
-**Configuration priority** (highest wins):
+**Configuration priority** (highest wins, per setting):
 
-1. Environment variable `OPENROUTER_API_KEY`
-2. CLI flags (`--chairman`, `--juror-models`)
-3. Saved config (`concilium config set ...`)
-4. Built-in defaults
+1. Environment variables: `OPENROUTER_API_KEY`, `COUNCIL_MODELS` (jurors), `CHAIRMAN_MODEL`, `OPENROUTER_API_URL`
+2. Saved config (`concilium config set ...`)
+3. Built-in defaults
+
+Known issues: `run --chairman` and `run --juror-models` are currently not applied; the saved or environment models are used instead. `config set` replaces the other saved settings, so set the API key last or use the environment variables.
 
 **Examples:**
 
