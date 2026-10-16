@@ -11,6 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { AgentResult } from '../domain/agent/agent-result.js';
 import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
+import type { CouncilConfig } from '../domain/council/council-config.js';
 import {
   DEFAULT_CHAIRMAN_MODEL,
   DEFAULT_COUNCIL_MODELS,
@@ -24,14 +25,12 @@ import { ConfigService } from './config-service.js';
 import { createConciliumRuntime } from './create-concilium.js';
 
 /*
- * Actual precedence today, highest wins, per setting:
+ * Precedence, highest wins, per setting. Overrides are `run` flags and `deliberate()` options.
  *
- *   API key:   OPENROUTER_API_KEY  > saved config (`config set api-key`) > '' (none)
- *   API URL:   OPENROUTER_API_URL  > built-in default (no saved setting exists)
- *   Jurors:    COUNCIL_MODELS      > saved config (`config set jurors`)  > built-in defaults
- *   Chairman:  CHAIRMAN_MODEL      > saved config (`config set chairman`) > built-in default
- *
- * The `run --juror-models` and `--chairman` flags are not applied (see the skipped test below).
+ *   API key:   override (`apiKey`)                   > OPENROUTER_API_KEY > saved config (`config set api-key`)  > '' (none)
+ *   API URL:   OPENROUTER_API_URL > built-in default (no flag or saved setting exists)
+ *   Jurors:    override (`--juror-models`, `councilModels`) > COUNCIL_MODELS     > saved config (`config set jurors`)   > built-in defaults
+ *   Chairman:  override (`--chairman`, `chairmanModel`)     > CHAIRMAN_MODEL     > saved config (`config set chairman`) > built-in default
  */
 
 const ENV_VARS = ['OPENROUTER_API_KEY', 'OPENROUTER_API_URL', 'COUNCIL_MODELS', 'CHAIRMAN_MODEL'] as const;
@@ -122,12 +121,40 @@ describe('ConfigService.resolve precedence', () => {
     });
   });
 
-  // BUG (found by this test, not fixed): `run --juror-models` and `--chairman` reach
-  // createDeliberationService as overrides, but DeliberationService resolves the config
-  // again and asks the saved/env jurors and chairman instead.
-  it.skip('should ask the juror and chairman models passed as run overrides', async () => {
+  it('should prefer explicit overrides over environment variables', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'sk-env');
+    vi.stubEnv('COUNCIL_MODELS', 'env/j1');
+    vi.stubEnv('CHAIRMAN_MODEL', 'env/chair');
+
+    const resolved = await service().resolve({ councilModels: ['flag/j1'], chairmanModel: 'flag/chair' });
+
+    expect(resolved.councilModels).toEqual(['flag/j1']);
+    expect(resolved.chairmanModel).toBe('flag/chair');
+    expect(resolved.openRouterApiKey).toBe('sk-env');
+  });
+
+  it('should ask the juror and chairman models passed as run overrides', async () => {
     await service().saveCouncilConfig({ apiKey: 'sk-saved', councilModels: ['saved/j1'], chairmanModel: 'saved/chair' });
-    const requested = stubOpenRouter();
+    vi.stubEnv('COUNCIL_MODELS', 'env/j1');
+    vi.stubEnv('CHAIRMAN_MODEL', 'env/chair');
+
+    const { models } = await runThroughRuntime({ councilModels: ['flag/j1', 'flag/j2'], chairmanModel: 'flag/chair' });
+
+    expect(models.sort()).toEqual(['flag/chair', 'flag/j1', 'flag/j2']);
+  });
+
+  it('should judge with the API key passed as a run override when none is configured', async () => {
+    await service().saveCouncilConfig({ councilModels: ['saved/j1'], chairmanModel: 'saved/chair' });
+
+    const { models, authorizations } = await runThroughRuntime({ openRouterApiKey: 'sk-flag' });
+
+    expect(models.sort()).toEqual(['saved/chair', 'saved/j1']);
+    expect(new Set(authorizations)).toEqual(new Set(['Bearer sk-flag']));
+  });
+
+  /** Runs two fake agents through `createConciliumRuntime` with the given overrides; returns what OpenRouter received. */
+  async function runThroughRuntime(overrides: Partial<CouncilConfig>): Promise<OpenRouterRequests> {
+    const requests = stubOpenRouter();
     const runtime = createConciliumRuntime({
       configStore,
       secretStore,
@@ -136,10 +163,7 @@ describe('ConfigService.resolve precedence', () => {
     runtime.providers.set('claude', new FixedPlanProvider('claude'));
     runtime.providers.set('codex', new FixedPlanProvider('codex'));
 
-    const deliberation = await runtime.createDeliberationService(silentEvents(), {
-      councilModels: ['flag/j1', 'flag/j2'],
-      chairmanModel: 'flag/chair',
-    });
+    const deliberation = await runtime.createDeliberationService(silentEvents(), overrides);
     await deliberation.run({
       prompt: 'task',
       cwd: dir,
@@ -148,17 +172,19 @@ describe('ConfigService.resolve precedence', () => {
         { instanceId: 'b', provider: 'codex', model: '', enabled: true },
       ],
     });
-
-    expect(requested.sort()).toEqual(['flag/chair', 'flag/j1', 'flag/j2']);
-  });
+    return requests;
+  }
 });
 
-/** Replaces fetch with a fake OpenRouter that ranks Response A first; returns the requested model ids. */
-function stubOpenRouter(): string[] {
-  const requested: string[] = [];
-  vi.stubGlobal('fetch', async (_url: string, init: { body: string }) => {
+type OpenRouterRequests = { models: string[]; authorizations: string[] };
+
+/** Replaces fetch with a fake OpenRouter that ranks Response A first; records the requested models and auth headers. */
+function stubOpenRouter(): OpenRouterRequests {
+  const requested: OpenRouterRequests = { models: [], authorizations: [] };
+  vi.stubGlobal('fetch', async (_url: string, init: { body: string; headers: Record<string, string> }) => {
     const body = JSON.parse(init.body) as { model: string; stream?: boolean };
-    requested.push(body.model);
+    requested.models.push(body.model);
+    requested.authorizations.push(init.headers.Authorization);
     const content = 'FINAL RANKING:\n1. Response A\n2. Response B';
     if (body.stream) {
       const chunk = JSON.stringify({ choices: [{ delta: { content } }] });

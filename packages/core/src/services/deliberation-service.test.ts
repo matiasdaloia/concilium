@@ -19,6 +19,7 @@ import { JsonConfigStore } from '../adapters/json-config-store.js';
 import { JsonRunRepository } from '../adapters/json-run-repository.js';
 import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
 import { setLogLevel } from '../shared/logger.js';
+import { ConfigService } from './config-service.js';
 import { DeliberationService } from './deliberation-service.js';
 
 const PROMPT = 'Add rate limiting to the API';
@@ -185,19 +186,18 @@ describe('DeliberationService (offline, fake providers)', () => {
     await rm(tmp, { recursive: true, force: true });
   });
 
-  function createService(
+  async function createService(
     plans: Record<string, string | Error>,
     events: DeliberationEvents,
     pricedModels: OpenRouterModelInfo[] = [],
-  ): DeliberationService {
+  ): Promise<DeliberationService> {
     const providers = new Map<string, AgentProvider>(
       Object.entries(plans).map(([id, plan]) => [id, new FakeAgentProvider(id as AgentProviderType, plan)]),
     );
     return new DeliberationService({
       providers,
       llmGateway: new FakeLlmGateway(PLANS.codex, pricedModels),
-      configStore,
-      secretStore,
+      config: await new ConfigService(configStore, secretStore).resolve(),
       runRepository,
       events,
     });
@@ -205,7 +205,7 @@ describe('DeliberationService (offline, fake providers)', () => {
 
   it('should run all three stages and persist the run', async () => {
     const events = recordEvents();
-    const record = await createService(PLANS, events).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
+    const record = await (await createService(PLANS, events)).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
 
     expect(record.prompt).toBe(PROMPT);
     expect(record.stage1).toEqual([
@@ -233,7 +233,8 @@ describe('DeliberationService (offline, fake providers)', () => {
 
   it('should fall back to the surviving plan when only one agent succeeds', async () => {
     const events = recordEvents();
-    const record = await createService({ claude: PLANS.claude, codex: new Error('codex crashed') }, events).run({
+    const service = await createService({ claude: PLANS.claude, codex: new Error('codex crashed') }, events);
+    const record = await service.run({
       prompt: PROMPT,
       agentInstances: AGENTS,
       cwd: tmp,
@@ -249,7 +250,7 @@ describe('DeliberationService (offline, fake providers)', () => {
   it('should skip judging and synthesis when no OpenRouter key is configured', async () => {
     await configStore.saveCouncilConfigPrefs({ councilModels: JURORS, chairmanModel: CHAIRMAN });
     const events = recordEvents();
-    const record = await createService(PLANS, events).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
+    const record = await (await createService(PLANS, events)).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
 
     expect(record.stage1).toHaveLength(2);
     expect(record.stage2).toEqual([]);
@@ -259,7 +260,7 @@ describe('DeliberationService (offline, fake providers)', () => {
 
   it('should report an error and persist nothing when every agent fails', async () => {
     const events = recordEvents();
-    const service = createService({ claude: new Error('down'), codex: new Error('down') }, events);
+    const service = await createService({ claude: new Error('down'), codex: new Error('down') }, events);
 
     await expect(service.run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp })).rejects.toThrow(
       'All agents failed or were aborted. No responses to judge.',
@@ -274,7 +275,7 @@ describe('DeliberationService (offline, fake providers)', () => {
       { instanceId: 'opencode-1', provider: 'opencode', model: '', enabled: true },
       { instanceId: 'opencode-2', provider: 'opencode', model: '', enabled: true },
     ];
-    const record = await createService({ opencode: PLANS.claude }, recordEvents()).run({
+    const record = await (await createService({ opencode: PLANS.claude }, recordEvents())).run({
       prompt: PROMPT,
       agentInstances: agents,
       cwd: tmp,
@@ -293,7 +294,7 @@ describe('DeliberationService (offline, fake providers)', () => {
       { id: 'openai/gpt-5.2-codex', name: 'GPT-5.2 Codex', context_length: 1, pricing: { prompt: 2, completion: 8 } },
     ];
     const agents = [agent('claude', ''), agent('codex', 'openai/gpt-5.2-codex')];
-    const record = await createService(PLANS, recordEvents(), pricedModels).run({
+    const record = await (await createService(PLANS, recordEvents(), pricedModels)).run({
       prompt: PROMPT,
       agentInstances: agents,
       cwd: tmp,

@@ -16,7 +16,8 @@ export class ConfigService {
     private secretStore: SecretStore,
   ) {}
 
-  async resolve(): Promise<CouncilConfig> {
+  /** Per setting, highest first: `overrides` (CLI flags, `deliberate()` options), env var, saved config, default. */
+  async resolve(overrides: Partial<CouncilConfig> = {}): Promise<CouncilConfig> {
     // Check environment variables first
     const envApiKey = process.env.OPENROUTER_API_KEY ?? '';
     const envCouncilModels = process.env.COUNCIL_MODELS ?? '';
@@ -59,6 +60,7 @@ export class ConfigService {
       openRouterApiUrl: apiUrl,
       councilModels: councilModels.length > 0 ? councilModels : DEFAULT_COUNCIL_MODELS,
       chairmanModel,
+      ...overrides,
     };
   }
 
