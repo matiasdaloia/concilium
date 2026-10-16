@@ -11,7 +11,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { PROVIDER_IDS } from '@concilium/core';
+import { PROVIDER_IDS, type RunRecord } from '@concilium/core';
 
 const cliRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -37,6 +37,39 @@ function runCli(...args: string[]): string {
     encoding: 'utf8',
     env: sandboxEnv,
   });
+}
+
+/**
+ * A fake agent CLI as a Node script. Its shebang names node directly, so PATH can hold only the fake CLIs.
+ * It answers `--version` and the auth status commands as signed in. A run logs its argv to `argvLog`, then prints,
+ * in the CLI's own JSON stream format: a plan as an agent, `Response A > B > C` as a juror, or a synthesis as the
+ * chairman. Juror and chairman briefs point at `council-prompt.md` in the run's cwd.
+ */
+function fakeAgentCli(cli: string, argvLog: string): string {
+  return `#!${process.execPath}
+const fs = require('node:fs');
+const cli = ${JSON.stringify(cli)};
+const argv = process.argv.slice(2);
+const args = argv.join(' ');
+if (args === '--version') { console.log('1.0.0'); process.exit(0); }
+if (args === 'auth status') { console.log('{"loggedIn":true,"authMethod":"claude.ai"}'); process.exit(0); }
+if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
+fs.appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify({ cli, argv }) + '\\n');
+let text = 'Plan from ' + cli;
+if (args.includes('council-prompt.md')) {
+  const prompt = fs.readFileSync('council-prompt.md', 'utf8');
+  text = prompt.includes('provide your code review and ranking')
+    ? 'FINAL RANKING:\\n1. Response A\\n2. Response B\\n3. Response C'
+    : 'Synthesis from ' + cli;
+}
+const usage = { input_tokens: 10, output_tokens: 5 };
+const lines = {
+  claude: [{ type: 'result', subtype: 'success', is_error: false, result: text, usage }],
+  codex: [{ type: 'item.completed', item: { type: 'agent_message', text } }, { type: 'turn.completed', usage }],
+  gemini: [{ type: 'message', role: 'assistant', content: text, delta: true }, { type: 'result', status: 'success', stats: { input_tokens: 10, output_tokens: 5 } }],
+}[cli];
+for (const line of lines) console.log(JSON.stringify(line));
+`;
 }
 
 describe('concilium bin (from source)', () => {
@@ -76,6 +109,41 @@ describe('concilium bin (from source)', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('{"error":"All agents failed');
     expect(result.stdout).toBe('');
+  });
+
+  it('should complete all three stages on claude, codex and gemini with no API key', () => {
+    const binDir = join(sandbox, 'council-bin');
+    const argvLog = join(sandbox, 'council-argv.jsonl');
+    mkdirSync(binDir, { recursive: true });
+    for (const cli of ['claude', 'codex', 'gemini']) {
+      writeFileSync(join(binDir, cli), fakeAgentCli(cli, argvLog), { mode: 0o755 });
+    }
+
+    // PATH holds only the fake CLIs; the env has no OPENROUTER_API_KEY and HOME is the sandbox.
+    const result = spawnSync(
+      process.execPath,
+      ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', '--agents', 'claude,codex,gemini', 'Add rate limiting'],
+      { cwd: sandbox, encoding: 'utf8', env: { ...sandboxEnv, PATH: binDir } },
+    );
+
+    expect(result.stderr).not.toContain('"error"');
+    expect(result.status).toBe(0);
+    const record = JSON.parse(result.stdout) as RunRecord;
+    expect(record.stage1).toEqual([
+      { model: 'claude', response: 'Plan from claude' },
+      { model: 'codex', response: 'Plan from codex' },
+      { model: 'gemini', response: 'Plan from gemini' },
+    ]);
+    expect(record.stage2.map((r) => r.model)).toEqual(['claude', 'codex', 'gemini']);
+    expect(record.metadata.aggregateRankings.map((r) => r.model)).toEqual(['claude', 'codex', 'gemini']);
+    expect(record.stage3).toMatchObject({ model: 'gemini', response: 'Synthesis from gemini' });
+    expect(record.metadata.notes).toBeUndefined();
+
+    // 3 agents + 3 jurors + 1 chairman, every one in its CLI's read-only mode.
+    const runs = readFileSync(argvLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { cli: string; argv: string[] });
+    expect(runs).toHaveLength(7);
+    const readOnlyFlag: Record<string, string> = { claude: '--permission-mode=plan', codex: '--sandbox=read-only', gemini: '--approval-mode=default' };
+    for (const { cli, argv } of runs) expect(argv).toContain(readOnlyFlag[cli]);
   });
 
   it('should report each agent CLI in doctor --json and exit 0 when some are missing', () => {
