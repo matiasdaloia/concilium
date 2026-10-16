@@ -53,3 +53,11 @@ A council run is one-shot and non-interactive (brief in, report out), so session
   - `opencode run --format json`
 - Normalize to a few events (text, tool, usage, error/rate_limit, done).
 - **Keep ACP as the planned uniform path** if Concilium later needs multi-turn sessions or interactive approvals: Gemini, OpenCode and Codex (adapter) speak ACP, and so does Claude through Zed's adapter. Don't adopt the Claude Agent SDK as the core abstraction (it is Claude-only, and its docs direct product builders to API keys).
+
+### Addendum: Crystal and opcode (read 2026-10-16)
+
+- **Crystal (now Nimbalyst)**, https://github.com/stravu/crystal: spawns `claude --verbose --output-format stream-json` per session (`main/src/services/panels/claude/claudeCodeManager.ts`), parses Codex JSON output the same way (`panels/codex/codexManager.ts`), and gives each session its own git worktree.
+- **opcode (formerly Claudia)**, https://github.com/winfunc/opcode: a Tauri app that spawns `claude ... --output-format stream-json` (`src-tauri/src/commands/claude.rs`, `web_server.rs`).
+- **Conductor**: closed source, so its code was not inspected.
+
+These confirm the M1 choice: every app here relies on the CLI's own login plus its headless JSON stream.
