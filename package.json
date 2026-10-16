@@ -5,6 +5,9 @@
     "desktop",
     "website"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build:core": "npm run build --workspace=@concilium/core",
     "build:cli": "npm run build --workspace=@concilium/cli",

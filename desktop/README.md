@@ -4,7 +4,7 @@ Electron desktop application for the Concilium multi-LLM deliberation platform. 
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - macOS 12+ (Apple Silicon or Intel) or Linux
 - An [OpenRouter](https://openrouter.ai/) API key
 - At least one coding agent installed:
