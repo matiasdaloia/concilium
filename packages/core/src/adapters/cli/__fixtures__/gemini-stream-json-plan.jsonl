@@ -1,0 +1,9 @@
+{"type":"init","timestamp":"2026-10-16T09:12:01.114Z","session_id":"7c1f3e0a-52d9-4b8e-9a61-0f2d4c8b9e17","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-16T09:12:01.120Z","role":"user","content":"List the top-level folders."}
+{"type":"tool_use","timestamp":"2026-10-16T09:12:03.402Z","tool_name":"list_directory","tool_id":"list_directory-1760605923402-0","parameters":{"dir_path":"."}}
+{"type":"tool_result","timestamp":"2026-10-16T09:12:03.418Z","tool_id":"list_directory-1760605923402-0","status":"success","output":"Listed 13 item(s)."}
+{"type":"tool_use","timestamp":"2026-10-16T09:12:04.950Z","tool_name":"read_file","tool_id":"read_file-1760605924950-0","parameters":{"file_path":"AGENTS.md"}}
+{"type":"tool_result","timestamp":"2026-10-16T09:12:04.961Z","tool_id":"read_file-1760605924950-0","status":"success","output":""}
+{"type":"message","timestamp":"2026-10-16T09:12:06.233Z","role":"assistant","content":"The top-level folders are assets, desktop, docs,","delta":true}
+{"type":"message","timestamp":"2026-10-16T09:12:06.412Z","role":"assistant","content":" packages, scripts and website.","delta":true}
+{"type":"result","timestamp":"2026-10-16T09:12:06.430Z","status":"success","stats":{"total_tokens":18453,"input_tokens":18210,"output_tokens":243,"cached":12040,"input":6170,"duration_ms":5316,"tool_calls":2}}
