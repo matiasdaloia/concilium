@@ -86,6 +86,11 @@ function emptySynthesis(): Synthesis {
   };
 }
 
+/** A synthesis that did not run, and why. */
+export function skippedSynthesis(skipped: string): Synthesis {
+  return { skipped, ...emptySynthesis() };
+}
+
 /** One read-only CLI run, from another family than the base and the donors when one is usable, names the grafts. */
 async function pickGrafts(ctx: Context, donors: CodeCandidate[], synthesis: Synthesis): Promise<GraftIdea[]> {
   const families = [...new Set([ctx.base, ...donors].map(familyOf))];
@@ -231,7 +236,7 @@ async function applyGraft(ctx: Context, idea: GraftIdea, id: string, head: strin
  * is written to `result.patch`, checked against the target's current `HEAD`, and reported in `synthesis.md`.
  */
 export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
-  const skip = (skipped: string): Synthesis => ({ skipped, ...emptySynthesis() });
+  const skip = skippedSynthesis;
   if (input.type === 'prototype') return skip('a prototype ends in a decision record, not a patch');
   if (input.candidates.length < 2) return skip('fewer than 2 candidates');
   const base = input.candidates.find((c) => c.candidateId === input.ranking.winner);
