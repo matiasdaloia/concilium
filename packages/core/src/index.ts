@@ -89,6 +89,13 @@ export type { CodeFrame } from './domain/code-council/framing.js';
 export { framedTask } from './domain/code-council/framing.js';
 export { runCodeCandidates, codeBrief, newRunId, CODE_TIMEOUT_MS, FRAME_TIMEOUT_MS } from './services/code-service.js';
 export type { CodeAgent, CodeCandidate, CodeRunRecord, CodeRunInput } from './services/code-service.js';
+export type { Gate, GatePlan, GateResult, GateVerdict, InstallStep, StepResult } from './domain/verification/gates.js';
+export { VERIFY_CONFIG, GATE_TIMEOUT_MS, INSTALL_TIMEOUT_MS, detectGates, parseVerifyConfig, planGates, judgeGates } from './domain/verification/gates.js';
+export type { FileDiff, IntegrityFinding, IntegrityRule, ManifestChange } from './domain/verification/integrity.js';
+export { checkIntegrity, parseDiff, isTestFile } from './domain/verification/integrity.js';
+export { GateRunner, type LaneResult } from './adapters/gate-runner.js';
+export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
+export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 

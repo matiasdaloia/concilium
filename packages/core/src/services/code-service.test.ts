@@ -257,3 +257,101 @@ describe('runCodeCandidates', () => {
     expect(await store.load('run5')).toEqual(record);
   });
 });
+
+describe('runCodeCandidates with verify', () => {
+  const SUM_TEST = [
+    "const sum = require('./sum.js');",
+    'const it = (name, fn) => fn();',
+    'it.skip = () => {};',
+    "it('adds', () => { if (sum(1, 2) !== 3) throw new Error('sum(1, 2) is ' + sum(1, 2)); });",
+    '',
+  ].join('\n');
+
+  /** A repo whose test gate passes on the base and whose lint gate already fails there. */
+  function seedGates(): string {
+    writeFileSync(join(repo, 'sum.test.js'), SUM_TEST);
+    writeFileSync(join(repo, 'lint.js'), "console.error('lint: 2 problems'); process.exit(1);\n");
+    mkdirSync(join(repo, '.concilium'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), 'gates:\n  test: node sum.test.js\n  lint: node lint.js\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'gates');
+    return git(repo, 'rev-parse', 'HEAD');
+  }
+
+  /** A fake agent CLI that changes files in its worktree; null deletes the file. */
+  function editor(id: string, files: Record<string, string | null>): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        for (const [name, content] of Object.entries(files)) {
+          if (content === null) rmSync(join(brief.cwd, name));
+          else writeFileSync(join(brief.cwd, name), content);
+        }
+        return [{ type: 'text', text: `${id} done` }];
+      },
+    });
+  }
+
+  it('should hold only new gate failures against a candidate and disqualify one that deletes or skips a test', async () => {
+    const baseSha = seedGates();
+    const drivers = new Map([
+      ['claude', editor('claude', { 'sum.js': 'module.exports = (a, b) => Number(a) + Number(b);\n' })],
+      // Breaks the sum and tries to switch the gates off: the gates come from the base, so that only costs a penalty.
+      ['codex', editor('codex', { 'sum.js': 'module.exports = (a, b) => a - b;\n', '.concilium/verify.yaml': 'gates:\n  test: "true"\n' })],
+      ['gemini', editor('gemini', { 'sum.js': 'module.exports = (a, b) => a - b;\n', 'sum.test.js': null })],
+      ['opencode', editor('opencode', { 'sum.js': 'module.exports = (a, b) => a - b;\n', 'sum.test.js': SUM_TEST.replace("it('adds'", "it.skip('adds'") })],
+    ]);
+    const gateLog: string[] = [];
+
+    const record = await runCodeCandidates({
+      task: 'make sum accept numeric strings', repoDir: repo, runId: 'verify1', drivers, workspace, verify: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }, { provider: 'gemini' }, { provider: 'opencode' }],
+      onGateDone: (lane, result) => gateLog.push(`${lane} ${result.name} ${result.outcome}`),
+    });
+
+    // The gates come from the base's verify.yaml and run once on the base, in its own worktree at baseSha.
+    expect(record.verification!.plan).toMatchObject({ source: 'verify.yaml', gates: [{ name: 'test' }, { name: 'lint' }] });
+    expect(record.verification!.baseline).toMatchObject({ lane: 'base', sha: baseSha });
+    expect(record.verification!.baseline!.gates.map((g) => [g.name, g.outcome, g.sha])).toEqual([['test', 'pass', baseSha], ['lint', 'fail', baseSha]]);
+    expect(record.verification!.baseline!.gates[1]).toMatchObject({ command: 'node lint.js', exitCode: 1, output: 'lint: 2 problems\n' });
+    expect(gateLog.slice(0, 2)).toEqual(['base test pass', 'base lint fail']);
+
+    const [claude, codex, gemini, opencode] = record.candidates;
+    for (const c of record.candidates) expect(c.verification!.gates.every((g) => g.sha === c.headSha)).toBe(true);
+
+    // lint fails everywhere, base included: reported as baseline, never held against a candidate.
+    expect(claude.verification).toMatchObject({ status: 'PASS', newFailures: [], integrity: [], disqualified: false, penalties: 0, errors: [] });
+    expect(claude.verification!.gates.map((g) => [g.name, g.verdict])).toEqual([['test', 'pass'], ['lint', 'baseline-failure']]);
+
+    expect(codex.verification).toMatchObject({ status: 'ISSUES', newFailures: ['test'], disqualified: false, penalties: 1 });
+    expect(codex.verification!.gates[0]).toMatchObject({ name: 'test', command: 'node sum.test.js', outcome: 'fail', verdict: 'new-failure' });
+    expect(codex.verification!.gates[0].output).toContain('sum(1, 2) is -1');
+    expect(codex.verification!.integrity).toEqual([expect.objectContaining({ rule: 'gate-config', path: '.concilium/verify.yaml' })]);
+
+    expect(gemini.verification).toMatchObject({ status: 'ISSUES', newFailures: ['test'], disqualified: true });
+    expect(gemini.verification!.integrity).toEqual([expect.objectContaining({
+      rule: 'deleted-test', severity: 'disqualify', path: 'sum.test.js', evidence: expect.stringContaining("-it('adds'"),
+    })]);
+
+    // Skipping the test makes the gate pass, and disqualifies the candidate.
+    expect(opencode.verification).toMatchObject({ status: 'ISSUES', newFailures: [], disqualified: true });
+    expect(opencode.verification!.integrity).toEqual([expect.objectContaining({
+      rule: 'skipped-test', path: 'sum.test.js', evidence: expect.stringContaining("+it.skip('adds'"),
+    })]);
+
+    // The base lane is a scratch worktree like the candidates', collected by gc with the run.
+    expect(git(repo, 'rev-parse', 'concilium/verify1/base')).toBe(baseSha);
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+    const gc = await workspace.gc({ runId: 'verify1', dryRun: true });
+    expect(gc[0].deletedBranches).toContain('concilium/verify1/base');
+  });
+
+  it('should not verify unless asked', async () => {
+    seedGates();
+    const drivers = new Map([['claude', writer('claude', { 'x.txt': 'x\n' })]]);
+    const record = await runCodeCandidates({ task: 't', repoDir: repo, agents: [{ provider: 'claude' }], runId: 'verify2', drivers, workspace });
+    expect(record.verification).toBeUndefined();
+    expect(record.candidates[0].verification).toBeUndefined();
+    expect(git(repo, 'branch', '--list', 'concilium/verify2/base')).toBe('');
+  });
+});

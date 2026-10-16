@@ -9,6 +9,7 @@ import { framedTask, type CodeFrame } from '../domain/code-council/framing.js';
 import { classifyTask, PLAYBOOKS, type TaskType, type TaskTypeChoice } from '../domain/code-council/playbooks.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
+import type { GateResult } from '../domain/verification/gates.js';
 import type { DriverUsage } from '../domain/driver/normalized-event.js';
 import type { Report, ReportStatus } from '../domain/driver/report.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
@@ -16,6 +17,7 @@ import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
 import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
+import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
 const log = createLogger('code');
 
@@ -48,6 +50,8 @@ export type CodeCandidate = {
   /** What the agent was told, and what it said at the end. */
   brief: Brief | null;
   finalText: string;
+  /** Gates and integrity checks against the base. Absent when the run was not verified, null when there was no head to check. */
+  verification?: CandidateVerification | null;
 };
 
 export type CodeRunRecord = {
@@ -67,6 +71,8 @@ export type CodeRunRecord = {
   /** Frozen before the first candidate started; every candidate brief holds it. */
   rubric: FrozenRubric;
   candidates: CodeCandidate[];
+  /** The gates and the baseline on the base. Absent when the run was not verified. */
+  verification?: RunVerification;
 };
 
 export type CodeRunInput = {
@@ -83,10 +89,13 @@ export type CodeRunInput = {
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
   workspace: WorkspaceManager;
   signal?: AbortSignal;
+  /** After the candidates finish, run the repo's gates on the base and on each candidate, and the integrity checks. */
+  verify?: boolean;
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
   onCandidateDone?: (candidate: CodeCandidate) => void;
+  onGateDone?: (lane: string, result: GateResult) => void;
 };
 
 /** A run id that sorts by start time and is a safe directory and ref component: `20261016T141015-a1b2c3`. */
@@ -237,6 +246,16 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
 
     const ids = candidateIds(input.agents);
     const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i], taskType)));
+
+    let verification: RunVerification | undefined;
+    if (input.verify) {
+      const checkable = candidates.flatMap((c) => (c.worktree && c.headSha ? [{ candidateId: c.candidateId, worktree: c.worktree, headSha: c.headSha }] : []));
+      const result = await verifyCandidates({
+        repoDir, runId, baseSha: base.baseSha, candidates: checkable, workspace: input.workspace, signal, onGateDone: input.onGateDone,
+      });
+      verification = result.run;
+      for (const c of candidates) c.verification = result.candidates.get(c.candidateId) ?? null;
+    }
     return {
       version: 1,
       kind: 'code',
@@ -251,6 +270,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       taskType,
       rubric: frame.rubric,
       candidates,
+      ...(verification ? { verification } : {}),
     };
   } finally {
     await input.workspace.finishRun({ repoDir, runId });
