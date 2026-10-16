@@ -666,7 +666,7 @@ describe('runCodeCandidates ranking', () => {
     expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
   });
 
-  it('should block the judge when the rubric no longer matches its frozen hash, and name no winner for the tie', async () => {
+  it('should block the judge when the rubric no longer matches its frozen hash, and break the tie by the smallest diff', async () => {
     seedTest();
     const prompts: string[] = [];
     const drivers = new Map([
@@ -684,9 +684,24 @@ describe('runCodeCandidates ranking', () => {
     expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'BLOCKED', judge: null, scores: [], totals: {} })]);
     expect(record.ranking.judgments[0].reason).toMatch(/^the rubric does not match its frozen sha256 [0-9a-f]{12} \(its criteria hash to [0-9a-f]{12}\)$/);
     expect(prompts).toEqual([]);
-    expect(record.ranking.order.map((e) => [e.rank, e.candidateId])).toEqual([[1, 'claude'], [1, 'codex']]);
-    expect(record.ranking.winner).toBeNull();
-    expect(record.ranking.reason).toContain('no winner: claude, codex tie on the evidence and the judge is BLOCKED: the rubric does not match');
+    // Both change 2 lines in sum.js, so the candidate id decides.
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.size])).toEqual([[1, 'claude', { lines: 2, files: 1 }], [2, 'codex', { lines: 2, files: 1 }]]);
+    expect(record.ranking.winner).toBe('claude');
+    expect(record.ranking.reason).toMatch(/^tie broken by smallest diff: claude, codex tie on the evidence and the judge is BLOCKED: the rubric does not match .*; claude changes 2 lines in 1 file$/);
+  });
+
+  it('should give an unjudged tie to the candidate with the smallest diff', async () => {
+    seedTest();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER, 'notes.md': 'one\ntwo\n' })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank6', drivers, workspace, verify: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.size])).toEqual([[1, 'codex', { lines: 2, files: 1 }], [2, 'claude', { lines: 4, files: 2 }]]);
+    expect(record.ranking).toMatchObject({ winner: 'codex', judgments: [], reason: 'tie broken by smallest diff: claude, codex tie on the evidence and no judge ran; codex changes 2 lines in 1 file' });
   });
 
   it('should name no winner when every candidate is disqualified', async () => {

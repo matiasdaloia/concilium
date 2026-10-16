@@ -172,8 +172,9 @@ describe('concilium code', () => {
 
     const unjudged = code('--json', '--no-judge', '--agents', 'claude,codex', 'add input validation to sum with a test');
     expect(unjudged.status).toBe(0);
+    // codex adds one line in one file, claude changes three in two: without a judge the smaller diff wins the tie.
     expect((JSON.parse(unjudged.stdout) as CodeRunRecord).ranking).toMatchObject({
-      winner: null, judgments: [], reason: 'no winner: claude, codex tie on the evidence and no judge ran',
+      winner: 'codex', judgments: [], reason: 'tie broken by smallest diff: claude, codex tie on the evidence and no judge ran; codex changes 1 line in 1 file',
     });
 
     // The summary warns about the same-family judge where the ranking is shown.

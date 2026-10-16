@@ -167,7 +167,8 @@ export async function rankRun(input: RankRunInput): Promise<Ranking> {
   const entries: RankInput[] = input.candidates.map((candidate) => {
     const { report, key } = reportCandidate(candidate, { baseSha: input.baseSha, type: input.type, adversarial: input.adversarial });
     candidate.report = report;
-    return { candidateId: candidate.candidateId, status: report.status, key };
+    const d = candidate.diffStat;
+    return { candidateId: candidate.candidateId, status: report.status, key, size: { lines: d ? d.insertions + d.deletions : 0, files: d?.filesChanged ?? 0 } };
   });
 
   const judgments: Judgment[] = [];
