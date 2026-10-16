@@ -49,11 +49,12 @@ Concilium automates the entire process:
 
 - Node.js 22+
 - macOS 12+ (Apple Silicon or Intel) or Linux
-- An [OpenRouter](https://openrouter.ai/) API key (for jurors and synthesis)
-- At least one coding agent installed:
+- At least one coding agent CLI installed and signed in. Agents, jurors and the chairman all run through them, under your own login:
   - [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)
   - [Codex](https://github.com/openai/codex) (OpenAI)
+  - [Gemini CLI](https://github.com/google-gemini/gemini-cli)
   - [OpenCode](https://github.com/sst/opencode)
+- Optional: an [OpenRouter](https://openrouter.ai/) API key, only if you want OpenRouter models as jurors or chairman
 
 ### Installation (users)
 
@@ -63,12 +64,11 @@ Install the CLI globally from npm:
 npm install -g @concilium/cli
 ```
 
-Then configure your API key and run:
+Then check your agent CLIs and run (no API key needed):
 
 ```bash
-concilium config set api-key sk-or-...
-concilium models                # verify agents are detected
-concilium run "Refactor the auth module to use JWT tokens"
+concilium doctor                # which agent CLIs are installed and signed in
+concilium run --agents claude,codex,gemini "Refactor the auth module to use JWT tokens"
 ```
 
 ### Development (contributors)
@@ -88,7 +88,7 @@ Run the CLI in dev mode (uses `tsx`, no build step needed):
 npm run dev -w @concilium/cli -- run "your prompt"
 ```
 
-Configure your API key:
+Optionally, for OpenRouter jurors or chairman, configure an API key:
 
 ```bash
 npx concilium config set api-key sk-or-...
@@ -123,11 +123,11 @@ concilium run "Add input validation to the user registration endpoint"
 concilium run -f prompt.md
 
 # Pick specific agents and models
-concilium run --agents claude,codex,opencode "Fix the race condition in the worker pool"
+concilium run --agents claude,codex,gemini,opencode "Fix the race condition in the worker pool"
 
-# Custom juror models and chairman
-concilium run --juror-models anthropic/claude-sonnet-4,openai/gpt-4.1 \
-              --chairman anthropic/claude-sonnet-4 \
+# Custom jurors and chairman (agent CLIs, or OpenRouter model IDs with an API key)
+concilium run --juror-models claude:opus,codex \
+              --chairman gemini \
               "Design a rate limiter"
 
 # JSON output for scripting
@@ -146,9 +146,9 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium history <id>` | View a specific run |
 | `concilium history --last --synthesis` | Print the last synthesis |
 | `concilium config show` | Show current configuration |
-| `concilium config set api-key` | Set your OpenRouter API key |
-| `concilium config set chairman <model>` | Set the chairman model |
-| `concilium config set jurors <m1,m2,...>` | Set juror models |
+| `concilium config set api-key` | Set the optional OpenRouter API key |
+| `concilium config set chairman <model>` | Set the chairman (`gemini`, `claude:opus`, or an OpenRouter ID) |
+| `concilium config set jurors <m1,m2,...>` | Set the jurors |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |
@@ -169,8 +169,9 @@ Concilium uses a three-stage consensus protocol:
         ▼                       ▼                       ▼
    ┌─────────┐            ┌─────────┐            ┌─────────┐
    │ Claude  │            │ Juror 1 │            │         │
-   │ OpenAI   │            │ Juror 2 │            │ Chairman│
-   │ OpenCode│            │ Juror N │            │         │
+   │ Codex   │            │ Juror 2 │            │ Chairman│
+   │ Gemini  │            │ Juror N │            │         │
+   │ OpenCode│            │         │            │         │
    └─────────┘            └─────────┘            └─────────┘
         │                       │                       │
         └───────────────────────┴───────────────────────┘
@@ -190,8 +191,8 @@ concilium/
 │   ├── core/             # @concilium/core — domain logic, ports, adapters
 │   │   ├── src/
 │   │   │   ├── domain/   # Agent, council, deliberation, run types & logic
-│   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
-│   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
+│   │   │   ├── ports/    # Interfaces (HeadlessCliDriver, LlmGateway, etc.)
+│   │   │   ├── adapters/ # Agent CLI drivers, CLI council gateway, OpenRouter, JSON storage
 │   │   │   ├── services/ # DeliberationService, ConfigService
 │   │   │   └── shared/   # Logger
 │   │   └── package.json

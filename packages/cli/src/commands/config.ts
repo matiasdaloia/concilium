@@ -35,15 +35,16 @@ export function registerConfigCommand(program: Command): void {
         chairmanModel: resolved.chairmanModel,
         configDir: getConfigDir(),
       };
+      const AUTO = 'auto (chosen from the installed agent CLIs at run time)';
 
       if (opts.json) {
         console.log(JSON.stringify(display, null, 2));
       } else {
         console.log(`\n  Configuration:`);
-        console.log(`  API Key:        ${display.openRouterApiKey}`);
+        console.log(`  API Key:        ${display.openRouterApiKey}${resolved.openRouterApiKey ? '' : ' (optional, only for OpenRouter jurors)'}`);
         console.log(`  API URL:        ${display.openRouterApiUrl}`);
-        console.log(`  Juror Models:   ${display.councilModels.join(', ')}`);
-        console.log(`  Chairman:       ${display.chairmanModel}`);
+        console.log(`  Juror Models:   ${display.councilModels.join(', ') || AUTO}`);
+        console.log(`  Chairman:       ${display.chairmanModel || AUTO}`);
         console.log(`  Config Dir:     ${display.configDir}`);
         console.log();
       }
@@ -72,7 +73,7 @@ export function registerConfigCommand(program: Command): void {
         }
         case 'chairman': {
           if (!value) {
-            console.error('Usage: concilium config set chairman <model-id>');
+            console.error('Usage: concilium config set chairman <cli[:model] or OpenRouter model id>');
             process.exit(1);
           }
           await configService.saveCouncilConfig({ chairmanModel: value });
@@ -81,7 +82,7 @@ export function registerConfigCommand(program: Command): void {
         }
         case 'jurors': {
           if (!value) {
-            console.error('Usage: concilium config set jurors <model1,model2,...>');
+            console.error('Usage: concilium config set jurors <member1,member2,...> (cli[:model] or OpenRouter model ids)');
             process.exit(1);
           }
           const models = value.split(',').map((s) => s.trim()).filter(Boolean);

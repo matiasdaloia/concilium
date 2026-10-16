@@ -370,19 +370,18 @@ export default function HomeScreen({
               <div className="hidden md:flex items-center gap-4 text-[11px] font-mono text-text-muted">
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-info"></span>
-                  <span>{councilConfig.councilModels.length} jurors</span>
+                  <span>
+                    {councilConfig.councilModels.length > 0
+                      ? `${councilConfig.councilModels.length} jurors`
+                      : "auto jurors"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-warning"></span>
                   <span className="truncate max-w-[120px]">
-                    {councilConfig.chairmanModel.split("/").pop()}
+                    {councilConfig.chairmanModel.split("/").pop() || "auto chairman"}
                   </span>
                 </div>
-                {!councilConfig.hasApiKey && (
-                  <span className="text-red-error uppercase tracking-wide text-[10px]">
-                    No API Key
-                  </span>
-                )}
               </div>
             )}
             {onOpenAnalytics && (

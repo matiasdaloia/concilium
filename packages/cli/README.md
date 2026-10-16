@@ -30,12 +30,14 @@ npm run dev -w @concilium/cli -- run "your prompt"   # dev mode (tsx, no build n
 ## Quick start
 
 ```bash
-# Set your OpenRouter API key (one-time)
-concilium config set api-key sk-or-v1-...
+# See which agent CLIs are installed and signed in
+concilium doctor
 
-# Run your first deliberation
-concilium run "Add input validation to the user registration endpoint"
+# Run your first deliberation (no API key needed)
+concilium run --agents claude,codex,gemini "Add input validation to the user registration endpoint"
 ```
+
+Every stage runs through the agent CLIs you have installed (Claude Code, Codex, Gemini CLI, OpenCode), under your own login. An OpenRouter API key is optional: set one only if you want OpenRouter models as jurors or chairman.
 
 ## Command reference
 
@@ -59,8 +61,8 @@ concilium run [prompt...] [options]
 |------|-------------|---------|
 | `-f, --file <path>` | Read prompt from a file (`-` for stdin) | — |
 | `--agents <list>` | Agents to use, comma-separated | `opencode,opencode` |
-| `--juror-models <list>` | Juror model IDs (comma-separated OpenRouter IDs) | config default |
-| `--chairman <model>` | Chairman model (OpenRouter model ID) | config default |
+| `--juror-models <list>` | Jurors, comma-separated council members (see below) | config, else every installed agent CLI |
+| `--chairman <model>` | Chairman, one council member (see below) | config, else an installed CLI from another family than most jurors |
 | `--cwd <path>` | Project working directory | current directory |
 | `--json` | Output full run record as JSON | `false` |
 | `--output <file>` | Save the synthesis to a file | — |
@@ -83,7 +85,23 @@ concilium run --agents claude,codex "fix the bug"
 concilium run --agents claude:opus,codex:gpt-5.2-codex,opencode "fix the bug"
 ```
 
-Available providers: `claude`, `codex`, `opencode`
+Available providers: `claude`, `codex`, `gemini`, `opencode`
+
+Stage 1 agents get a read-only plan brief: they can read the project and search the web, never write files or run shell commands.
+
+**Council member format (jurors and chairman):**
+
+Each juror or chairman is either an agent CLI, written like an agent (`claude`, `codex:gpt-5.2`, `gemini`, `opencode:openai/gpt-5.2`), or an OpenRouter model ID (`openai/gpt-5.2`). CLI members run read-only, in an empty temp directory that holds only their prompt. OpenRouter members need an API key; without one they are skipped, with a note in the run.
+
+With no jurors configured, every installed and signed-in CLI with a known model family (`claude`, `codex`, `gemini`) is a juror; OpenCode is used only when none of those is available. With no chairman configured, the chairman is the installed CLI whose family holds the fewest juror seats (ties go to `gemini`, then `codex`, then `claude`).
+
+```bash
+# Jurors and chairman on subscriptions
+concilium run --juror-models claude,codex --chairman gemini "fix the bug"
+
+# Mix in an OpenRouter juror (needs OPENROUTER_API_KEY or `config set api-key`)
+concilium run --juror-models claude,openai/gpt-5.2 "fix the bug"
+```
 
 **Examples:**
 
@@ -147,7 +165,7 @@ concilium run --json "review this PR" --output review.md
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | Required — your OpenRouter API key |
+| `OPENROUTER_API_KEY` | Optional — only for OpenRouter jurors or chairman. The agent CLIs must be installed and signed in on the runner. |
 | `LOG_LEVEL` | Set to `error` to suppress info logs (default in production) |
 | `NODE_ENV` | Set to `production` to default log level to `info` instead of `debug` |
 
@@ -193,9 +211,9 @@ concilium config [subcommand]
 |------------|-------------|
 | `show` | Display current configuration |
 | `show --json` | Output config as JSON |
-| `set api-key [value]` | Set the OpenRouter API key (prompts if value omitted) |
-| `set chairman <model>` | Set the default chairman model |
-| `set jurors <m1,m2,...>` | Set the default juror models |
+| `set api-key [value]` | Set the optional OpenRouter API key (prompts if value omitted) |
+| `set chairman <model>` | Set the default chairman (a council member) |
+| `set jurors <m1,m2,...>` | Set the default jurors (council members) |
 | `reset` | Reset all config to defaults |
 | `path` | Print the config directory path |
 
@@ -204,17 +222,18 @@ concilium config [subcommand]
 1. `run` flags (`--juror-models`, `--chairman`) and the `deliberate()` options (`councilModels`, `chairmanModel`, `apiKey`)
 2. Environment variables: `OPENROUTER_API_KEY`, `COUNCIL_MODELS` (jurors), `CHAIRMAN_MODEL`, `OPENROUTER_API_URL`
 3. Saved config (`concilium config set ...`); each `config set` changes only its own setting
-4. Built-in defaults
+4. Built-in defaults: no API key, and jurors and chairman chosen from the installed agent CLIs at run time
 
 **Examples:**
 
 ```bash
-# Interactive API key prompt
-concilium config set api-key
+# Set specific council members
+concilium config set chairman gemini
+concilium config set jurors claude:opus,codex,opencode:openai/gpt-5.2
 
-# Set specific models
-concilium config set chairman anthropic/claude-sonnet-4
-concilium config set jurors anthropic/claude-sonnet-4,openai/gpt-4.1,google/gemini-2.5-pro
+# OpenRouter members need the API key (interactive prompt)
+concilium config set api-key
+concilium config set jurors anthropic/claude-sonnet-4,openai/gpt-4.1
 
 # Check current config
 concilium config show
@@ -234,8 +253,8 @@ concilium models [options]
 
 | Flag | Description |
 |------|-------------|
-| `--agent <name>` | Filter to a specific agent (`claude`, `codex`, `opencode`) |
-| `--council` | List OpenRouter models available for jurors and chairman |
+| `--agent <name>` | Filter to a specific agent (`claude`, `codex`, `gemini`, `opencode`) |
+| `--council` | List OpenRouter models available for jurors and chairman (needs an API key) |
 | `--json` | Output as JSON |
 
 **Examples:**
@@ -292,7 +311,9 @@ The CLI follows the [XDG Base Directory Specification](https://specifications.fr
 
 | Variable | Description |
 |----------|-------------|
-| `OPENROUTER_API_KEY` | OpenRouter API key (takes priority over saved config) |
+| `OPENROUTER_API_KEY` | Optional OpenRouter API key, for OpenRouter jurors or chairman (takes priority over saved config) |
+| `COUNCIL_MODELS` | Comma-separated jurors (council members) |
+| `CHAIRMAN_MODEL` | Chairman (a council member) |
 | `XDG_CONFIG_HOME` | Override config directory |
 | `XDG_DATA_HOME` | Override data directory |
 | `XDG_CACHE_HOME` | Override cache directory |
@@ -311,9 +332,8 @@ const result = await deliberate({
     { provider: 'claude' },
     { provider: 'opencode' },
   ],
-  apiKey: 'sk-or-v1-...',
-  councilModels: ['anthropic/claude-sonnet-4', 'openai/gpt-4.1'],
-  chairmanModel: 'anthropic/claude-sonnet-4',
+  councilModels: ['claude', 'codex:gpt-5.2'],
+  chairmanModel: 'gemini',
   onProgress: (event) => console.log(event),
   save: true,
 });
@@ -328,9 +348,9 @@ console.log(result.stage3?.response);
 | `prompt` | `string` | Yes | The deliberation prompt |
 | `cwd` | `string` | No | Working directory (defaults to `process.cwd()`) |
 | `agents` | `Array<{ provider, model? }>` | No | Agent list (defaults to 2x opencode) |
-| `apiKey` | `string` | No | OpenRouter API key (overrides env and saved config) |
-| `councilModels` | `string[]` | No | Juror model IDs (overrides env and saved config) |
-| `chairmanModel` | `string` | No | Chairman model ID (overrides env and saved config) |
+| `apiKey` | `string` | No | OpenRouter API key, only for OpenRouter members (overrides env and saved config) |
+| `councilModels` | `string[]` | No | Jurors as council members (overrides env and saved config) |
+| `chairmanModel` | `string` | No | Chairman as a council member (overrides env and saved config) |
 | `onProgress` | `EventHandler` | No | Callback for progress events |
 | `save` | `boolean` | No | Persist run to history (default: `true`) |
 
@@ -385,8 +405,8 @@ The CLI is built on `@concilium/core`, the framework-agnostic domain library tha
 
 ### Three-stage pipeline
 
-1. **Stage 1 — Parallel Execution:** Multiple coding agents (Claude, Codex, OpenCode) receive the same prompt and work independently in the project directory. Each produces a complete solution.
+1. **Stage 1 — Parallel Execution:** Multiple coding agents (Claude Code, Codex, Gemini CLI, OpenCode) receive the same prompt and research the project directory read-only. Each produces an implementation plan.
 
-2. **Stage 2 — Blind Peer Review:** Juror models (via OpenRouter) evaluate all agent responses anonymously. Each juror ranks the responses and provides reasoning. Rankings are aggregated using average rank scoring.
+2. **Stage 2 — Blind Peer Review:** Jurors (agent CLIs, or OpenRouter models when an API key is set) evaluate all agent responses anonymously. Each juror ranks the responses and provides reasoning. Rankings are aggregated using average rank scoring.
 
 3. **Stage 3 — Synthesis:** A chairman model receives all agent responses plus the aggregate rankings, then synthesizes a single answer that combines the best elements from the top-ranked responses.

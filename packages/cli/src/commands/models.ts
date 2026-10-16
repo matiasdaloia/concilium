@@ -15,7 +15,7 @@ export function registerModelsCommand(program: Command): void {
     .command('models')
     .description('List available models')
     .option('--agent <name>', `Models for a specific agent (${PROVIDER_IDS.join(', ')})`)
-    .option('--council', 'OpenRouter models for jurors/chairman')
+    .option('--council', 'OpenRouter models for jurors/chairman (needs an API key)')
     .option('--json', 'Output as JSON')
     .action(async (opts: { agent?: string; council?: boolean; json?: boolean }) => {
       if (opts.council) {
