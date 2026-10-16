@@ -12,6 +12,7 @@ import { registerHistoryCommand } from "../src/commands/history.js";
 import { registerModelsCommand } from "../src/commands/models.js";
 import { registerRolesCommand } from "../src/commands/roles.js";
 import { registerRunCommand } from "../src/commands/run.js";
+import { registerTrailCommand } from "../src/commands/trail.js";
 
 // Walk up to the nearest package.json: bin/ in dev (tsx), dist/bin/ when built.
 function readPackageVersion(): string {
@@ -42,4 +43,5 @@ registerModelsCommand(program);
 registerDoctorCommand(program);
 registerRolesCommand(program);
 registerGcCommand(program);
+registerTrailCommand(program);
 program.parse();

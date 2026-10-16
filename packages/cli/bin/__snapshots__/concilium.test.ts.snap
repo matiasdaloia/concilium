@@ -39,6 +39,10 @@ Options:
                          winner on the integration branch, and write no
                          result.patch or synthesis.md; also skips the divergence
                          check that ends a run in reframe-needed (exit 2)
+  --no-trail-commit      Keep the decision trail (decisions.tsv, dissent.json,
+                         synthesis.md) in the run directory only, instead of
+                         committing it under .concilium/runs/<run-id>/ as the
+                         last commit of the integration branch
   --json                 Output the run record as JSON to stdout
   -h, --help             display help for command
 "
@@ -92,6 +96,7 @@ Commands:
   doctor [options]            Check installed agent CLIs and how they sign in
   roles [options]             Show who plays each role and where it was set
   gc [options]                Remove worktrees and branches of finished runs
+  trail                       Audit the decision trail of a code run
   help [command]              display help for command
 "
 `;
