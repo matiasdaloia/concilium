@@ -9,7 +9,7 @@
     "build:core": "npm run build --workspace=@concilium/core",
     "build:cli": "npm run build --workspace=@concilium/cli",
     "build": "npm run build:core && npm run build:cli",
-    "typecheck": "tsc -b packages/core packages/cli && tsc --noEmit -p desktop",
+    "typecheck": "tsc -b packages/core packages/cli && tsc -p packages/core/tsconfig.test.json && tsc -p packages/cli/tsconfig.test.json && tsc --noEmit -p desktop",
     "test": "npm run test --workspaces --if-present",
     "publish:core": "npm publish --workspace=@concilium/core --access public",
     "publish:cli": "npm publish --workspace=@concilium/cli --access public",
