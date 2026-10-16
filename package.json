@@ -13,7 +13,8 @@
     "build:cli": "npm run build --workspace=@concilium/cli",
     "build": "npm run build:core && npm run build:cli",
     "typecheck": "tsc -b packages/core packages/cli && tsc -p packages/core/tsconfig.test.json && tsc -p packages/cli/tsconfig.test.json && tsc --noEmit -p desktop",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:repo",
+    "test:repo": "node --test scripts/repo-invariants.test.mjs",
     "publish:core": "npm publish --workspace=@concilium/core --access public",
     "publish:cli": "npm publish --workspace=@concilium/cli --access public",
     "publish:all": "npm run publish:core && npm run publish:cli"
