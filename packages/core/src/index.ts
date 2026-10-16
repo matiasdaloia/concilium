@@ -34,6 +34,21 @@ export type { Report, ReportStatus, EventCounts } from './domain/driver/report.j
 export { buildReport, parseReport, ReportValidationError, REPORT_STATUSES } from './domain/driver/report.js';
 export type { NormalizedEvent, RunEvent, DriverUsage } from './domain/driver/normalized-event.js';
 
+export type { TaskType, Playbook, TaskTypeChoice } from './domain/code-council/playbooks.js';
+export { TASK_TYPES, PLAYBOOKS, isTaskType, classifyTask } from './domain/code-council/playbooks.js';
+export type { RubricCriterion, RubricEvidence, FrozenRubric } from './domain/code-council/rubric.js';
+export {
+  RUBRIC_EVIDENCE,
+  MIN_CRITERIA,
+  MAX_CRITERIA,
+  RubricValidationError,
+  parseRubricCriteria,
+  parseRubricAnswer,
+  rubricHash,
+  freezeRubric,
+  rubricPrompt,
+} from './domain/code-council/rubric.js';
+
 // Port interfaces
 export type { LlmGateway, LlmResponse } from './ports/llm-gateway.js';
 export type { RunRepository } from './ports/run-repository.js';
