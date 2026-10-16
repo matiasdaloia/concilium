@@ -1,15 +1,12 @@
 import {
-  DeliberationService,
-  OpenRouterGateway,
-  ClaudeProvider,
-  CodexProvider,
-  OpenCodeProvider,
+  createConciliumRuntime,
+  createDefaultAgentInstances,
   JsonRunRepository,
   JsonConfigStore,
   PlaintextSecretStore,
-  ConfigService,
   type AgentInstance,
-  type AgentProvider,
+  type AgentProviderType,
+  type CouncilConfig,
   type RunRecord,
   type DeliberationEvents,
 } from '@concilium/core';
@@ -38,42 +35,31 @@ export async function deliberate(options: ConciliumOptions): Promise<RunRecord> 
   const agentInstances: AgentInstance[] = options.agents
     ? options.agents.map((a) => ({
         instanceId: crypto.randomUUID(),
-        provider: a.provider as 'claude' | 'codex' | 'opencode',
+        provider: a.provider as AgentProviderType,
         model: a.model ?? '',
         enabled: true,
       }))
-    : [
-        { instanceId: crypto.randomUUID(), provider: 'opencode' as const, model: '', enabled: true },
-        { instanceId: crypto.randomUUID(), provider: 'opencode' as const, model: '', enabled: true },
-      ];
-
-  // Build providers
-  const providers = new Map<string, AgentProvider>();
-  providers.set('claude', new ClaudeProvider());
-  providers.set('codex', new CodexProvider());
-  providers.set('opencode', new OpenCodeProvider());
-
-  // Build config
-  const secretStore = new PlaintextSecretStore();
-  const configStore = new JsonConfigStore(getConfigDir());
-  const configService = new ConfigService(configStore, secretStore);
-  const config = await configService.resolve();
+    : createDefaultAgentInstances();
 
   // Override with provided options
+  const overrides: Partial<CouncilConfig> = {};
   if (options.apiKey) {
-    config.openRouterApiKey = options.apiKey;
+    overrides.openRouterApiKey = options.apiKey;
   }
   if (options.councilModels) {
-    config.councilModels = options.councilModels;
+    overrides.councilModels = options.councilModels;
   }
   if (options.chairmanModel) {
-    config.chairmanModel = options.chairmanModel;
+    overrides.chairmanModel = options.chairmanModel;
   }
 
-  const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-  const runRepository = options.save !== false
-    ? new JsonRunRepository(getDataDir())
-    : { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] };
+  const runtime = createConciliumRuntime({
+    secretStore: new PlaintextSecretStore(),
+    configStore: new JsonConfigStore(getConfigDir()),
+    runRepository: options.save !== false
+      ? new JsonRunRepository(getDataDir())
+      : { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] },
+  });
 
   // Event bridge
   const noopEvents: DeliberationEvents = {
@@ -91,14 +77,7 @@ export async function deliberate(options: ConciliumOptions): Promise<RunRecord> 
     ? createCallbackEventBridge(options.onProgress)
     : noopEvents;
 
-  const service = new DeliberationService({
-    providers,
-    llmGateway,
-    configStore,
-    secretStore,
-    runRepository,
-    events,
-  });
+  const service = await runtime.createDeliberationService(events, overrides);
 
   return service.run({ prompt: options.prompt, images: [], agentInstances, cwd });
 }

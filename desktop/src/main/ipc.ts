@@ -6,19 +6,14 @@
 
 import { app, clipboard, dialog, ipcMain, type BrowserWindow } from "electron";
 import {
+  createConciliumRuntime,
   createLogger,
-  DeliberationService,
-  OpenRouterGateway,
-  ClaudeProvider,
-  CodexProvider,
-  OpenCodeProvider,
   JsonRunRepository,
   JsonConfigStore,
-  ConfigService,
-  ModelDiscoveryService,
+  OpenRouterGateway,
   shutdownEmbeddedServer,
   type AgentInstance,
-  type AgentProvider,
+  type DeliberationService,
   type StartRunConfig,
   type UserRanking,
 } from "@concilium/core";
@@ -35,14 +30,6 @@ export function cancelAllRuns() {
   shutdownEmbeddedServer();
 }
 
-function buildProviders(): Map<string, AgentProvider> {
-  const providers = new Map<string, AgentProvider>();
-  providers.set("claude", new ClaudeProvider());
-  providers.set("codex", new CodexProvider());
-  providers.set("opencode", new OpenCodeProvider());
-  return providers;
-}
-
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   initialCwd: string,
@@ -50,12 +37,12 @@ export function registerIpcHandlers(
   let projectCwd = initialCwd;
   // Core dependencies
   const dataDir = app.getPath("userData");
-  const secretStore = new ElectronSecretStore();
-  const configStore = new JsonConfigStore(dataDir);
-  const configService = new ConfigService(configStore, secretStore);
-  const runRepository = new JsonRunRepository(dataDir);
-  const providers = buildProviders();
-  const modelDiscovery = new ModelDiscoveryService(providers);
+  const runtime = createConciliumRuntime({
+    secretStore: new ElectronSecretStore(),
+    configStore: new JsonConfigStore(dataDir),
+    runRepository: new JsonRunRepository(dataDir),
+  });
+  const { configStore, configService, runRepository, modelDiscovery } = runtime;
 
   // Config handlers
   ipcMain.handle("config:get", async () => {
@@ -167,19 +154,9 @@ export function registerIpcHandlers(
       };
     });
 
-    // Resolve config to get API key for the gateway
-    const config = await configService.resolve();
-    const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-    const events = new ElectronEventBridge(mainWindow);
-
-    deliberationService = new DeliberationService({
-      providers,
-      llmGateway,
-      configStore,
-      secretStore,
-      runRepository,
-      events,
-    });
+    deliberationService = await runtime.createDeliberationService(
+      new ElectronEventBridge(mainWindow),
+    );
 
     // Run pipeline asynchronously
     const runId = crypto.randomUUID();

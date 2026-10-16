@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { PROVIDER_IDS } from '@concilium/core';
 
 const cliRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -49,6 +50,11 @@ describe('concilium bin (from source)', () => {
   it('should print the package.json version for --version', () => {
     const pkg = JSON.parse(readFileSync(`${cliRoot}package.json`, 'utf8')) as { version: string };
     expect(runCli('--version').trim()).toBe(pkg.version);
+  });
+
+  it('should offer every registered provider as a models --agent choice', () => {
+    const help = runCli('models', '--help');
+    expect(help).toContain(`(${PROVIDER_IDS.join(', ')})`);
   });
 
   it('should print stable top-level --help output', () => {
