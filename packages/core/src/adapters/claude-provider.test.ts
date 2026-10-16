@@ -65,11 +65,8 @@ describe('ClaudeProvider (fake claude binary)', () => {
     expect(result.errors).toEqual([]);
   });
 
-  // BUG (found by this test, not fixed): with --include-partial-messages the plan text
-  // arrives once as text_delta events and again as the final `result` text. The
-  // provider concatenates every text event, so the plan is duplicated:
-  // "## Plan\nAdd middleware.## Plan\nAdd middleware.".
-  it.skip('should use the final plan text exactly once', async () => {
+  // With --include-partial-messages the plan arrives as text deltas and again as the `result` text.
+  it('should use the final plan text exactly once', async () => {
     const result = await new ClaudeProvider().execute({ agent: agent(), prompt: 'task', callbacks: {} });
 
     expect(result.normalizedPlan).toBe('## Plan\nAdd middleware.');
