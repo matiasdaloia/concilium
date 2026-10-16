@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, Box } from 'ink';
-import { formatTokens, formatCost } from '../format.js';
+import { AGENT_COST_LABEL, formatTokens, formatCost } from '../format.js';
 
 interface AgentProgressProps {
   name: string;
@@ -24,7 +24,7 @@ export function AgentProgress({ name, status, elapsed, eventCount, inputTokens, 
       <Text>{name.padEnd(30)}</Text>
       <Text color={color}>{status}{elapsedStr}</Text>
       {totalTokens > 0 && <Text color="gray"> {formatTokens(totalTokens)}</Text>}
-      {totalCost != null && totalCost > 0 && <Text color="gray"> {formatCost(totalCost)}</Text>}
+      {totalCost != null && totalCost > 0 && <Text color="gray"> {formatCost(totalCost)} {AGENT_COST_LABEL}</Text>}
     </Box>
   );
 }

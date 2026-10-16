@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, Box } from 'ink';
 import type { RunRecord } from '@concilium/core';
-import { formatTokens, formatCost } from '../format.js';
+import { AGENT_COST_LABEL, formatTokens, formatCost } from '../format.js';
 
 interface CostSummaryProps {
   record: RunRecord;
@@ -49,13 +49,14 @@ export function CostSummary({ record }: CostSummaryProps) {
   const allRows = [...agentRows, ...jurorRows, ...(chairmanRow ? [chairmanRow] : [])];
   const totalTokens = allRows.reduce((sum, r) => sum + r.tokens, 0);
   const totalCost = allRows.reduce((sum, r) => sum + (r.cost ?? 0), 0);
+  const hasAgentCost = agentRows.some((r) => r.cost != null && r.cost > 0);
 
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text color="gray">{'─'.repeat(60)}</Text>
 
       {/* Stage 1: Agents */}
-      <Text bold> Agents</Text>
+      <Text bold> Agents{hasAgentCost && <Text color="gray" bold={false}> (cost: {AGENT_COST_LABEL})</Text>}</Text>
       {agentRows.map((row) => (
         <Box key={row.label}>
           <Text color="gray">  {row.label.padEnd(38)}</Text>
@@ -93,7 +94,7 @@ export function CostSummary({ record }: CostSummaryProps) {
       {/* Totals */}
       <Text color="gray">{'─'.repeat(60)}</Text>
       <Box>
-        <Text bold>  {'Total'.padEnd(38)}</Text>
+        <Text bold>  {(hasAgentCost ? `Total (incl. ${AGENT_COST_LABEL})` : 'Total').padEnd(38)}</Text>
         <Text bold>{totalTokens > 0 ? formatTokens(totalTokens).padStart(10) : ''.padStart(10)}</Text>
         <Text bold>{totalCost > 0 ? formatCost(totalCost).padStart(10) : ''.padStart(10)}</Text>
       </Box>
