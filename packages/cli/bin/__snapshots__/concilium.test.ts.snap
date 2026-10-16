@@ -1,0 +1,43 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`concilium bin (from source) > should print stable run --help output 1`] = `
+"Usage: concilium run [options] [prompt...]
+
+Run a deliberation pipeline
+
+Arguments:
+  prompt                 The prompt to deliberate on
+
+Options:
+  -f, --file <path>      Read prompt from file (- for stdin)
+  --agents <list>        Agents to use (e.g. "claude,codex" or
+                         "claude:opus,codex:gpt-5.2-codex")
+  --juror-models <list>  Juror models (comma-separated OpenRouter model IDs)
+  --chairman <model>     Chairman model (OpenRouter model ID)
+  --cwd <path>           Project working directory (default: "/")
+  --json                 Output as JSON to stdout
+  --output <file>        Save synthesis to file
+  --no-save              Don't persist run to history
+  --verbose              Debug logging
+  --quiet                Minimal output
+  -h, --help             display help for command
+"
+`;
+
+exports[`concilium bin (from source) > should print stable top-level --help output 1`] = `
+"Usage: concilium [options] [command]
+
+Multi-LLM deliberation platform with peer review and synthesis
+
+Options:
+  -V, --version               output the version number
+  -h, --help                  display help for command
+
+Commands:
+  run [options] [prompt...]   Run a deliberation pipeline
+  history [options] [run-id]  List or view past deliberation runs
+  config                      Manage configuration
+  models [options]            List available models
+  help [command]              display help for command
+"
+`;
