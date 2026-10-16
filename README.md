@@ -195,7 +195,7 @@ concilium/
 │   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
 │   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
 │   │   │   ├── services/ # DeliberationService, ConfigService
-│   │   │   └── shared/   # Logger, error types
+│   │   │   └── shared/   # Logger
 │   │   └── package.json
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)

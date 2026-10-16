@@ -13,7 +13,7 @@ concilium/
 │   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
 │   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
 │   │   │   ├── services/ # DeliberationService, ConfigService, ModelDiscoveryService
-│   │   │   └── shared/   # Logger, error types
+│   │   │   └── shared/   # Logger
 │   │   └── package.json
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
@@ -158,7 +158,6 @@ Add MIT license header to new files:
 - Never swallow errors - log and re-throw or handle gracefully
 - Use early returns to reduce nesting
 - Type guard with `instanceof Error` when catching
-- Use custom error classes from `@concilium/core`: `ConciliumError`, `ConfigError`, `PipelineError`, `AgentError`
 
 ```typescript
 import { createLogger } from '@concilium/core';

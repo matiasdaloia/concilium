@@ -425,7 +425,6 @@ export class OpenCodeProvider implements AgentProvider {
         }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await client.session.promptAsync({
         path: { id: sessionId },
         body: {
