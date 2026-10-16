@@ -26,6 +26,9 @@ Options:
                        adversarial tests
   --no-adversarial     Skip the adversarial round, where one agent per family
                        writes tests against the other candidates
+  --no-judge           Leave candidates tied on the evidence tied instead of
+                       asking a judge CLI from another model family to order
+                       them
   --json               Output the run record as JSON to stdout
   -h, --help           display help for command
 "
