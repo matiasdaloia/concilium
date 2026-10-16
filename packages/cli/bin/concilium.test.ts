@@ -99,6 +99,10 @@ describe('concilium bin (from source)', () => {
     expect(runCli('run', '--help')).toMatchSnapshot();
   });
 
+  it('should print stable code --help output', () => {
+    expect(runCli('code', '--help')).toMatchSnapshot();
+  });
+
   it('should keep log lines out of run --json stdout', () => {
     // Empty PATH: no agent binary can start, so the run fails offline after logging.
     const result = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', '--agents', 'claude,claude', 'task'], {

@@ -175,6 +175,13 @@ concilium run --json "review this PR" --output review.md
 
 Have agent CLIs write code for a task, side by side. Concilium pins the repo's `HEAD` as the base, gives each agent its own git worktree on branch `concilium/<run-id>/<candidate-id>` (under `$XDG_CACHE_HOME/concilium/worktrees/`, never inside your repo), and runs them in parallel with a write-mode brief: read, write and shell, limited by what each CLI's driver allows (Gemini CLI gets no shell, Codex runs in its workspace-write sandbox). When an agent finishes, Concilium commits whatever it left uncommitted on its branch as `concilium`, including after a failure, so you can look at partial work. A failing candidate does not stop the others. Your checkout, index and branch are never touched.
 
+Before any candidate starts, the run is framed:
+
+- **Task type.** `--type` picks one of `bugfix`, `feature`, `refactor`, `perf` or `prototype`. Without it, a keyword classifier guesses from the task (`fix`, `flaky` → `bugfix`; `slow`, `faster` → `perf`; `refactor`, `rename` → `refactor`; `prototype`, `spike` → `prototype`; anything else → `feature`) and records why. The type selects a fixed playbook, whose ordered steps and verification expectations go into every candidate's brief verbatim. A `bugfix` starts by reproducing the bug with a failing test, a `refactor` by pinning behavior with a characterization test, a `perf` task by measuring a baseline.
+- **Rubric.** The first agent's CLI gets one read-only run to tailor the playbook's default criteria to the task: 3 to 6 criteria, each with a name, a description, a weight and what settles it (`gate`, `adversarial` or `judgment`). If that run fails or its answer is not a valid rubric, the playbook's defaults are used, with a note. The rubric is frozen with a sha256 before any candidate starts, and shown with its hash before the candidates and in the summary. Candidates never see it: their brief holds the task and the playbook only.
+
+The type, the reason it was picked, and the frozen rubric (`taskType` and `rubric`) are saved in the run record.
+
 It prints one row per candidate (status, files changed, lines added and removed, commits, duration, tokens) and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is judged, tested or merged yet. It exits 1 when no candidate finished `ok`.
 
 ```
@@ -184,6 +191,7 @@ concilium code [options] [task...]
 | Flag | Description |
 |------|-------------|
 | `--agents <list>` | Candidate agents, comma-separated, each `cli[:model]` (`claude,codex`, `claude:opus,codex:gpt-5.2-codex`). Default: the installed, signed-in agent CLIs, as for `run` |
+| `--type <type>` | Task type, which picks the playbook and the default rubric: `bugfix`, `feature`, `refactor`, `perf`, `prototype`. Default: guessed from the task |
 | `--cwd <path>` | Directory of the git repo to work on (default: current directory) |
 | `--include-dirty` | Start every candidate from your uncommitted changes too (snapshotted to `refs/concilium/<run-id>/snapshot`). Without it a dirty tree is refused |
 | `--timeout <minutes>` | Wall-clock limit per candidate (default: 30) |
@@ -194,6 +202,9 @@ concilium code [options] [task...]
 ```bash
 # Two candidates on the current repo
 concilium code "add input validation to sum() with a test" --agents claude,codex
+
+# A bug fix: every candidate follows the bugfix playbook
+concilium code "sum() crashes on empty input" --type bugfix --agents claude,codex
 
 # Compare a candidate with the base, then clean up
 git diff <base>..concilium/<run-id>/claude

@@ -10,19 +10,23 @@ import {
   CODE_TIMEOUT_MS,
   createConciliumRuntime,
   GitWorktreeWorkspace,
+  isTaskType,
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
   PlaintextSecretStore,
   runCodeCandidates,
+  TASK_TYPES,
   type CodeAgent,
   type CodeCandidate,
+  type CodeFrame,
   type CodeRunRecord,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
 
 interface CodeOptions {
   agents?: string;
+  type?: string;
   cwd: string;
   includeDirty?: boolean;
   timeout?: string;
@@ -39,6 +43,12 @@ function parseAgents(list: string): CodeAgent[] {
 function formatDuration(ms: number): string {
   const seconds = Math.round(ms / 1000);
   return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+function frameLines({ taskType, rubric }: CodeFrame): string[] {
+  const how = taskType.source === 'flag' ? 'from --type' : `classified: ${taskType.reason}`;
+  const from = rubric.source === 'framer' ? `tailored by ${rubric.framer}` : `playbook defaults${rubric.note ? ` (${rubric.note})` : ''}`;
+  return [`Type ${taskType.type} (${how})`, `Rubric ${rubric.criteria.length} criteria, ${from}, sha256 ${rubric.sha256.slice(0, 12)}`];
 }
 
 function summaryRows(candidates: CodeCandidate[]): string[][] {
@@ -61,7 +71,9 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   const rows = summaryRows(record.candidates);
   const widths = rows[0].map((_, col) => Math.max(...rows.map((row) => row[col].length)));
   console.log(`\n  Run ${record.id} in ${record.repoDir}`);
-  console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}\n`);
+  console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}`);
+  for (const line of frameLines(record)) console.log(`  ${line}`);
+  console.log();
   for (const row of rows) console.log(`  ${row.map((cell, col) => cell.padEnd(widths[col])).join('  ').trimEnd()}`);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
@@ -86,6 +98,7 @@ export function registerCodeCommand(program: Command): void {
     .description('Have agent CLIs write code, one git worktree each')
     .argument('[task...]', 'The coding task')
     .option('--agents <list>', 'Candidate agents (e.g. "claude,codex" or "claude:opus,codex:gpt-5.2-codex"); default: the installed, signed-in agent CLIs (see `concilium doctor`)')
+    .option('--type <type>', `Task type, which picks the playbook and default rubric: ${TASK_TYPES.join(', ')} (default: guessed from the task)`)
     .option('--cwd <path>', 'Directory of the git repo to work on', process.cwd())
     .option('--include-dirty', 'Start from the uncommitted changes too (snapshotted to a scratch ref) instead of refusing a dirty tree')
     .option('--timeout <minutes>', `Wall-clock limit per candidate in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
@@ -100,6 +113,9 @@ export function registerCodeCommand(program: Command): void {
       if (!task) fail('No task provided. Use `concilium code "<task>"`.');
       const timeoutMinutes = opts.timeout === undefined ? undefined : Number(opts.timeout);
       if (timeoutMinutes !== undefined && !(timeoutMinutes > 0)) fail(`--timeout must be a positive number of minutes, got "${opts.timeout}"`);
+      const type = opts.type === undefined || isTaskType(opts.type)
+        ? opts.type
+        : fail(`--type must be one of ${TASK_TYPES.join(', ')}, got "${opts.type}"`);
 
       const runtime = createConciliumRuntime({
         secretStore: new PlaintextSecretStore(),
@@ -121,10 +137,12 @@ export function registerCodeCommand(program: Command): void {
           task,
           repoDir: resolve(opts.cwd),
           agents,
+          type,
           includeDirty: opts.includeDirty,
           timeoutMs: timeoutMinutes === undefined ? undefined : timeoutMinutes * 60_000,
           drivers: runtime.drivers,
           workspace: new GitWorktreeWorkspace({ root: getWorktreeRoot() }),
+          onFramed: (frame) => frameLines(frame).forEach((line) => progress(`  ${line}`)),
           onCandidateStart: (c) => progress(`  ▶ ${c.candidateId}: running in ${c.worktree}`),
           onCandidateDone: (c) => progress(`  ${c.status === 'ok' ? '✓' : '✗'} ${c.candidateId}: ${c.status} in ${formatDuration(c.durationMs)}`),
         });

@@ -5,16 +5,19 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
+import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
+import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { DirtyWorktreeError, GitWorktreeWorkspace } from '../adapters/git-worktree-workspace.js';
 import { JsonCodeRunStore } from '../adapters/json-code-run-store.js';
 import { setLogLevel } from '../shared/logger.js';
-import { runCodeCandidates } from './code-service.js';
+import { codeBrief, runCodeCandidates } from './code-service.js';
 
 const sandbox = mkdtempSync(join(tmpdir(), 'concilium-code-test-'));
 const gitConfig = join(sandbox, 'gitconfig');
@@ -65,6 +68,47 @@ function writer(id: string, files: Record<string, string>, outcome: 'ok' | 'erro
   });
 }
 
+function codeRuns(driver: FakeCliDriver) {
+  return driver.runs.filter((run) => run.brief.mode === 'code');
+}
+
+const TAILORED: RubricCriterion[] = [
+  { name: 'repro', description: 'A test fails on empty input before the fix.', weight: 3, evidence: 'gate' },
+  { name: 'suite', description: 'The existing tests pass.', weight: 2, evidence: 'gate' },
+  { name: 'small', description: 'Only sum.js changes.', weight: 1, evidence: 'judgment' },
+];
+
+/**
+ * A fake CLI that answers the rubric prompt (a read-only brief pointing at council-prompt.md) with `answer`,
+ * and writes `files` when it gets a code brief. `order` records every run as it starts.
+ */
+function framerAndWriter(id: string, answer: string | null, order: string[], files: Record<string, string> = { 'x.txt': 'x\n' }): FakeCliDriver {
+  return new FakeCliDriver({
+    id,
+    respond: (brief: Brief) => {
+      order.push(`${id}:${brief.mode}`);
+      if (brief.mode === 'plan') {
+        expect(readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8')).toContain('Write the rubric their work will be judged on');
+        return answer === null ? [{ type: 'error', message: 'framer down' }] : [{ type: 'text', text: answer }];
+      }
+      for (const [name, content] of Object.entries(files)) writeFileSync(join(brief.cwd, name), content);
+      return [{ type: 'text', text: `${id} done` }];
+    },
+  });
+}
+
+describe('codeBrief', () => {
+  it.each(TASK_TYPES)('should hold the %s playbook steps and verification verbatim, and never the rubric', (type) => {
+    const brief = codeBrief('do the task', { type, source: 'flag', reason: 'set with --type' }, '/wt/claude', 'concilium/r/claude');
+
+    for (const step of PLAYBOOKS[type].steps) expect(brief.task).toContain(step);
+    for (const line of PLAYBOOKS[type].verification) expect(brief.task).toContain(line);
+    for (const c of PLAYBOOKS[type].rubric) expect(brief.task).not.toContain(c.description);
+    expect(brief.task).not.toMatch(/rubric|sha256/i);
+    expect(brief.task).toMatchSnapshot();
+  });
+});
+
 describe('runCodeCandidates', () => {
   it('should run each agent in its own worktree and put its changes on its branch, leaving the checkout untouched', async () => {
     const head = git(repo, 'rev-parse', 'HEAD');
@@ -105,13 +149,14 @@ describe('runCodeCandidates', () => {
 
     // Each agent got a write-mode brief in its own worktree, never the checkout.
     for (const driver of ['claude', 'codex']) {
-      const [{ brief, opts }] = drivers.get(driver)!.runs;
-      expect(brief).toMatchObject({ mode: 'code', allowedActions: ['read', 'write', 'shell'], task: 'validate the inputs of sum' });
+      const [{ brief, opts }] = codeRuns(drivers.get(driver)!);
+      expect(brief).toMatchObject({ mode: 'code', allowedActions: ['read', 'write', 'shell'] });
+      expect(brief.task.startsWith('validate the inputs of sum\n\n## Playbook: feature\n')).toBe(true);
       expect(brief.cwd).toBe(record.candidates.find((c) => c.provider === driver)!.worktree);
       expect(opts.cwd).toBe(brief.cwd);
       expect(brief.cwd.startsWith(repo)).toBe(false);
     }
-    expect(drivers.get('codex')!.runs[0].opts.model).toBe('gpt-5.2');
+    expect(codeRuns(drivers.get('codex')!)[0].opts.model).toBe('gpt-5.2');
 
     expect(git(repo, 'status', '--porcelain')).toBe('');
     expect(git(repo, 'rev-parse', 'HEAD')).toBe(head);
@@ -142,6 +187,65 @@ describe('runCodeCandidates', () => {
     expect(git(repo, 'show', 'concilium/run4/claude:sum.js')).toBe('dirty');
     expect(record.candidates[0].diffStat).toMatchObject({ commits: 1, filesChanged: 1 });
     expect(git(repo, 'status', '--porcelain')).toBe(' M sum.js');
+  });
+
+  it('should freeze a rubric tailored by the first agent before any candidate starts, and keep it from every candidate', async () => {
+    const order: string[] = [];
+    const drivers = new Map([
+      ['claude', framerAndWriter('claude', `\`\`\`json\n${JSON.stringify({ criteria: TAILORED })}\n\`\`\``, order)],
+      ['codex', framerAndWriter('codex', null, order)],
+    ]);
+    const framed: string[] = [];
+    const record = await runCodeCandidates({
+      task: 'sum crashes on empty input',
+      repoDir: repo,
+      agents: [{ provider: 'claude', model: 'opus' }, { provider: 'codex' }],
+      type: 'bugfix',
+      runId: 'run6',
+      drivers,
+      workspace,
+      onFramed: (frame) => framed.push(`${frame.taskType.type} ${frame.rubric.sha256}`),
+      onCandidateStart: (c) => framed.push(`start ${c.candidateId}`),
+    });
+
+    expect(record.taskType).toEqual({ type: 'bugfix', source: 'flag', reason: 'set with --type' });
+    expect(record.rubric).toMatchObject({ criteria: TAILORED, source: 'framer', framer: 'claude:opus', sha256: rubricHash(TAILORED) });
+    expect(record.rubric.note).toBeUndefined();
+    expect(drivers.get('claude')!.runs[0].opts.model).toBe('opus');
+
+    // One read-only framing run, then the candidates; the hash was announced before the first one started.
+    expect(order.slice(0, 1)).toEqual(['claude:plan']);
+    expect(order.slice(1).sort()).toEqual(['claude:code', 'codex:code']);
+    expect(framed[0]).toBe(`bugfix ${record.rubric.sha256}`);
+    expect(new Date(record.rubric.frozenAt).getTime()).toBeLessThanOrEqual(new Date(record.finishedAt).getTime());
+
+    for (const candidate of record.candidates) {
+      expect(candidate.brief!.task).toContain(PLAYBOOKS.bugfix.steps[0]);
+      expect(candidate.brief!.task).not.toContain(record.rubric.sha256);
+      for (const c of TAILORED) expect(candidate.brief!.task).not.toContain(c.description);
+    }
+  });
+
+  it('should fall back to the playbook rubric when the framer fails or answers a bad rubric, and classify without a type', async () => {
+    const order: string[] = [];
+    const failing = await runCodeCandidates({
+      task: 'fix the crash in sum', repoDir: repo, agents: [{ provider: 'codex' }], runId: 'run7',
+      drivers: new Map([['codex', framerAndWriter('codex', null, order)]]), workspace,
+    });
+    expect(failing.taskType).toEqual({ type: 'bugfix', source: 'classifier', reason: 'the task mentions "fix"' });
+    expect(failing.rubric).toMatchObject({ criteria: PLAYBOOKS.bugfix.rubric, source: 'playbook', framer: 'codex', note: 'codex gave no answer' });
+    expect(failing.rubric.sha256).toBe(rubricHash(PLAYBOOKS.bugfix.rubric));
+    expect(failing.candidates[0].status).toBe('ok');
+
+    const tooFew = JSON.stringify({ criteria: TAILORED.slice(0, 2) });
+    const rejected = await runCodeCandidates({
+      task: 'make sum faster', repoDir: repo, agents: [{ provider: 'claude' }], runId: 'run8',
+      drivers: new Map([['claude', framerAndWriter('claude', tooFew, order)]]), workspace,
+    });
+    expect(rejected.taskType.type).toBe('perf');
+    expect(rejected.rubric).toMatchObject({ criteria: PLAYBOOKS.perf.rubric, source: 'playbook', framer: 'claude' });
+    expect(rejected.rubric.note).toContain('must hold 3 to 6 criteria, got 2');
+    expect(rejected.candidates[0].brief!.task).not.toContain(rubricHash(PLAYBOOKS.perf.rubric));
   });
 
   it('should save the record under runs/<id>/run.json', async () => {
