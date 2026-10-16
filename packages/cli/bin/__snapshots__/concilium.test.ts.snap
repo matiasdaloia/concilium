@@ -10,10 +10,14 @@ Arguments:
 
 Options:
   -f, --file <path>      Read prompt from file (- for stdin)
-  --agents <list>        Agents to use (e.g. "claude,codex" or
+  --agents <list>        Agents to use (e.g. "claude,codex,gemini" or
                          "claude:opus,codex:gpt-5.2-codex")
-  --juror-models <list>  Juror models (comma-separated OpenRouter model IDs)
-  --chairman <model>     Chairman model (OpenRouter model ID)
+  --juror-models <list>  Jurors, comma-separated: agent CLIs (e.g.
+                         "claude,codex:gpt-5.2,gemini") or OpenRouter model IDs
+                         (need an API key); default: the installed agent CLIs
+  --chairman <model>     Chairman: an agent CLI (e.g. "gemini", "claude:opus")
+                         or an OpenRouter model ID; default: an installed CLI
+                         from another family than most jurors
   --cwd <path>           Project working directory (default: "/")
   --json                 Output as JSON to stdout
   --output <file>        Save synthesis to file

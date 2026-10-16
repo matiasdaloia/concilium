@@ -210,7 +210,7 @@ export default function SettingsModal({
                 {/* API Key Section */}
                 <div className="w-full">
                   <label className="block text-[10px] font-bold text-text-secondary uppercase tracking-widest mb-3">
-                    OpenRouter API Key
+                    OpenRouter API Key (optional)
                   </label>
                   <div className="relative group w-full">
                     <input
@@ -298,7 +298,8 @@ export default function SettingsModal({
                         OpenRouter Provider
                       </p>
                       <p className="text-[10px] text-text-muted leading-relaxed font-mono opacity-70">
-                        Access state-of-the-art models via a unified API. Get your key from{' '}
+                        Without a key, jurors and the chairman run through your installed agent CLIs.
+                        A key lets you pick OpenRouter models instead. Get your key from{' '}
                         <a
                           href="https://openrouter.ai/keys"
                           target="_blank"

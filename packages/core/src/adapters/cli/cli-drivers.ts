@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { PROVIDER_IDS, type AgentProviderType } from '../../domain/agent/providers.js';
 import { parseBrief, type Brief } from '../../domain/driver/brief.js';
 import type { NormalizedEvent } from '../../domain/driver/normalized-event.js';
 import type { CliAuth, CliDetection, DriverRunOptions, HeadlessCliDriver } from '../../ports/headless-cli-driver.js';
@@ -13,13 +14,14 @@ import { runGemini } from './gemini.js';
 import { runOpenCode } from './opencode.js';
 import { captureSubprocess } from './subprocess.js';
 
-export const HEADLESS_CLI_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
-export type HeadlessCliId = (typeof HEADLESS_CLI_IDS)[number];
+/** Every registered provider is a headless CLI. */
+export type HeadlessCliId = AgentProviderType;
 
 export type AuthStatus = { auth: CliAuth; notes?: string };
 export type StatusOutput = { code: number | null; stdout: string; stderr: string };
 
 const PROBE_TIMEOUT_MS = 10_000;
+const LIST_MODELS_TIMEOUT_MS = 30_000;
 
 const ANSI = /\x1B\[[0-9;]*[A-Za-z]/g;
 
@@ -73,6 +75,15 @@ export function geminiAuthFromEnv(env: NodeJS.ProcessEnv): AuthStatus {
   return { auth: 'unknown', notes: 'no auth status command; a Google sign-in is checked on first run' };
 }
 
+/** `opencode models` prints one `provider/model` id per line. */
+export function parseOpenCodeModels(out: StatusOutput): string[] {
+  return out.stdout
+    .replace(ANSI, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[\w.-]+\/\S+$/.test(line));
+}
+
 type CliDefinition = {
   id: HeadlessCliId;
   command: string;
@@ -80,13 +91,15 @@ type CliDefinition = {
   auth: { args: string[]; parse: (out: StatusOutput) => AuthStatus } | { fromEnv: (env: NodeJS.ProcessEnv) => AuthStatus };
   /** The CLI's one-shot headless run. */
   run: typeof runClaudeCode;
+  /** A command that lists the CLI's models, for CLIs that have one. */
+  models?: { args: string[]; parse: (out: StatusOutput) => string[] };
 };
 
 const DEFINITIONS: Record<HeadlessCliId, CliDefinition> = {
   claude: { id: 'claude', command: 'claude', auth: { args: ['auth', 'status'], parse: parseClaudeAuthStatus }, run: runClaudeCode },
   codex: { id: 'codex', command: 'codex', auth: { args: ['login', 'status'], parse: parseCodexLoginStatus }, run: runCodex },
   gemini: { id: 'gemini', command: 'gemini', auth: { fromEnv: geminiAuthFromEnv }, run: runGemini },
-  opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList }, run: runOpenCode },
+  opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList }, run: runOpenCode, models: { args: ['models'], parse: parseOpenCodeModels } },
 };
 
 /** Drives an installed agent CLI: `detect` and a one-shot headless `run`. */
@@ -116,6 +129,16 @@ export class CliDriver implements HeadlessCliDriver {
     return { installed: true, version, ...auth.parse(statusOut) };
   }
 
+  async listModels(): Promise<string[]> {
+    const { command, models } = this.definition;
+    if (!models) return [];
+    const out = await captureSubprocess({ command, args: models.args, env: this.env, timeoutMs: LIST_MODELS_TIMEOUT_MS });
+    if (out.outcome !== 'exited' || out.code !== 0) {
+      throw new Error(`\`${command} ${models.args.join(' ')}\` ${out.outcome === 'exited' ? `exited with code ${out.code}` : out.outcome}`);
+    }
+    return models.parse(out);
+  }
+
   async *run(brief: Brief, opts: DriverRunOptions): AsyncGenerator<NormalizedEvent> {
     const { command, run } = this.definition;
     yield* run({ command, env: this.env, brief: parseBrief(brief), opts });
@@ -124,5 +147,5 @@ export class CliDriver implements HeadlessCliDriver {
 
 /** One driver per known CLI, in a stable order. */
 export function createHeadlessCliDrivers(env: NodeJS.ProcessEnv = process.env): CliDriver[] {
-  return HEADLESS_CLI_IDS.map((id) => new CliDriver(DEFINITIONS[id], env));
+  return PROVIDER_IDS.map((id) => new CliDriver(DEFINITIONS[id], env));
 }

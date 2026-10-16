@@ -33,5 +33,7 @@ export type DriverRunOptions = {
 export interface HeadlessCliDriver {
   readonly id: string;
   detect(): Promise<CliDetection>;
+  /** The models the CLI itself lists, for CLIs that can list them (OpenCode). */
+  listModels?(): Promise<string[]>;
   run(brief: Brief, opts: DriverRunOptions): AsyncIterable<NormalizedEvent>;
 }

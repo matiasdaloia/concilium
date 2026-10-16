@@ -4,19 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentResult } from '../domain/agent/agent-result.js';
-import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
 import type { CouncilConfig } from '../domain/council/council-config.js';
-import {
-  DEFAULT_CHAIRMAN_MODEL,
-  DEFAULT_COUNCIL_MODELS,
-  OPENROUTER_API_URL,
-} from '../domain/council/council-config.js';
+import { OPENROUTER_API_URL } from '../domain/council/council-config.js';
+import type { RunRecord } from '../domain/run/run-record.js';
+import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
+import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
 import { JsonRunRepository } from '../adapters/json-run-repository.js';
 import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
@@ -29,8 +27,10 @@ import { createConciliumRuntime } from './create-concilium.js';
  *
  *   API key:   override (`apiKey`)                   > OPENROUTER_API_KEY > saved config (`config set api-key`)  > '' (none)
  *   API URL:   OPENROUTER_API_URL > built-in default (no flag or saved setting exists)
- *   Jurors:    override (`--juror-models`, `councilModels`) > COUNCIL_MODELS     > saved config (`config set jurors`)   > built-in defaults
- *   Chairman:  override (`--chairman`, `chairmanModel`)     > CHAIRMAN_MODEL     > saved config (`config set chairman`) > built-in default
+ *   Jurors:    override (`--juror-models`, `councilModels`) > COUNCIL_MODELS     > saved config (`config set jurors`)   > [] (installed CLIs)
+ *   Chairman:  override (`--chairman`, `chairmanModel`)     > CHAIRMAN_MODEL     > saved config (`config set chairman`) > '' (installed CLIs)
+ *
+ * The runtime fills an empty juror list or chairman from the installed agent CLIs (see council-members.test.ts).
  */
 
 const ENV_VARS = ['OPENROUTER_API_KEY', 'OPENROUTER_API_URL', 'COUNCIL_MODELS', 'CHAIRMAN_MODEL'] as const;
@@ -56,12 +56,12 @@ describe('ConfigService.resolve precedence', () => {
 
   const service = () => new ConfigService(configStore, secretStore);
 
-  it('should use the built-in defaults when nothing is configured', async () => {
+  it('should leave the jurors and chairman to the installed CLIs and need no key when nothing is configured', async () => {
     expect(await service().resolve()).toEqual({
       openRouterApiKey: '',
       openRouterApiUrl: OPENROUTER_API_URL,
-      councilModels: DEFAULT_COUNCIL_MODELS,
-      chairmanModel: DEFAULT_CHAIRMAN_MODEL,
+      councilModels: [],
+      chairmanModel: '',
     });
   });
 
@@ -106,7 +106,7 @@ describe('ConfigService.resolve precedence', () => {
     await service().saveCouncilConfig({ councilModels: ['saved/j1'], chairmanModel: 'saved/chair' });
     await configStore.saveCouncilConfigPrefs({});
 
-    expect((await service().resolve()).chairmanModel).toBe(DEFAULT_CHAIRMAN_MODEL);
+    expect((await service().resolve()).chairmanModel).toBe('');
   });
 
   it('should keep the other saved settings when one setting is saved', async () => {
@@ -152,19 +152,43 @@ describe('ConfigService.resolve precedence', () => {
     expect(new Set(authorizations)).toEqual(new Set(['Bearer sk-flag']));
   });
 
-  /** Runs two fake agents through `createConciliumRuntime` with the given overrides; returns what OpenRouter received. */
-  async function runThroughRuntime(overrides: Partial<CouncilConfig>): Promise<OpenRouterRequests> {
+  it('should judge and synthesize through the installed CLIs when nothing is configured and no key is set', async () => {
+    const { models, record } = await runThroughRuntime({});
+
+    expect(models).toEqual([]);
+    expect(record.stage2.map((r) => r.model)).toEqual(['claude', 'codex', 'gemini']);
+    expect(record.stage3).toMatchObject({ model: 'gemini', response: 'CLI synthesis' });
+    expect(record.metadata.notes).toBeUndefined();
+  });
+
+  it('should replace saved OpenRouter jurors with the installed CLIs when no key is set, and say so', async () => {
+    await service().saveCouncilConfig({ councilModels: ['saved/j1'], chairmanModel: 'claude:opus' });
+
+    const { models, record } = await runThroughRuntime({});
+
+    expect(models).toEqual([]);
+    expect(record.stage2.map((r) => r.model)).toEqual(['claude', 'codex', 'gemini']);
+    expect(record.stage3?.model).toBe('claude:opus');
+    expect(record.metadata.notes).toEqual(['OpenRouter juror saved/j1 skipped: no OpenRouter API key is configured.']);
+  });
+
+  /**
+   * Runs two fake agents through `createConciliumRuntime` with the given overrides. Every driver is a fake:
+   * claude, codex and gemini are installed and signed in, opencode is not installed.
+   * Returns the run and what OpenRouter received.
+   */
+  async function runThroughRuntime(overrides: Partial<CouncilConfig>): Promise<OpenRouterRequests & { record: RunRecord }> {
     const requests = stubOpenRouter();
     const runtime = createConciliumRuntime({
       configStore,
       secretStore,
       runRepository: new JsonRunRepository(join(dir, 'data')),
     });
-    runtime.providers.set('claude', new FixedPlanProvider('claude'));
-    runtime.providers.set('codex', new FixedPlanProvider('codex'));
+    for (const id of ['claude', 'codex', 'gemini']) runtime.drivers.set(id, fakeCli(id));
+    runtime.drivers.set('opencode', new FakeCliDriver({ id: 'opencode', detection: { installed: false } }));
 
     const deliberation = await runtime.createDeliberationService(silentEvents(), overrides);
-    await deliberation.run({
+    const record = await deliberation.run({
       prompt: 'task',
       cwd: dir,
       agentInstances: [
@@ -172,9 +196,22 @@ describe('ConfigService.resolve precedence', () => {
         { instanceId: 'b', provider: 'codex', model: '', enabled: true },
       ],
     });
-    return requests;
+    return { ...requests, record };
   }
 });
+
+/** A fake agent CLI: a plan as a Stage 1 agent; as a juror it ranks Response A first, as the chairman it answers "CLI synthesis". */
+function fakeCli(id: string): FakeCliDriver {
+  return new FakeCliDriver({
+    id,
+    respond: (brief) => {
+      if (!brief.task.includes(COUNCIL_PROMPT_FILE)) return [{ type: 'text', text: `Plan from ${id}` }];
+      const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+      const ranking = prompt.includes('provide your code review and ranking');
+      return [{ type: 'text', text: ranking ? 'FINAL RANKING:\n1. Response A\n2. Response B' : 'CLI synthesis' }];
+    },
+  });
+}
 
 type OpenRouterRequests = { models: string[]; authorizations: string[] };
 
@@ -193,31 +230,6 @@ function stubOpenRouter(): OpenRouterRequests {
     return Response.json({ choices: [{ message: { content: 'Synthesis' } }] });
   });
   return requested;
-}
-
-class FixedPlanProvider implements AgentProvider {
-  readonly name: string;
-
-  constructor(readonly id: string) {
-    this.name = id;
-  }
-
-  async discoverModels(): Promise<string[]> {
-    return [];
-  }
-
-  async execute({ agent }: AgentExecutionConfig): Promise<AgentResult> {
-    return {
-      id: agent.id,
-      agentKey: agent.instanceId,
-      name: agent.name,
-      status: 'success',
-      normalizedPlan: `Plan from ${this.id}`,
-      errors: [],
-      command: [],
-      events: [],
-    };
-  }
 }
 
 function silentEvents(): DeliberationEvents {

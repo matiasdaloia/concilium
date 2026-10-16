@@ -11,11 +11,13 @@ export {
 export type { ProviderInfo } from './domain/agent/providers.js';
 export type { AgentResult } from './domain/agent/agent-result.js';
 export type { EventType, TokenUsage, ParsedEvent } from './domain/agent/parsed-event.js';
-export { RunController, runAgentsParallel, DEFAULT_AGENT_MODELS } from './domain/agent/agent-executor.js';
-export type { AgentModelInfo } from './domain/agent/agent-executor.js';
+export { RunController, runAgentsParallel, agentBrief, toParsedEvent, AGENT_TIMEOUT_MS } from './domain/agent/agent-executor.js';
+export type { AgentModelInfo, RunnerCallbacks } from './domain/agent/agent-executor.js';
 
 export type { CouncilConfig } from './domain/council/council-config.js';
-export { DEFAULT_COUNCIL_MODELS, DEFAULT_CHAIRMAN_MODEL, OPENROUTER_API_URL } from './domain/council/council-config.js';
+export { OPENROUTER_API_URL } from './domain/council/council-config.js';
+export { parseCouncilMember, memberFamily, resolveCouncil } from './domain/council/council-members.js';
+export type { CouncilMember, ResolvedCouncil } from './domain/council/council-members.js';
 export type { Stage1Result, Stage2Result, Stage3Result, CouncilTokenUsage } from './domain/council/stage-results.js';
 export type { OpenRouterModelInfo } from './domain/council/model-info.js';
 export { formatPricing, getProviderFromId } from './domain/council/model-info.js';
@@ -35,7 +37,6 @@ export { buildReport, parseReport, ReportValidationError, REPORT_STATUSES } from
 export type { NormalizedEvent, RunEvent, DriverUsage } from './domain/driver/normalized-event.js';
 
 // Port interfaces
-export type { AgentProvider, AgentExecutionConfig } from './ports/agent-provider.js';
 export type { LlmGateway, LlmResponse } from './ports/llm-gateway.js';
 export type { RunRepository } from './ports/run-repository.js';
 export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
@@ -45,17 +46,14 @@ export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from 
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
-export { ClaudeProvider } from './adapters/claude-provider.js';
-export { CodexProvider } from './adapters/codex-provider.js';
-export { OpenCodeProvider, ensureOpenCodeServer, shutdownEmbeddedServer } from './adapters/opencode-provider.js';
-export type { OpenCodeServerHandle, OpenCodeSdkConfig } from './adapters/opencode-provider.js';
 export { JsonRunRepository } from './adapters/json-run-repository.js';
 export { JsonConfigStore } from './adapters/json-config-store.js';
 export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
 export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
 export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
 export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
-export { CliDriver, createHeadlessCliDrivers, HEADLESS_CLI_IDS } from './adapters/cli/cli-drivers.js';
+export { CliCouncilGateway, councilBrief, COUNCIL_PROMPT_FILE, COUNCIL_TIMEOUT_MS } from './adapters/cli/cli-council-gateway.js';
+export { CliDriver, createHeadlessCliDrivers, parseOpenCodeModels } from './adapters/cli/cli-drivers.js';
 export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
@@ -64,7 +62,7 @@ export { DeliberationService } from './services/deliberation-service.js';
 export type { DeliberationInput, DeliberationDeps } from './services/deliberation-service.js';
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
-export { createConciliumRuntime, createProviders } from './services/create-concilium.js';
+export { createConciliumRuntime, createDrivers } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
 // Shared

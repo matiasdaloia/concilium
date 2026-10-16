@@ -6,11 +6,13 @@ export interface LlmResponse {
   usage?: CouncilTokenUsage;
 }
 
+/** Answers juror and chairman prompts. `model` is a council member spec (see `parseCouncilMember`). */
 export interface LlmGateway {
   query(
     model: string,
     messages: Array<{ role: string; content: string }>,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ): Promise<LlmResponse | null>;
 
   queryStreaming(
@@ -18,6 +20,7 @@ export interface LlmGateway {
     messages: Array<{ role: string; content: string }>,
     onChunk: (text: string) => void,
     timeoutMs?: number,
+    signal?: AbortSignal,
   ): Promise<LlmResponse | null>;
 
   queryModelsParallelStreaming(
@@ -26,6 +29,7 @@ export interface LlmGateway {
     onModelStart?: (model: string) => void,
     onModelChunk?: (model: string, chunk: string) => void,
     onModelComplete?: (model: string, success: boolean, usage?: CouncilTokenUsage) => void,
+    signal?: AbortSignal,
   ): Promise<Record<string, LlmResponse | null>>;
 
   fetchModels(): Promise<OpenRouterModelInfo[]>;

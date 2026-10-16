@@ -11,7 +11,6 @@ import {
   JsonRunRepository,
   JsonConfigStore,
   OpenRouterGateway,
-  shutdownEmbeddedServer,
   type AgentInstance,
   type DeliberationService,
   type StartRunConfig,
@@ -27,7 +26,6 @@ let deliberationService: DeliberationService | null = null;
 /** Kill every tracked child process. Called on app quit / signals. */
 export function cancelAllRuns() {
   deliberationService?.cancelAll();
-  shutdownEmbeddedServer();
 }
 
 export function registerIpcHandlers(

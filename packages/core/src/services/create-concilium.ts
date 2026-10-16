@@ -4,35 +4,27 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { CouncilConfig } from '../domain/council/council-config.js';
 import { PROVIDER_IDS, type AgentProviderType } from '../domain/agent/providers.js';
-import type { AgentProvider } from '../ports/agent-provider.js';
+import type { CouncilConfig } from '../domain/council/council-config.js';
+import { parseCouncilMember, resolveCouncil } from '../domain/council/council-members.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
+import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { RunRepository } from '../ports/run-repository.js';
 import type { SecretStore } from '../ports/secret-store.js';
-import { ClaudeProvider } from '../adapters/claude-provider.js';
-import { CodexProvider } from '../adapters/codex-provider.js';
-import { OpenCodeProvider } from '../adapters/opencode-provider.js';
+import { createLogger } from '../shared/logger.js';
+import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
+import { createHeadlessCliDrivers } from '../adapters/cli/cli-drivers.js';
 import { OpenRouterGateway } from '../adapters/openrouter-gateway.js';
 import { ConfigService } from './config-service.js';
 import { DeliberationService } from './deliberation-service.js';
 import { ModelDiscoveryService } from './model-discovery-service.js';
 
-/** One factory per registry id. Adding a provider to `PROVIDERS` without a factory fails to compile. */
-const PROVIDER_FACTORIES: Record<AgentProviderType, () => AgentProvider> = {
-  claude: () => new ClaudeProvider(),
-  codex: () => new CodexProvider(),
-  opencode: () => new OpenCodeProvider(),
-};
+const log = createLogger('runtime');
 
-/** Build providers for the given ids (all registered providers by default), in registry order. */
-export function createProviders(ids: readonly string[] = PROVIDER_IDS): Map<string, AgentProvider> {
-  const providers = new Map<string, AgentProvider>();
-  for (const id of PROVIDER_IDS) {
-    if (ids.includes(id)) providers.set(id, PROVIDER_FACTORIES[id]());
-  }
-  return providers;
+/** One driver per registered provider, keyed by provider id, in registry order. */
+export function createDrivers(env: NodeJS.ProcessEnv = process.env): Map<string, HeadlessCliDriver> {
+  return new Map(createHeadlessCliDrivers(env).map((driver) => [driver.id, driver]));
 }
 
 /** The shell-specific adapters each entry point supplies. */
@@ -43,13 +35,18 @@ export interface ConciliumAdapters {
 }
 
 export interface ConciliumRuntime extends ConciliumAdapters {
-  providers: Map<string, AgentProvider>;
+  /** The agent CLI drivers, keyed by provider id. Tests replace entries with `FakeCliDriver`s. */
+  drivers: Map<string, HeadlessCliDriver>;
   configService: ConfigService;
   modelDiscovery: ModelDiscoveryService;
   /**
-   * Resolve config once with `overrides` on top (see `ConfigService.resolve`),
-   * build the OpenRouter gateway from it, and return a service that runs with
-   * that config and reports progress to `events`.
+   * Resolve config with `overrides` on top (see `ConfigService.resolve`), then fill in missing jurors and
+   * chairman from the installed, signed-in agent CLIs (see `resolveCouncil`).
+   */
+  resolveCouncilConfig(overrides?: Partial<CouncilConfig>): Promise<{ config: CouncilConfig; notes: string[] }>;
+  /**
+   * Resolve the council config once, build the council gateway from it (agent CLIs, plus OpenRouter when an API
+   * key is configured), and return a service that runs with that config and reports progress to `events`.
    */
   createDeliberationService(
     events: DeliberationEvents,
@@ -57,20 +54,47 @@ export interface ConciliumRuntime extends ConciliumAdapters {
   ): Promise<DeliberationService>;
 }
 
+/** The registered CLIs that are installed and not signed out. A CLI whose detection fails counts as unusable. */
+async function usableClis(drivers: ReadonlyMap<string, HeadlessCliDriver>): Promise<AgentProviderType[]> {
+  const usable = await Promise.all(
+    PROVIDER_IDS.map(async (id) => {
+      const detection = await drivers.get(id)?.detect().catch(() => undefined);
+      return detection?.installed && detection.auth !== 'none' ? id : null;
+    }),
+  );
+  return usable.filter((id): id is AgentProviderType => id !== null);
+}
+
 /** The composition root shared by the CLI command, the CLI library entry point and the desktop app. */
 export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRuntime {
-  const providers = createProviders();
+  const drivers = createDrivers();
   const configService = new ConfigService(adapters.configStore, adapters.secretStore);
 
-  return {
+  const runtime: ConciliumRuntime = {
     ...adapters,
-    providers,
+    drivers,
     configService,
-    modelDiscovery: new ModelDiscoveryService(providers),
-    async createDeliberationService(events, overrides = {}) {
+    modelDiscovery: new ModelDiscoveryService(drivers),
+    async resolveCouncilConfig(overrides = {}) {
       const config = await configService.resolve(overrides);
-      const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-      return new DeliberationService({ runRepository: adapters.runRepository, providers, llmGateway, config, events });
+      // Detecting CLIs spawns them, so only detect when a juror list or chairman is left to fill in.
+      const usable = (spec: string) => !!config.openRouterApiKey || parseCouncilMember(spec).kind === 'cli';
+      const needsDefaults = !config.councilModels.some(usable) || !(config.chairmanModel && usable(config.chairmanModel));
+      const council = resolveCouncil({
+        councilModels: config.councilModels,
+        chairmanModel: config.chairmanModel,
+        usableClis: needsDefaults ? await usableClis(drivers) : [],
+        hasOpenRouterKey: !!config.openRouterApiKey,
+      });
+      log.info(`council: jurors ${council.councilModels.join(', ') || '(none)'}; chairman ${council.chairmanModel || '(none)'}`);
+      return { config: { ...config, councilModels: council.councilModels, chairmanModel: council.chairmanModel }, notes: council.notes };
+    },
+    async createDeliberationService(events, overrides = {}) {
+      const { config, notes } = await runtime.resolveCouncilConfig(overrides);
+      const openRouter = config.openRouterApiKey ? new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl) : null;
+      const llmGateway = new CliCouncilGateway({ drivers, openRouter });
+      return new DeliberationService({ runRepository: adapters.runRepository, drivers, llmGateway, config, events, councilNotes: notes });
     },
   };
+  return runtime;
 }

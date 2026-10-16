@@ -12,8 +12,8 @@ concilium/
 │   ├── core/             # @concilium/core — domain logic, ports, adapters
 │   │   ├── src/
 │   │   │   ├── domain/   # Agent, council, deliberation, run types & logic
-│   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
-│   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
+│   │   │   ├── ports/    # Interfaces (HeadlessCliDriver, LlmGateway, etc.)
+│   │   │   ├── adapters/ # Agent CLI drivers, CLI council gateway, OpenRouter, JSON storage
 │   │   │   ├── services/ # createConciliumRuntime, DeliberationService, ConfigService, ModelDiscoveryService
 │   │   │   └── shared/   # Logger
 │   │   └── package.json
@@ -58,9 +58,11 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 | `RunRepository` | `JsonRunRepository` (XDG data dir) | `JsonRunRepository` (Electron `userData`) |
 | `DeliberationEvents` | Callback event bridge / Ink reducer | IPC event bridge (`webContents.send`) |
 
-Agent providers are listed once, in the `PROVIDERS` registry (`packages/core/src/domain/agent/providers.ts`), with a factory per id in `services/create-concilium.ts`.
+Agent providers (`claude`, `codex`, `gemini`, `opencode`) are listed once, in the `PROVIDERS` registry (`packages/core/src/domain/agent/providers.ts`), with their model family and model list, and a headless CLI driver per id in `adapters/cli/cli-drivers.ts`.
 
-The `HeadlessCliDriver` port (`packages/core/src/ports/headless-cli-driver.ts`) is the replacement being built for `AgentProvider`: one driver per installed agent CLI (`adapters/cli/cli-drivers.ts`), a versioned `Brief` in and a versioned `Report` out (`domain/driver/`), processes spawned through `adapters/cli/subprocess.ts`, and `FakeCliDriver` for tests. Drivers only use the CLI's own login and never read credential files (see `docs/research/subscription-tos.md`). `detect()` works for every CLI and is used by `concilium doctor`. `run()` works for Claude Code (`adapters/cli/claude-code.ts`: `claude -p --output-format=stream-json`, plan briefs in plan mode, only the tools of the brief's allowed actions) and Codex (`adapters/cli/codex.ts`: `codex exec --json`, plan briefs in the read-only sandbox, code briefs in workspace-write, network only when allowed, no approvals) and Gemini CLI (`adapters/cli/gemini.ts`: `gemini --output-format=stream-json --prompt=...`, falling back to `json` on versions without stream-json; plan briefs in the `default` approval mode, which headless leaves with only read-only tools, code briefs in `auto_edit`, never `yolo`; its fixtures follow the documented format but are not recorded) and OpenCode (`adapters/cli/opencode.ts`: `opencode run --format=json`, plan briefs with the `plan` agent, code briefs with `build`, never `--auto`; `OPENCODE_PERMISSION` denies the tools of actions the brief does not allow, and bash for plan briefs, since the `plan` agent allows it; its fixtures follow the emitter in the installed opencode 1.18.21 but are not recorded; never use it with a Claude subscription login). It is not wired into the council yet (M1.6).
+Every stage runs through the `HeadlessCliDriver` port (`packages/core/src/ports/headless-cli-driver.ts`), under the user's own CLI logins, with no API key: one driver per installed agent CLI (`adapters/cli/cli-drivers.ts`), a versioned `Brief` in and a versioned `Report` out (`domain/driver/`), processes spawned through `adapters/cli/subprocess.ts`, and `FakeCliDriver` for tests. Drivers only use the CLI's own login and never read credential files (see `docs/research/subscription-tos.md`). `detect()` works for every CLI and is used by `concilium doctor`. `run()` works for Claude Code (`adapters/cli/claude-code.ts`: `claude -p --output-format=stream-json`, plan briefs in plan mode, only the tools of the brief's allowed actions) and Codex (`adapters/cli/codex.ts`: `codex exec --json`, plan briefs in the read-only sandbox, code briefs in workspace-write, network only when allowed, no approvals) and Gemini CLI (`adapters/cli/gemini.ts`: `gemini --output-format=stream-json --prompt=...`, falling back to `json` on versions without stream-json; plan briefs in the `default` approval mode, which headless leaves with only read-only tools, code briefs in `auto_edit`, never `yolo`; its fixtures follow the documented format but are not recorded) and OpenCode (`adapters/cli/opencode.ts`: `opencode run --format=json`, plan briefs with the `plan` agent, code briefs with `build`, never `--auto`; `OPENCODE_PERMISSION` denies the tools of actions the brief does not allow, and bash for plan briefs, since the `plan` agent allows it; its fixtures follow the emitter in the installed opencode 1.18.21 but are not recorded; never use it with a Claude subscription login).
+
+The plan council uses the drivers in all three stages. Stage 1 agents (`domain/agent/agent-executor.ts`) get a read-only plan brief (read and network actions) in the run's `cwd`. Jurors and the chairman are council member specs (`domain/council/council-members.ts`): `cli[:model]` (`claude`, `codex:gpt-5.2`, `opencode:openai/gpt-5.2`) runs that CLI through `CliCouncilGateway` (`adapters/cli/cli-council-gateway.ts`) on a read-only plan brief in a fresh temp dir holding only the prompt file; any other id is an OpenRouter model, sent to `OpenRouterGateway` only when an API key is configured (otherwise it is skipped with a note). `resolveCouncil` fills missing jurors with every installed, signed-in CLI with a known family (OpenCode only as a last resort) and a missing chairman with the usable CLI whose family holds the fewest juror seats; `createConciliumRuntime` runs `detect()` only when it has to fill one in. Tests swap drivers for `FakeCliDriver`s (`runtime.drivers.set(...)`, or `respond(brief)` for fakes that read their prompt).
 
 When modifying deliberation logic, prompts, or ranking — work in `@concilium/core`. When modifying terminal output or CLI flags — work in `@concilium/cli`. When modifying the GUI — work in `desktop/`.
 
@@ -180,7 +182,7 @@ Not checked by any tool. Follow it for new code; don't rewrite existing code onl
 import { readFileSync } from 'node:fs';
 import { useState } from 'react';
 import type { Command } from 'commander';
-import { DeliberationService, type AgentProvider } from '@concilium/core';
+import { DeliberationService, type HeadlessCliDriver } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 ```
 
@@ -306,10 +308,10 @@ import { getConfigDir, getDataDir, getCacheDir } from '../adapters/xdg-paths.js'
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `OPENROUTER_API_KEY` | core, cli, desktop | OpenRouter API key. Beats the saved key. |
+| `OPENROUTER_API_KEY` | core, cli, desktop | Optional OpenRouter API key, only for OpenRouter jurors or chairman. Beats the saved key. |
 | `OPENROUTER_API_URL` | core, cli, desktop | Chat completions endpoint. Default `https://openrouter.ai/api/v1/chat/completions`. |
-| `COUNCIL_MODELS` | core, cli, desktop | Comma-separated juror models. Beats the saved jurors. |
-| `CHAIRMAN_MODEL` | core, cli, desktop | Chairman model. Beats the saved chairman. |
+| `COUNCIL_MODELS` | core, cli, desktop | Comma-separated jurors (council member specs). Beats the saved jurors. |
+| `CHAIRMAN_MODEL` | core, cli, desktop | Chairman (a council member spec). Beats the saved chairman. |
 | `LOG_LEVEL` | core | `debug`, `info`, `warn` or `error` |
 | `XDG_CONFIG_HOME` | cli | Override config directory |
 | `XDG_DATA_HOME` | cli | Override data directory |
@@ -317,7 +319,7 @@ import { getConfigDir, getDataDir, getCacheDir } from '../adapters/xdg-paths.js'
 | `SUPABASE_URL` | website | Supabase project URL (server-side only) |
 | `SUPABASE_ANON_KEY` | website | Supabase anon key (server-side only) |
 
-Config precedence, highest first, per setting: explicit overrides (`run --juror-models`/`--chairman`, the `deliberate()` options `councilModels`/`chairmanModel`/`apiKey`), then environment variable, then saved config (`concilium config set ...`, which merges into the saved settings), then built-in default. `ConfigService.resolve(overrides)` implements it, `createConciliumRuntime` resolves it once per deliberation and passes it to `DeliberationService`, and `packages/core/src/services/config-service.test.ts` pins it.
+Config precedence, highest first, per setting: explicit overrides (`run --juror-models`/`--chairman`, the `deliberate()` options `councilModels`/`chairmanModel`/`apiKey`), then environment variable, then saved config (`concilium config set ...`, which merges into the saved settings), then built-in default (no API key; jurors and chairman left empty for the installed CLIs). `ConfigService.resolve(overrides)` implements it, `createConciliumRuntime` resolves it once per deliberation, fills in the council with `resolveCouncil` and passes it to `DeliberationService`, and `packages/core/src/services/config-service.test.ts` pins it.
 
 ## Pre-Submission Checklist
 - [ ] Verified offline per `.claude/skills/verify-concilium/SKILL.md`: `npm run build`, `npm run typecheck`, `npm test`, `npm run lint -w concilium` and `node packages/cli/dist/bin/concilium.js --help` all exit 0

@@ -1,21 +1,11 @@
 export interface CouncilConfig {
+  /** Only needed for OpenRouter jurors or chairman. */
   openRouterApiKey: string;
   openRouterApiUrl: string;
+  /** Juror member specs (see `parseCouncilMember`). Empty means chosen from the installed agent CLIs at run time. */
   councilModels: string[];
+  /** Chairman member spec. Empty means chosen from the installed agent CLIs at run time. */
   chairmanModel: string;
 }
 
-export interface CommandSpec {
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-}
-
-export const DEFAULT_COUNCIL_MODELS = [
-  'openai/gpt-5.2',
-  'google/gemini-3-pro-preview',
-  'anthropic/claude-opus-4.6',
-];
-
-export const DEFAULT_CHAIRMAN_MODEL = 'google/gemini-3-pro-preview';
 export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';

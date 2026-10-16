@@ -109,4 +109,21 @@ process.exitCode = out.code ?? 0;
       opencode: { installed: false },
     });
   });
+
+  it('should list the models `opencode models` prints and none for CLIs without a model list', async () => {
+    await fakeCli('opencode', { models: { stdout: '\x1B[1manthropic/claude-sonnet-4-5\x1B[0m\nopenai/gpt-5.2\n\nnot a model id' } });
+
+    const drivers = new Map(createHeadlessCliDrivers({ PATH: binDir }).map((d) => [d.id, d]));
+
+    expect(await drivers.get('opencode')!.listModels()).toEqual(['anthropic/claude-sonnet-4-5', 'openai/gpt-5.2']);
+    expect(await drivers.get('claude')!.listModels()).toEqual([]);
+  });
+
+  it('should fail to list models when `opencode models` fails', async () => {
+    await fakeCli('opencode', { models: { stderr: 'boom', code: 1 } });
+
+    const opencode = createHeadlessCliDrivers({ PATH: binDir }).find((d) => d.id === 'opencode')!;
+
+    await expect(opencode.listModels()).rejects.toThrow('`opencode models` exited with code 1');
+  });
 });
