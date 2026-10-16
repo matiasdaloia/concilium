@@ -399,9 +399,24 @@ describe('concilium code', () => {
     expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?`);
     expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`Grafting was tried first on \`${branch}\` (0 applied, 1 rejected)`);
     expect((JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')) as CodeRunRecord).status).toBe('reframe-needed');
+    // Dissent comes right after the status in the JSON: openai-1 still fails on the line, the graft never landed, and
+    // claude both judged the tie and picked the grafts as a same-family last resort.
+    expect(Object.keys(record).slice(0, 5)).toEqual(['version', 'kind', 'id', 'status', 'dissent']);
+    expect(record.dissent.path).toBe(join(runDir, 'dissent.json'));
+    expect(record.dissent.records.map((d) => [d.id, d.source, d.resolution, d.acceptanceClause])).toEqual([
+      ['dissent-1', 'adversarial-test', 'open', AMBIGUOUS_LINE],
+      ['dissent-2', 'rejected-graft', 'open', null],
+      ['dissent-3', 'same-family-judge', 'accepted-risk', null],
+      ['dissent-4', 'same-family-judge', 'accepted-risk', null],
+    ]);
+    expect(record.synthesis!.mergeBlock).toBe(`open dissent on acceptance lines: dissent-1 ("${AMBIGUOUS_LINE}")`);
+    expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain('## Dissent\n\n2 open of 4, also in `dissent.json`.');
 
     const summary = code('--agents', 'claude,codex', task);
     expect(summary.status).toBe(2);
+    // Open dissent is the first thing after the run line.
+    expect(summary.stdout).toMatch(new RegExp(`^\\n  Run \\S+ in \\S+\\n  Open dissent \\(2 of 4, in \\S+dissent\\.json\\):\\n    dissent-1 adversarial-test: the integration head is fail on adversarial test openai-1 by openai \\(acceptance line "${AMBIGUOUS_LINE.replace(/[()]/g, '\\$&')}"\\)\\n    dissent-2 rejected-graft: `));
+    expect(summary.stdout).toContain(`    Not mergeable: open dissent on acceptance lines: dissent-1 ("${AMBIGUOUS_LINE}")\n`);
     expect(summary.stderr).toMatch(/✗ reframe needed: 1 questions in \S+reframe\.md\n/);
     expect(summary.stdout).toContain('Divergence: disjoint-survival on openai-1, anthropic-1, so grafting was tried first; not resolved: at the integration head openai-1 is fail');
     expect(summary.stdout).toMatch(/Patch: none, the divergence is not resolved\n/);

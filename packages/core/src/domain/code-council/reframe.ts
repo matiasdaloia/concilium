@@ -5,6 +5,7 @@
  */
 
 import type { AdversarialTest, SurvivalMatrix } from '../verification/adversarial.js';
+import { dissentMarkdown, type Dissent } from './dissent.js';
 import type { Judgment } from './judging.js';
 import { jsonFromAnswer } from './rubric.js';
 
@@ -210,10 +211,10 @@ export function completeQuestions(divergence: Divergence[], phrased: SpecQuestio
   return questions;
 }
 
-/** `reframe.md`: why the run stopped, the lines in conflict with their evidence, and the questions. */
-export function reframeMarkdown(r: Reframe, run: { id: string; task: string; baseSha: string }): string {
+/** `reframe.md`: the dissent (when given), why the run stopped, the lines in conflict with their evidence, and the questions. */
+export function reframeMarkdown(r: Reframe, run: { id: string; task: string; baseSha: string }, dissent?: Dissent[]): string {
   const lines = [
-    `# Reframe needed for run ${run.id}`, '', `Task: ${run.task}`, '',
+    `# Reframe needed for run ${run.id}`, '', `Task: ${run.task}`, '', ...(dissent ? dissentMarkdown(dissent) : []),
     `The candidates diverge from base \`${run.baseSha.slice(0, 12)}\`, so the task can be read more than one way. No patch was written: answer the questions, restate the task, and run again.`,
     '', '## Divergence', '',
   ];

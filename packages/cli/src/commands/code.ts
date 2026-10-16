@@ -199,7 +199,7 @@ function printSynthesis(record: CodeRunRecord): void {
   for (const note of s.notes) console.log(`    ${note}`);
   console.log(`    Integration branch: ${s.branch ?? '-'}`);
   console.log(`    Patch: ${d && !d.resolved ? 'none, the divergence is not resolved' : s.patchPath ?? '-'}`);
-  console.log(`    Mergeable: ${s.mergeable ? 'yes' : 'no'}${s.mergeCheck ? `, git apply --check against HEAD ${s.mergeCheck.targetSha.slice(0, 12)}${s.mergeCheck.applies ? '' : `: ${s.mergeCheck.output.split('\n')[0]}`}` : ''}`);
+  console.log(`    Mergeable: ${s.mergeable ? 'yes' : 'no'}${s.mergeBlock ? `, ${s.mergeBlock}` : ''}${s.mergeCheck ? `, git apply --check against HEAD ${s.mergeCheck.targetSha.slice(0, 12)}${s.mergeCheck.applies ? '' : `: ${s.mergeCheck.output.split('\n')[0]}`}` : ''}`);
   if (s.synthesisPath) console.log(`    Report: ${s.synthesisPath}`);
 }
 
@@ -236,8 +236,22 @@ function summaryRows(candidates: CodeCandidate[]): string[][] {
   ];
 }
 
+/** Open dissent first: it is what the run leaves undecided, and on an acceptance line it blocks the mergeable label. */
+function printDissent(record: CodeRunRecord): void {
+  const { records, path } = record.dissent;
+  const open = records.filter((d) => d.resolution === 'open');
+  if (open.length === 0) {
+    if (records.length > 0) console.log(`  Dissent: none open, ${records.length} recorded${path ? ` in ${path}` : ''}`);
+    return;
+  }
+  console.log(`  Open dissent (${open.length} of ${records.length}${path ? `, in ${path}` : ''}):`);
+  for (const d of open) console.log(`    ${d.id} ${d.source}: ${d.summary}${d.acceptanceClause ? ` (acceptance line "${d.acceptanceClause}")` : ''}`);
+  if (record.synthesis?.mergeBlock) console.log(`    Not mergeable: ${record.synthesis.mergeBlock}`);
+}
+
 function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   console.log(`\n  Run ${record.id} in ${record.repoDir}`);
+  printDissent(record);
   console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}`);
   for (const line of frameLines(record)) console.log(`  ${line}`);
   for (const line of roleLines(record.roles)) console.log(`  ${line}`);
