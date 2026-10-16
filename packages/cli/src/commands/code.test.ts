@@ -55,7 +55,8 @@ const ADVERSARIAL_TESTS = {
  * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual. As an adversary (its
  * worktree is `adv-<family>`), each writes its test from ADVERSARIAL_TESTS and the manifest; `codex` then exits 1.
  * Both answer detection as installed and signed in. Asked to judge, `claude` scores the candidate whose diff
- * holds `TypeError` 9 on every criterion and the others 3.
+ * holds `TypeError` 9 on every criterion and the others 3. Asked for grafts, `claude` names the first file of
+ * candidate A's diff; as the integrator (its worktree is `integration`), it writes `grafted.js`.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
@@ -68,6 +69,17 @@ const prompt = fs.existsSync('council-prompt.md') ? fs.readFileSync('council-pro
 if (${JSON.stringify(cli)} === 'claude' && prompt.startsWith('You are judging')) {
   const scores = prompt.split('## Candidate ').slice(1).flatMap((s) => ${JSON.stringify(RUBRIC.map((c) => c.name))}.map((criterion) => ({ candidate: s[0], criterion, score: s.includes('TypeError') ? 9 : 3, reason: 'read the diff' })));
   console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ scores }) }));
+  process.exit(0);
+}
+if (${JSON.stringify(cli)} === 'claude' && prompt.startsWith('You are choosing grafts')) {
+  const file = /\\+\\+\\+ b\\/(\\S+)/.exec(prompt.split('## Candidate A')[1] ?? '')?.[1];
+  const grafts = file ? [{ candidate: 'A', files: [file], instruction: 'Take its ' + file + '.', why: 'The base lacks it.' }] : [];
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ grafts }) }));
+  process.exit(0);
+}
+if (${JSON.stringify(cli)} === 'claude' && require('node:path').basename(process.cwd()) === 'integration') {
+  fs.writeFileSync('grafted.js', 'grafted\\n');
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Folded the graft in' }));
   process.exit(0);
 }
 if (require('node:path').basename(process.cwd()).startsWith('adv-')) {
@@ -157,8 +169,21 @@ describe('concilium code', () => {
     const saved = JSON.parse(readFileSync(join(sandbox, 'data', 'concilium', 'runs', record.id, 'run.json'), 'utf8')) as CodeRunRecord;
     expect(saved).toEqual(record);
     const gc = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'gc', '--run', record.id, '--dry-run'], { cwd: repo, env, encoding: 'utf8' });
-    // Two candidates, plus the base the gates ran on.
-    expect(gc.stdout).toContain('would remove 3 worktrees, would delete 3 branches');
+    // Two candidates, the base the gates ran on and the integration worktree; the integration branch is kept.
+    expect(gc.stdout).toContain(`would remove 4 worktrees, would delete 3 branches, kept concilium/${record.id}/integration`);
+
+    // claude won, so codex's half.js is grafted into it by a fresh claude run, and the patch applies to HEAD.
+    const runDir = join(sandbox, 'data', 'concilium', 'runs', record.id);
+    expect(record.synthesis).toMatchObject({
+      base: { candidateId: 'claude', headSha: claude.headSha }, branch: `concilium/${record.id}/integration`,
+      picker: { provider: 'claude', sameFamily: true }, dropouts: [],
+      patchPath: join(runDir, 'result.patch'), synthesisPath: join(runDir, 'synthesis.md'),
+      mergeable: true, mergeCheck: { applies: true, targetSha: head },
+    });
+    expect(record.synthesis!.grafts).toEqual([expect.objectContaining({ id: 'graft-1', candidateId: 'codex', files: ['half.js'], status: 'applied' })]);
+    expect(git(repo, 'show', `concilium/${record.id}/integration:grafted.js`)).toBe('grafted');
+    git(repo, 'apply', '--check', join(runDir, 'result.patch'));
+    expect(readFileSync(join(runDir, 'synthesis.md'), 'utf8')).toContain('- **graft-1** from `codex` (`half.js`): Take its half.js.');
 
     // No gate tells them apart, so a judge orders them. Only claude and codex are installed, the tied families: claude judges, with a note.
     const sameFamilyReason = 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges';
@@ -181,7 +206,20 @@ describe('concilium code', () => {
     const summary = code('--agents', 'claude,codex', 'add input validation to sum with a test');
     expect(summary.status).toBe(0);
     expect(summary.stdout).toContain(`Judge claude on claude, codex: PASS, scored 2 candidates on 3 criteria\n    Warning: same-family judge: ${sameFamilyReason}\n`);
-  }, 90_000);
+    const summaryId = /Run (\S+) in /.exec(summary.stdout)![1];
+    expect(summary.stderr).toMatch(/✓ graft-1 from codex \(half\.js\): applied at [0-9a-f]{12}\n/);
+    expect(summary.stdout).toContain('Synthesis (base claude; grafts named by claude, each re-verified with the gates and the valid adversarial tests):');
+    expect(summary.stdout).toContain(`Integration branch: concilium/${summaryId}/integration\n`);
+    expect(summary.stdout).toContain(`Patch: ${join(sandbox, 'data', 'concilium', 'runs', summaryId, 'result.patch')}\n`);
+    expect(summary.stdout).toMatch(/Mergeable: yes, git apply --check against HEAD [0-9a-f]{12}\n/);
+
+    const unsynthesized = code('--json', '--no-synthesis', '--agents', 'claude,codex', 'add input validation to sum with a test');
+    expect(unsynthesized.status).toBe(0);
+    const plain = JSON.parse(unsynthesized.stdout) as CodeRunRecord;
+    expect(plain.synthesis).toBeUndefined();
+    expect(git(repo, 'branch', '--list', `concilium/${plain.id}/integration`)).toBe('');
+    expect(existsSync(join(sandbox, 'data', 'concilium', 'runs', plain.id, 'result.patch'))).toBe(false);
+  }, 120_000);
 
   it('should print a summary with how to inspect and clean up', () => {
     const result = code('--agents', 'claude', '--type', 'bugfix', 'add input validation to sum');
@@ -201,6 +239,7 @@ describe('concilium code', () => {
     expect(result.stdout).toMatch(/Rank\s+Candidate\s+Report\s+New failures\s+Survival\s+Penalties\s+Judge\n\s+1\s+claude\s+ISSUES\s+0\s+-\s+0\s+-\n/);
     expect(result.stdout).toContain('Winner: claude (best on the evidence)');
     expect(result.stdout).toMatch(/Reports:\n {4}claude: ISSUES at [0-9a-f]{12}, the final message does not list playbook step 1, 2, 3, 4, 5 as done or skipped\n/);
+    expect(result.stdout).toContain('Synthesis skipped: fewer than 2 candidates');
   }, 30_000);
 
   it('should refuse a dirty checkout and exit 1 when every candidate fails', () => {

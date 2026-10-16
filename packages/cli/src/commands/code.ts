@@ -14,6 +14,7 @@ import {
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
+  newRunId,
   PlaintextSecretStore,
   runCodeCandidates,
   TASK_TYPES,
@@ -24,6 +25,7 @@ import {
   type CodeFrame,
   type CodeRunRecord,
   type GateVerdict,
+  type Graft,
   type Judgment,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
@@ -37,6 +39,7 @@ interface CodeOptions {
   verify: boolean;
   adversarial: boolean;
   judge: boolean;
+  synthesis: boolean;
   json?: boolean;
 }
 
@@ -165,6 +168,32 @@ function printRanking(record: CodeRunRecord): void {
   }
 }
 
+function graftLine(g: Graft): string {
+  return `${g.id} from ${g.candidateId} (${g.files.join(', ')}): ${g.status}${g.status === 'applied' ? ` at ${g.commitSha?.slice(0, 12)}` : `, ${g.reason}`}`;
+}
+
+function printSynthesis(record: CodeRunRecord): void {
+  const s = record.synthesis;
+  if (!s) {
+    console.log('\n  Synthesis skipped (--no-synthesis)');
+    return;
+  }
+  if (s.skipped) {
+    console.log(`\n  Synthesis skipped: ${s.skipped}`);
+    return;
+  }
+  console.log(`\n  Synthesis (base ${s.base!.candidateId}; grafts named by ${s.picker?.provider ?? 'no CLI'}, each re-verified with the gates and the valid adversarial tests):`);
+  if (s.picker?.sameFamily) console.log(`    Warning: same-family graft picker: ${s.picker.sameFamilyReason}`);
+  for (const g of s.grafts) console.log(`    ${graftLine(g)}`);
+  if (s.grafts.length === 0) console.log('    no graft');
+  for (const d of s.dropouts) console.log(`    dropout ${d.candidateId}: ${d.reason}`);
+  for (const note of s.notes) console.log(`    ${note}`);
+  console.log(`    Integration branch: ${s.branch ?? '-'}`);
+  console.log(`    Patch: ${s.patchPath ?? '-'}`);
+  console.log(`    Mergeable: ${s.mergeable ? 'yes' : 'no'}${s.mergeCheck ? `, git apply --check against HEAD ${s.mergeCheck.targetSha.slice(0, 12)}${s.mergeCheck.applies ? '' : `: ${s.mergeCheck.output.split('\n')[0]}`}` : ''}`);
+  if (s.synthesisPath) console.log(`    Report: ${s.synthesisPath}`);
+}
+
 function summaryRows(candidates: CodeCandidate[]): string[][] {
   return [
     ['Candidate', 'Status', 'Verified', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
@@ -191,6 +220,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   printVerification(record);
   printAdversarial(record);
   printRanking(record);
+  printSynthesis(record);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
   if (failed.length > 0) {
@@ -221,6 +251,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish; also skips the adversarial tests`)
     .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
     .option('--no-judge', 'Do not ask a judge CLI (from another model family when one is usable) to order candidates tied on the evidence; a tie at the top goes to the smallest diff')
+    .option('--no-synthesis', 'Do not graft ideas from the other candidates into the winner on the integration branch, and write no result.patch or synthesis.md')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -252,8 +283,11 @@ export function registerCodeCommand(program: Command): void {
 
         // Progress goes to stderr so stdout holds only the summary or the JSON.
         const progress = (line: string) => !opts.json && console.error(line);
+        const store = new JsonCodeRunStore(getDataDir());
+        const runId = newRunId();
         record = await runCodeCandidates({
           task,
+          runId,
           repoDir: resolve(opts.cwd),
           agents,
           type,
@@ -274,8 +308,11 @@ export function registerCodeCommand(program: Command): void {
             progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`);
             if (j.sameFamily) progress(`  Warning: same-family judge: ${j.sameFamilyReason}`);
           },
+          // result.patch and synthesis.md go next to run.json.
+          synthesis: opts.synthesis ? { runDir: store.runDir(runId) } : undefined,
+          onGraftDone: (g) => progress(`  ${g.status === 'applied' ? '✓' : '✗'} ${graftLine(g)}`),
         });
-        savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
+        savedTo = await store.save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);
           return null;
         });
