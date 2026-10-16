@@ -16,6 +16,7 @@ npm ci                                       # clean install from the lockfile
 npm run build                                # core, then cli (tsc)
 npm run typecheck                            # core + cli project refs, desktop --noEmit
 npm test                                     # vitest in core, cli, desktop
+npm run lint -w concilium                    # eslint in desktop
 node packages/cli/dist/bin/concilium.js --help   # the built CLI starts
 ```
 
@@ -27,7 +28,7 @@ npm run test -w @concilium/cli               # cli only
 npx vitest run packages/core/src/services/deliberation-service.test.ts
 ```
 
-All five commands must exit 0. A change is not verified until they do.
+All six commands must exit 0. A change is not verified until they do.
 
 ## Feature map
 

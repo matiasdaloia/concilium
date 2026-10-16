@@ -28,4 +28,5 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      - run: npm run lint -w concilium
       - run: node packages/cli/dist/bin/concilium.js --help
