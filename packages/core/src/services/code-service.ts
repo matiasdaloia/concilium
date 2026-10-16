@@ -68,7 +68,10 @@ export type CodeCandidate = {
   report?: CandidateReport;
 };
 
-/** `reframe-needed`: the candidates diverged, so the run stopped before synthesis with questions and no patch. */
+/**
+ * `reframe-needed`: the candidates diverged, so the run ended with questions and no patch: before synthesis, or after
+ * grafting failed to settle a `disjoint-survival` divergence.
+ */
 export type CodeRunStatus = 'done' | 'reframe-needed';
 
 export type CodeRunRecord = {
@@ -131,7 +134,8 @@ export type CodeRunInput = {
   judge?: boolean;
   /**
    * After ranking, graft the others' best ideas into the winner on `concilium/<run-id>/integration`, re-verify, and
-   * write `result.patch` and `synthesis.md` to `runDir`. When the candidates diverge, write `reframe.md` there instead.
+   * write `result.patch` and `synthesis.md` to `runDir`. When the candidates diverge, write `reframe.md` there instead
+   * (for `disjoint-survival` alone, only when grafting does not make the integration head pass the conflicting tests).
    */
   synthesis?: { runDir: string };
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
@@ -343,7 +347,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     });
     log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
 
-    // Divergence means the task was underspecified: ask, never blend. A prototype ends in a decision record anyway.
+    // Divergence means the task may be underspecified. A prototype ends in a decision record anyway.
     const divergence = input.synthesis && taskType.type !== 'prototype'
       ? detectDivergence({
         candidates: ranking.order.map((e) => {
@@ -353,19 +357,33 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
         tests: adversarial?.tests ?? [], matrix: adversarial?.matrix ?? {}, judgments: ranking.judgments,
       })
       : [];
+    // Complementary misses (only `disjoint-survival`) may be grafted together: synthesis runs first, and the run asks
+    // only when the integration head still fails a gate or a conflicting test. Any other trigger asks at once.
+    const graftFirst = divergence.length > 0 && divergence.every((d) => d.trigger === 'disjoint-survival');
+    const asks = (runDir: string, grafting?: Reframe['grafting']) => reframeRun({
+      task: input.task, repoDir, runId, baseSha: base.baseSha, runDir, framer: roles.planner.value ? specAgent(roles.planner.value) : undefined, divergence, grafting,
+      candidates: candidates.filter((c) => c.headSha && c.report?.status !== 'BLOCKED'), drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS, signal,
+    });
     let synthesis: Synthesis | undefined;
     let reframe: Reframe | undefined;
-    if (input.synthesis && divergence.length > 0) {
-      reframe = await reframeRun({
-        task: input.task, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, framer: roles.planner.value ? specAgent(roles.planner.value) : undefined, divergence,
-        candidates: candidates.filter((c) => c.headSha && c.report?.status !== 'BLOCKED'), drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS, signal,
-      });
+    if (input.synthesis && divergence.length > 0 && !graftFirst) {
+      reframe = await asks(input.synthesis.runDir);
       synthesis = skippedSynthesis(`the candidates diverge (${divergence.map((d) => d.trigger).join(', ')}), so the task needs a reframe`);
     } else if (input.synthesis) {
+      const conflicts = new Set(divergence.flatMap((d) => d.tests ?? []));
       synthesis = await synthesize({
         task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
         verification, adversarial, drivers: input.drivers, workspace: input.workspace, pickerSpec: judgeSpec, integrator, timeoutMs, signal, onGraftDone: input.onGraftDone,
+        ...(graftFirst ? { conflictTests: [...conflicts].map((id) => adversarial!.tests.find((t) => t.id === id)!) } : {}),
       });
+      if (graftFirst && !synthesis.divergence?.resolved) {
+        reframe = await asks(input.synthesis.runDir, {
+          branch: synthesis.branch, headSha: synthesis.headSha,
+          applied: synthesis.grafts.filter((g) => g.status === 'applied').length, rejected: synthesis.grafts.filter((g) => g.status === 'rejected').length,
+          outcome: synthesis.divergence?.reason ?? synthesis.skipped ?? synthesis.notes.at(-1) ?? 'synthesis did not finish',
+          synthesisPath: synthesis.synthesisPath,
+        });
+      }
     }
     return {
       version: 1,

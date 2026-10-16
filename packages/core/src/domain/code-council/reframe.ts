@@ -23,10 +23,22 @@ export type DivergenceTrigger = 'no-gate-pass' | 'disjoint-survival' | 'judge-sp
 /** One line the candidates split on (a task clause, a gate, or the base pick), with what each candidate did. */
 export type Conflict = { clause: string; evidence: string[] };
 
-export type Divergence = { trigger: DivergenceTrigger; detail: string; conflicts: Conflict[] };
+/** `tests`: for `disjoint-survival`, the ids of the adversarial tests the candidates failed, which grafting must make pass. */
+export type Divergence = { trigger: DivergenceTrigger; detail: string; conflicts: Conflict[]; tests?: string[] };
 
 /** A question for whoever wrote the task, about one line in conflict. */
 export type SpecQuestion = { clause: string; question: string };
+
+/** What grafting left of a `disjoint-survival` divergence before the run asked for a reframe. */
+export type ReframeGrafting = {
+  branch: string | null;
+  headSha: string | null;
+  applied: number;
+  rejected: number;
+  /** Why the integration head does not settle the divergence. */
+  outcome: string;
+  synthesisPath: string | null;
+};
 
 /** M5.2: the run ends in `reframe-needed` with the questions the divergence exposed, and no patch. */
 export type Reframe = {
@@ -38,6 +50,8 @@ export type Reframe = {
   source: 'phraser' | 'fallback';
   notes: string[];
   reportPath: string | null;
+  /** Set when grafting was tried first and did not settle the divergence. */
+  grafting?: ReframeGrafting;
 };
 
 export type DivergenceCandidate = {
@@ -101,6 +115,7 @@ export function detectDivergence(input: { candidates: DivergenceCandidate[]; tes
           }),
         };
       }),
+      tests: [...new Set(failed.flat().map((t) => t.id))],
     });
   }
 
@@ -205,6 +220,10 @@ export function reframeMarkdown(r: Reframe, run: { id: string; task: string; bas
   for (const d of r.divergence) {
     lines.push(`- ${d.trigger}: ${d.detail}`);
     for (const c of d.conflicts) lines.push(`  - \`${c.clause}\`: ${c.evidence.join('; ')}`);
+  }
+  const g = r.grafting;
+  if (g) {
+    lines.push('', '## Grafting', '', `Grafting was tried first on \`${g.branch}\` (${g.applied} applied, ${g.rejected} rejected): ${g.outcome}. The branch is kept${g.headSha ? ` at \`${g.headSha}\`` : ''} for inspection${g.synthesisPath ? `; see \`${g.synthesisPath}\`` : ''}.`);
   }
   lines.push('', '## Questions', '', r.source === 'phraser' ? `Phrased by \`${r.phraser}\` from the evidence.` : 'Written from the evidence, without a phraser\'s answer.', '');
   lines.push(...r.questions.map((q, i) => `${i + 1}. On "${q.clause}": ${q.question}`), '');

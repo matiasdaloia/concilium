@@ -51,6 +51,26 @@ export type Graft = GraftIdea & {
 /** The gates and valid adversarial tests at the integration head, at `sha`. */
 export type SynthesisChecks = { sha: string; gates: Record<string, StepResult['outcome']>; tests: Record<string, SurvivalCell> };
 
+/**
+ * Synthesis tried before a reframe (M5.2): the candidates failed different adversarial tests (`disjoint-survival`),
+ * and those tests were re-run at the integration head. Unresolved, no patch is kept and the run needs a reframe.
+ */
+export type SynthesisDivergence = { tests: string[]; resolved: boolean; reason: string };
+
+/**
+ * Whether the checks at the integration head settle a divergence: every gate that passes on the base passes there,
+ * and so does every conflicting test.
+ */
+export function settleDivergence(checks: SynthesisChecks, tests: string[], baseline: Record<string, StepResult['outcome']>): SynthesisDivergence {
+  const problems = [
+    ...Object.entries(checks.gates).filter(([name, outcome]) => outcome !== 'pass' && (baseline[name] ?? 'pass') === 'pass').map(([name, outcome]) => `gate ${name} is ${outcome}`),
+    ...tests.filter((id) => checks.tests[id] !== 'pass').map((id) => `${id} is ${checks.tests[id] ?? 'error'}`),
+  ];
+  return problems.length === 0
+    ? { tests, resolved: true, reason: `the integration head passes the gates and every conflicting test (${tests.join(', ')})` }
+    : { tests, resolved: false, reason: `at the integration head ${problems.join(', ')}` };
+}
+
 /** M5.1: the winner as the base, grafts from the losers folded in one commit each, re-verified, and the patch. */
 export type Synthesis = {
   /** Why it did not run. */
@@ -73,6 +93,8 @@ export type Synthesis = {
   /** The patch applies to the target repo's current `HEAD`. */
   mergeable: boolean;
   mergeCheck: PatchCheck | null;
+  /** Set when synthesis ran to settle a `disjoint-survival` divergence. */
+  divergence?: SynthesisDivergence;
 };
 
 /** What the graft picker sees of one candidate: a label, its evidence and its diff against the run's base. */
@@ -191,6 +213,11 @@ export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string;
 
   const applied = s.grafts.filter((g) => g.status === 'applied');
   const rejected = s.grafts.filter((g) => g.status === 'rejected');
+  if (s.divergence) {
+    const d = s.divergence;
+    lines.push('## Divergence', '', `The candidates diverged (disjoint-survival on ${d.tests.join(', ')}), so grafting was tried before a reframe.`, '');
+    lines.push(d.resolved ? `Resolved: ${d.reason}.` : `Not resolved: ${d.reason}. No patch was kept: the run needs a reframe (see \`reframe.md\`).`, '');
+  }
   lines.push('## Base', '', `\`${s.base!.candidateId}\` at \`${s.base!.headSha}\` (${s.base!.reason}).`, '');
   if (s.picker) lines.push(`Grafts named by \`${s.picker.provider}\`${s.picker.sameFamily ? `, a same-family picker: ${s.picker.sameFamilyReason}` : ''}.`, '');
   lines.push('## Applied grafts', '');
@@ -212,7 +239,10 @@ export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string;
     lines.push(...Object.entries(s.checks.gates).map(([name, outcome]) => `- gate ${name}: ${outcome}`));
     lines.push(...Object.entries(s.checks.tests).map(([id, cell]) => `- adversarial test ${id}: ${cell}`), '');
   }
-  lines.push('## Result', '', `- Integration branch: \`${s.branch}\` at \`${s.headSha}\``, `- Patch: \`${s.patchPath ?? RESULT_PATCH}\` (\`${run.baseSha.slice(0, 12)}..${s.headSha?.slice(0, 12)}\`)`);
+  lines.push('## Result', '', `- Integration branch: \`${s.branch}\` at \`${s.headSha}\``);
+  lines.push(s.divergence && !s.divergence.resolved
+    ? '- Patch: none, the divergence is not resolved'
+    : `- Patch: \`${s.patchPath ?? RESULT_PATCH}\` (\`${run.baseSha.slice(0, 12)}..${s.headSha?.slice(0, 12)}\`)`);
   const check = s.mergeCheck;
   lines.push(check
     ? `- Mergeable: ${s.mergeable ? 'yes' : 'no'}, \`git apply --check\` against \`HEAD\` at \`${check.targetSha}\`${check.applies ? '' : `: ${check.output.split('\n')[0]}`}`

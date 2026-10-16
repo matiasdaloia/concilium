@@ -16,6 +16,7 @@ import {
   integratorBrief,
   parseGraftAnswer,
   RESULT_PATCH,
+  settleDivergence,
   SYNTHESIS_REPORT,
   synthesisMarkdown,
   type Graft,
@@ -59,6 +60,11 @@ export type SynthesisInput = {
   pickerSpec?: string;
   /** The integrator role. Without it, the base's CLI and model fold in the grafts. */
   integrator?: CodeAgent;
+  /**
+   * The adversarial tests of a `disjoint-survival` divergence. They are checked after each graft like the valid
+   * suite, re-run at the integration head, and unless that head passes the gates and all of them, no patch is kept.
+   */
+  conflictTests?: AdversarialTest[];
   /** Wall-clock limit per integrator run. */
   timeoutMs: number;
   runner?: GateRunner;
@@ -239,6 +245,7 @@ async function applyGraft(ctx: Context, idea: GraftIdea, id: string, head: strin
  * grafts per other candidate that is neither blocked nor disqualified; each is folded in by a fresh integrator run,
  * one commit per graft, and re-verified with the gates and the valid adversarial suite. Then the integration branch
  * is written to `result.patch`, checked against the target's current `HEAD`, and reported in `synthesis.md`.
+ * With `conflictTests` (M5.2), the patch is written only when the integration head settles the divergence.
  */
 export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
   const skip = skippedSynthesis;
@@ -267,7 +274,8 @@ export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
     synthesis.branch = integration.branch;
     synthesis.worktree = integration.path;
     synthesis.headSha = base.headSha;
-    const validTests = (input.adversarial?.tests ?? []).filter((t) => t.validity === 'evidence' || t.validity === 'regression-guard');
+    const valid = (input.adversarial?.tests ?? []).filter((t) => t.validity === 'evidence' || t.validity === 'regression-guard');
+    const validTests = [...valid, ...(input.conflictTests ?? []).filter((t) => !valid.some((v) => v.id === t.id))];
     const ctx: Context = { ...input, runner: input.runner ?? new GateRunner(), signal: input.signal ?? new AbortController().signal, base, integration, validTests };
 
     // The base was checked at this very head, so its results are where the first graft starts from.
@@ -285,14 +293,23 @@ export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
       checks = result.checks;
       input.onGraftDone?.(result.graft);
     }
+    if (input.conflictTests) {
+      // The suite again at the very head the patch would come from, which a revert or no graft leaves unchecked.
+      checks = (await check(ctx, synthesis.headSha)).checks;
+      const baseline = Object.fromEntries((input.verification.baseline?.gates ?? []).map((g) => [g.name, g.outcome]));
+      synthesis.divergence = settleDivergence(checks, input.conflictTests.map((t) => t.id), baseline);
+    }
     synthesis.checks = checks;
 
-    const patch = await input.workspace.patch({ repoDir: input.repoDir, runId: input.runId, candidateId: INTEGRATION_CANDIDATE });
-    await mkdir(input.runDir, { recursive: true });
-    synthesis.patchPath = join(input.runDir, RESULT_PATCH);
-    await writeFile(synthesis.patchPath, patch);
-    synthesis.mergeCheck = await input.workspace.checkPatch({ repoDir: input.repoDir, patch });
-    synthesis.mergeable = synthesis.mergeCheck.applies;
+    // An unresolved divergence keeps the integration branch for inspection, but no patch: the run needs a reframe.
+    if (synthesis.divergence?.resolved !== false) {
+      const patch = await input.workspace.patch({ repoDir: input.repoDir, runId: input.runId, candidateId: INTEGRATION_CANDIDATE });
+      await mkdir(input.runDir, { recursive: true });
+      synthesis.patchPath = join(input.runDir, RESULT_PATCH);
+      await writeFile(synthesis.patchPath, patch);
+      synthesis.mergeCheck = await input.workspace.checkPatch({ repoDir: input.repoDir, patch });
+      synthesis.mergeable = synthesis.mergeCheck.applies;
+    }
   } catch (err) {
     synthesis.notes.push(`synthesis failed: ${errorMessage(err)}`);
     log.error(`run ${input.runId}: synthesis failed: ${errorMessage(err)}`);

@@ -14,6 +14,7 @@ import {
   reframePrompt,
   type Divergence,
   type Reframe,
+  type ReframeGrafting,
   type SpecQuestion,
 } from '../domain/code-council/reframe.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
@@ -35,6 +36,8 @@ export type ReframeInput = {
   /** The CLI and model that framed the run; it phrases the questions, read-only. */
   framer?: CodeAgent;
   divergence: Divergence[];
+  /** What grafting left, when it was tried first. */
+  grafting?: ReframeGrafting;
   /** The candidates whose diffs the phraser reads. */
   candidates: CodeCandidate[];
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
@@ -86,6 +89,7 @@ export async function reframeRun(input: ReframeInput): Promise<Reframe> {
 
   const reframe: Reframe = {
     divergence: input.divergence, questions, phraser: framer, source: phrased.length ? 'phraser' : 'fallback', notes, reportPath: null,
+    ...(input.grafting ? { grafting: input.grafting } : {}),
   };
   try {
     await mkdir(input.runDir, { recursive: true });

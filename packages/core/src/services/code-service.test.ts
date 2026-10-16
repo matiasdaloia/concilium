@@ -1095,6 +1095,7 @@ describe('runCodeCandidates reframe', () => {
       trigger: 'disjoint-survival',
       detail: 'each candidate that passes the gates fails different adversarial tests: claude fails openai-1; codex fails anthropic-1',
       conflicts: [{ clause: LINE, evidence: ['claude passes anthropic-1, fails openai-1', 'codex passes openai-1, fails anthropic-1'] }],
+      tests: ['openai-1', 'anthropic-1'],
     }]);
     // The framer's CLI phrased the question read-only, from the evidence and both diffs.
     expect(reframe).toMatchObject({
@@ -1106,15 +1107,88 @@ describe('runCodeCandidates reframe', () => {
     expect(prompts[0]).toContain("+module.exports = (s) => s.toLowerCase().split(' ').join('_');");
     expect(drivers.get('claude')!.runs.filter((r) => r.brief.mode === 'plan').at(-1)!.brief).toMatchObject({ allowedActions: ['read'] });
 
-    // No blend: synthesis is skipped, no integration branch and no patch; reframe.md names the line.
-    expect(record.synthesis).toMatchObject({ skipped: 'the candidates diverge (disjoint-survival), so the task needs a reframe', branch: null, patchPath: null });
-    expect(git(repo, 'branch', '--list', 'concilium/ref1/integration')).toBe('');
+    // Grafting was tried first: the integration branch is kept for inspection, but the conflict is still there, so no patch.
+    const s = record.synthesis!;
+    expect(s.skipped).toBeUndefined();
+    expect(s).toMatchObject({ base: { candidateId: 'claude' }, branch: 'concilium/ref1/integration', patchPath: null, mergeable: false, mergeCheck: null });
+    expect(s.divergence).toEqual({ tests: ['openai-1', 'anthropic-1'], resolved: false, reason: 'at the integration head openai-1 is fail' });
+    expect(s.checks).toMatchObject({ sha: s.headSha, gates: { test: 'pass' }, tests: { 'anthropic-1': 'pass', 'openai-1': 'fail' } });
+    expect(git(repo, 'rev-parse', 'concilium/ref1/integration')).toBe(s.headSha);
     expect(existsSync(join(runDir, 'result.patch'))).toBe(false);
+    expect(reframe.grafting).toEqual({
+      branch: 'concilium/ref1/integration', headSha: s.headSha, applied: 0, rejected: 0,
+      outcome: 'at the integration head openai-1 is fail', synthesisPath: join(runDir, 'synthesis.md'),
+    });
+    expect(readFileSync(join(runDir, 'synthesis.md'), 'utf8')).toContain('Not resolved: at the integration head openai-1 is fail. No patch was kept');
     expect(reframe.reportPath).toBe(join(runDir, 'reframe.md'));
     const md = readFileSync(reframe.reportPath!, 'utf8');
     expect(md).toContain(`1. On "${LINE}": Should the separator be a hyphen or an underscore?`);
+    expect(md).toContain('## Grafting\n\nGrafting was tried first on `concilium/ref1/integration`');
     expect(md).toContain(baseSha.slice(0, 12));
     expect(git(repo, 'status', '--porcelain')).toBe('');
+  }, 60_000);
+
+  it('should graft complementary misses into the winner and finish done when the integration passes every conflicting test', async () => {
+    const LOWER = 'slugify lowercases the text';
+    const TRIM = 'slugify trims the text';
+    const task = `Add slugify(text) in slug.js.\nAcceptance:\n- ${LOWER}\n- ${TRIM}`;
+    seedSuite();
+    /** A candidate that writes `code`; as an adversary it writes one test with `clause`; as the integrator it writes `integrated`. */
+    const half = (id: string, code: string, test: string, clause: string): FakeCliDriver => new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        if (brief.mode === 'plan') return [{ type: 'error', message: 'no answer' }];
+        if (brief.task.startsWith('You are an adversary')) {
+          writeFileSync(join(brief.cwd, `${id}.test.js`), test);
+          writeFileSync(join(brief.cwd, 'concilium-adversarial.json'), JSON.stringify({ tests: [{ files: [`${id}.test.js`], specClause: clause }] }));
+          return [{ type: 'text', text: 'wrote a test' }];
+        }
+        writeFileSync(join(brief.cwd, 'slug.js'), brief.task.startsWith('You are integrating') ? 'module.exports = (s) => s.trim().toLowerCase();\n' : code);
+        return [{ type: 'text', text: STEPS }];
+      },
+    });
+    const prompts: string[] = [];
+    const drivers = new Map([
+      // claude lowercases but does not trim, and tests the lowercasing; codex trims but does not lowercase, and tests the trimming.
+      ['claude', half('claude', 'module.exports = (s) => s.toLowerCase();\n', "if (require('./slug.js')('AB') !== 'ab') throw new Error('lower');\n", LOWER)],
+      ['codex', half('codex', 'module.exports = (s) => s.trim();\n', "if (require('./slug.js')(' ab ') !== 'ab') throw new Error('trim');\n", TRIM)],
+      ['gemini', new FakeCliDriver({
+        id: 'gemini',
+        respond: (brief: Brief) => {
+          const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+          if (!prompt.startsWith('You are choosing grafts')) return [{ type: 'error', message: 'not a graft prompt' }];
+          prompts.push(prompt);
+          return [{ type: 'text', text: JSON.stringify({ grafts: [{ candidate: 'A', files: ['slug.js'], instruction: 'Trim the text too.', why: 'The base keeps the spaces.' }] }) }];
+        },
+      })],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const record = await runCodeCandidates({
+      task, type: 'feature', repoDir: repo, runId: 'ref4', drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], synthesis: { runDir },
+    });
+
+    // Each misses the line the other covers: a disjoint-survival divergence on two lines.
+    expect(record.adversarial!.matrix).toEqual({
+      'anthropic-1': { base: 'fail', claude: 'pass', codex: 'fail' },
+      'openai-1': { base: 'fail', claude: 'fail', codex: 'pass' },
+    });
+    const s = record.synthesis!;
+    expect(prompts).toHaveLength(1);
+    expect(s.grafts).toEqual([expect.objectContaining({ id: 'graft-1', candidateId: 'codex', status: 'applied' })]);
+    // Re-run at the integration head: the gates and both conflicting tests pass, so the run is done with a patch.
+    expect(s.divergence).toEqual({ tests: ['openai-1', 'anthropic-1'], resolved: true, reason: 'the integration head passes the gates and every conflicting test (openai-1, anthropic-1)' });
+    expect(s.checks).toEqual({ sha: s.headSha, gates: { test: 'pass' }, tests: { 'anthropic-1': 'pass', 'openai-1': 'pass' } });
+    expect(record.status).toBe('done');
+    expect(record.reframe).toBeUndefined();
+    expect(existsSync(join(runDir, 'reframe.md'))).toBe(false);
+    expect(s.patchPath).toBe(join(runDir, 'result.patch'));
+    expect(s.mergeable).toBe(true);
+    git(repo, 'apply', '--check', s.patchPath!);
+    expect(git(repo, 'show', `${s.branch}:slug.js`)).toBe('module.exports = (s) => s.trim().toLowerCase();');
+    const md = readFileSync(join(runDir, 'synthesis.md'), 'utf8');
+    expect(md).toContain('## Divergence\n\nThe candidates diverged (disjoint-survival on openai-1, anthropic-1), so grafting was tried before a reframe.');
+    expect(md).toContain('Resolved: the integration head passes the gates and every conflicting test (openai-1, anthropic-1).');
   }, 60_000);
 
   it('should write the questions from the evidence when the phraser gives no answer, and skip the check without synthesis', async () => {
