@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
 import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
+import type { RunEvent } from '../domain/driver/normalized-event.js';
 import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { DirtyWorktreeError, GitWorktreeWorkspace } from '../adapters/git-worktree-workspace.js';
@@ -451,16 +452,18 @@ describe('runCodeCandidates with adversarial', () => {
     });
     expect(cells).toHaveLength(16);
     expect(round.tests.map((t) => [t.id, t.author, t.files, t.specClause, t.validity])).toEqual([
-      ['anthropic-1', 'anthropic', ['adv/second.test.js'], 'clause 1', 'evidence'],
+      // It passes only on claude, of its author's family: no other family shows it can be met.
+      ['anthropic-1', 'anthropic', ['adv/second.test.js'], 'clause 1', 'own-family-only'],
       ['anthropic-2', 'anthropic', ['adv/everywhere.test.js'], 'clause 2', 'quarantined'],
       ['anthropic-3', 'anthropic', ['adv/adds.test.js'], 'clause 3', 'regression-guard'],
+      // It passes on claude, of another family than its author.
       ['openai-1', 'openai', ['first.test.js'], 'clause 1', 'evidence'],
     ]);
-    // An author's own tests carry no weight for it; quarantined ones carry none for anyone.
+    // An author's own tests carry no weight for it; own-family-only and quarantined ones carry none for anyone.
     expect(round.survival).toEqual({
       claude: { counted: 1, survived: 1, failed: [] },
-      codex: { counted: 2, survived: 1, failed: ['anthropic-1'] },
-      gemini: { counted: 3, survived: 0, failed: ['anthropic-1', 'anthropic-3', 'openai-1'] },
+      codex: { counted: 1, survived: 1, failed: [] },
+      gemini: { counted: 2, survived: 0, failed: ['anthropic-3', 'openai-1'] },
     });
     // Each run is recorded at the lane's SHA, with the output of failures.
     const killed = round.runs.find((r) => r.testId === 'anthropic-1' && r.lane === 'codex')!;
@@ -533,11 +536,17 @@ describe('runCodeCandidates ranking', () => {
     return git(repo, 'rev-parse', 'HEAD');
   }
 
-  /** A candidate that fails the framing run (so the rubric is the playbook's), changes files (null deletes) and ends with `finalText`. */
-  function agent(id: string, files: Record<string, string | null>, finalText = STEPS): FakeCliDriver {
+  /**
+   * A candidate that fails the framing run (so the rubric is the playbook's), changes files (null deletes) and ends
+   * with `finalText`. With `judging`, it also answers a judge prompt as `judge` does.
+   */
+  function agent(id: string, files: Record<string, string | null>, finalText = STEPS, judging?: { prefer: string; prompts: string[] }): FakeCliDriver {
     return new FakeCliDriver({
       id,
       respond: (brief: Brief) => {
+        if (judging && brief.mode === 'plan' && readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8').startsWith('You are judging')) {
+          return score(brief, judging.prefer, judging.prompts);
+        }
         if (brief.mode === 'plan') return [{ type: 'error', message: 'no framing' }];
         for (const [name, content] of Object.entries(files)) {
           if (content === null) rmSync(join(brief.cwd, name));
@@ -550,17 +559,16 @@ describe('runCodeCandidates ranking', () => {
 
   /** A judge that scores every criterion 9 for the candidate whose section of the prompt holds `prefer`, 4 for the others. */
   function judge(id: string, prefer: string, prompts: string[]): FakeCliDriver {
-    return new FakeCliDriver({
-      id,
-      respond: (brief: Brief) => {
-        const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
-        prompts.push(prompt);
-        const scores = prompt.split('## Candidate ').slice(1).flatMap((section) => PLAYBOOKS.feature.rubric.map((c) => ({
-          candidate: section[0], criterion: c.name, score: section.includes(prefer) ? 9 : 4, reason: `${c.name}: see the diff`,
-        })));
-        return [{ type: 'text', text: JSON.stringify({ scores }) }];
-      },
-    });
+    return new FakeCliDriver({ id, respond: (brief: Brief) => score(brief, prefer, prompts) });
+  }
+
+  function score(brief: Brief, prefer: string, prompts: string[]): RunEvent[] {
+    const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+    prompts.push(prompt);
+    const scores = prompt.split('## Candidate ').slice(1).flatMap((section) => PLAYBOOKS.feature.rubric.map((c) => ({
+      candidate: section[0], criterion: c.name, score: section.includes(prefer) ? 9 : 4, reason: `${c.name}: see the diff`,
+    })));
+    return [{ type: 'text', text: JSON.stringify({ scores }) }];
   }
 
   const NUMBER = 'module.exports = (a, b) => Number(a) + Number(b);\n';
@@ -619,9 +627,10 @@ describe('runCodeCandidates ranking', () => {
     expect(judged).toEqual(['gemini PASS']);
     const [judgment] = record.ranking.judgments;
     expect(judgment).toMatchObject({
-      status: 'PASS', candidates: ['claude', 'codex'], judge: 'gemini', crossFamily: true, rubricSha256: record.rubric.sha256,
-      totals: { claude: 32, codex: 72 }, notes: [],
+      status: 'PASS', candidates: ['claude', 'codex'], judge: 'gemini', sameFamily: false, sameFamilyReason: null, rubricSha256: record.rubric.sha256,
+      totals: { claude: 32, codex: 72 },
     });
+    expect(record.candidates.flatMap((c) => c.report!.evidence).filter((e) => e.kind === 'judge')).toEqual([]);
     expect(judgment.scores).toContainEqual({ candidateId: 'codex', criterion: 'fit', score: 9, reason: 'fit: see the diff' });
     expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.judgeTotal])).toEqual([[1, 'codex', 72], [2, 'claude', 32]]);
     expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
@@ -635,7 +644,29 @@ describe('runCodeCandidates ranking', () => {
     expect(prompts[0]).not.toMatch(/claude|codex|anthropic|openai/i);
   });
 
-  it('should block the judge when the rubric no longer matches its frozen hash, and name no winner for the tie', async () => {
+  it('should let a tied family judge only when no other family is usable, and flag it on the judgment and every tied report', async () => {
+    seedTest();
+    const prompts: string[] = [];
+    // claude is a candidate and, as the only usable CLI besides codex, the judge.
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER }, STEPS, { prefer: UNARY, prompts })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank5', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+
+    const reason = 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges';
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'PASS', judge: 'claude', sameFamily: true, sameFamilyReason: reason })]);
+    expect(prompts).toHaveLength(1);
+    for (const c of record.candidates) {
+      expect(c.report!.evidence).toContainEqual({ kind: 'judge', ok: true, detail: `same-family judge: ${reason}` });
+    }
+    expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
+  });
+
+  it('should block the judge when the rubric no longer matches its frozen hash, and break the tie by the smallest diff', async () => {
     seedTest();
     const prompts: string[] = [];
     const drivers = new Map([
@@ -653,9 +684,24 @@ describe('runCodeCandidates ranking', () => {
     expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'BLOCKED', judge: null, scores: [], totals: {} })]);
     expect(record.ranking.judgments[0].reason).toMatch(/^the rubric does not match its frozen sha256 [0-9a-f]{12} \(its criteria hash to [0-9a-f]{12}\)$/);
     expect(prompts).toEqual([]);
-    expect(record.ranking.order.map((e) => [e.rank, e.candidateId])).toEqual([[1, 'claude'], [1, 'codex']]);
-    expect(record.ranking.winner).toBeNull();
-    expect(record.ranking.reason).toContain('no winner: claude, codex tie on the evidence and the judge is BLOCKED: the rubric does not match');
+    // Both change 2 lines in sum.js, so the candidate id decides.
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.size])).toEqual([[1, 'claude', { lines: 2, files: 1 }], [2, 'codex', { lines: 2, files: 1 }]]);
+    expect(record.ranking.winner).toBe('claude');
+    expect(record.ranking.reason).toMatch(/^tie broken by smallest diff: claude, codex tie on the evidence and the judge is BLOCKED: the rubric does not match .*; claude changes 2 lines in 1 file$/);
+  });
+
+  it('should give an unjudged tie to the candidate with the smallest diff', async () => {
+    seedTest();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER, 'notes.md': 'one\ntwo\n' })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank6', drivers, workspace, verify: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.size])).toEqual([[1, 'codex', { lines: 2, files: 1 }], [2, 'claude', { lines: 4, files: 2 }]]);
+    expect(record.ranking).toMatchObject({ winner: 'codex', judgments: [], reason: 'tie broken by smallest diff: claude, codex tie on the evidence and no judge ran; codex changes 2 lines in 1 file' });
   });
 
   it('should name no winner when every candidate is disqualified', async () => {

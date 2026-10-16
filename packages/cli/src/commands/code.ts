@@ -133,13 +133,13 @@ function printAdversarial(record: CodeRunRecord): void {
 }
 
 function judgmentLine(j: Judgment): string {
-  const who = j.judge ? `${j.judge}${j.crossFamily ? ' (another family)' : ''}` : 'no judge';
+  const who = j.judge ? `${j.judge}${j.sameFamily ? '' : ' (another family)'}` : 'no judge';
   return `Judge ${who} on ${j.candidates.join(', ')}: ${j.status}, ${j.reason}`;
 }
 
 function printRanking(record: CodeRunRecord): void {
   const { ranking } = record;
-  console.log('\n  Ranking (disqualified last, then new gate failures, adversarial survival, integrity penalties; a judge orders exact ties):');
+  console.log('\n  Ranking (disqualified last, then new gate failures, adversarial survival, integrity penalties; a judge orders exact ties, and the smallest diff breaks a tie left at the top):');
   printTable([
     ['Rank', 'Candidate', 'Report', 'New failures', 'Survival', 'Penalties', 'Judge'],
     ...ranking.order.map((e) => [
@@ -154,7 +154,7 @@ function printRanking(record: CodeRunRecord): void {
   ], '    ');
   for (const j of ranking.judgments) {
     console.log(`    ${judgmentLine(j)}`);
-    for (const note of j.notes) console.log(`      ${note}`);
+    if (j.sameFamily) console.log(`    Warning: same-family judge: ${j.sameFamilyReason}`);
   }
   console.log(ranking.winner ? `\n  Winner: ${ranking.winner} (${ranking.reason})` : `\n  No winner: ${ranking.reason.replace(/^no winner: /, '')}`);
 
@@ -220,7 +220,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--timeout <minutes>', `Wall-clock limit per candidate and per adversary in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
     .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish; also skips the adversarial tests`)
     .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
-    .option('--no-judge', 'Leave candidates tied on the evidence tied instead of asking a judge CLI from another model family to order them')
+    .option('--no-judge', 'Do not ask a judge CLI (from another model family when one is usable) to order candidates tied on the evidence; a tie at the top goes to the smallest diff')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -270,7 +270,10 @@ export function registerCodeCommand(program: Command): void {
           onAdversaryDone: (a) => progress(`  ${a.status === 'ok' ? '✓' : '✗'} ${a.lane}: ${a.status} in ${formatDuration(a.durationMs)}`),
           onTestDone: (testId, lane, cell) => progress(`  ${cell === 'pass' ? '✓' : '✗'} ${testId} on ${lane}: ${cell}`),
           judge: opts.judge,
-          onJudgeDone: (j) => progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`),
+          onJudgeDone: (j) => {
+            progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`);
+            if (j.sameFamily) progress(`  Warning: same-family judge: ${j.sameFamilyReason}`);
+          },
         });
         savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

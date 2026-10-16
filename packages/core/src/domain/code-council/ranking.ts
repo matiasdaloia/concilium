@@ -12,9 +12,12 @@ import type { Judgment } from './judging.js';
  */
 export type WorkerStatus = 'PASS' | 'ISSUES' | 'BLOCKED';
 
-/** One fact a report rests on. `ok: false` is what makes a report `ISSUES`. */
+/**
+ * One fact a report rests on. `ok: false` is what makes a report `ISSUES`. A `judge` fact is added after the judge
+ * ran, to flag a same-family judge; it is about the ordering, not the work, so it is `ok: true`.
+ */
 export type ReportEvidence = {
-  kind: 'agent' | 'gate' | 'integrity' | 'survival' | 'playbook';
+  kind: 'agent' | 'gate' | 'integrity' | 'survival' | 'playbook' | 'judge';
   ok: boolean;
   detail: string;
   /** The commit the fact is about, when it ran at one. */
@@ -41,10 +44,19 @@ export type EvidenceKey = {
   penalties: number;
 };
 
-export type RankInput = { candidateId: string; status: WorkerStatus; key: EvidenceKey };
+/** The size of a candidate's diff against the base: lines added plus removed, and files changed. */
+export type DiffSize = { lines: number; files: number };
+
+export type RankInput = {
+  candidateId: string;
+  status: WorkerStatus;
+  key: EvidenceKey;
+  /** Breaks a tie at the top that the judge left unresolved; never weighs anywhere else. */
+  size: DiffSize;
+};
 
 export type RankEntry = RankInput & {
-  /** 1 is best. Candidates still tied after the judge share a rank. */
+  /** 1 is best. Candidates still tied after the judge share a rank, except at the top, where the smallest diff wins. */
   rank: number;
   /** The judge's weighted total, when a judge ordered its tie group. */
   judgeTotal: number | null;
@@ -52,7 +64,7 @@ export type RankEntry = RankInput & {
 
 export type Ranking = {
   order: RankEntry[];
-  /** The candidate ranked first alone, unless it is blocked or disqualified. */
+  /** The candidate ranked first, unless every candidate is blocked or disqualified. */
   winner: string | null;
   reason: string;
   judgments: Judgment[];
@@ -87,10 +99,17 @@ export function contends(entry: RankInput): boolean {
   return entry.status !== 'BLOCKED' && !entry.key.disqualified;
 }
 
+/** Negative when `a` has the smaller diff: fewer lines, then fewer files, then the candidate id. */
+function compareSize(a: RankInput, b: RankInput): number {
+  return a.size.lines - b.size.lines || a.size.files - b.size.files || (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0);
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 /**
  * The final ranking, a pure function of the evidence and the judgments. A `PASS` judgment covering exactly a tie
- * group orders that group by its totals; nothing else can move a candidate, so dropping every judgment changes
- * only the order inside tie groups.
+ * group orders that group by its totals; a tie still left at the top goes to the smallest diff. Nothing else can
+ * move a candidate, so dropping every judgment changes only the order inside tie groups.
  */
 export function rankCandidates(entries: RankInput[], judgments: Judgment[]): Ranking {
   const order: RankEntry[] = [];
@@ -116,7 +135,11 @@ export function rankCandidates(entries: RankInput[], judgments: Judgment[]): Ran
   if (firsts.length > 1) {
     const judgment = judgments.find((j) => j.candidates.includes(top.candidateId));
     const why = !judgment ? 'no judge ran' : judgment.status === 'PASS' ? 'the judge scored them the same' : `the judge is BLOCKED: ${judgment.reason}`;
-    return { order, winner: null, reason: `no winner: ${firsts.map((e) => e.candidateId).join(', ')} tie on the evidence and ${why}`, judgments };
+    const [winner, ...rest] = [...firsts].sort(compareSize);
+    order.splice(0, firsts.length, winner, ...rest.map((e) => ({ ...e, rank: 2 })));
+    const reason = `tie broken by smallest diff: ${firsts.map((e) => e.candidateId).join(', ')} tie on the evidence and ${why}; `
+      + `${winner.candidateId} changes ${plural(winner.size.lines, 'line')} in ${plural(winner.size.files, 'file')}`;
+    return { order, winner: winner.candidateId, reason, judgments };
   }
   const judged = top.judgeTotal !== null;
   return { order, winner: top.candidateId, reason: judged ? 'tied on the evidence, ordered by the judge' : 'best on the evidence', judgments };

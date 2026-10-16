@@ -98,7 +98,7 @@ export { ADVERSARIAL_MANIFEST, MAX_TESTS_PER_ADVERSARY, adversaryBrief, classify
 export { GateRunner, type LaneResult } from './adapters/gate-runner.js';
 export { runAdversarialRound } from './services/adversarial-service.js';
 export type { Adversary, AdversarialCandidate, AdversarialInput, AdversarialRound, AdversarialRun } from './services/adversarial-service.js';
-export type { CandidateReport, EvidenceKey, RankEntry, RankInput, Ranking, ReportEvidence, WorkerStatus } from './domain/code-council/ranking.js';
+export type { CandidateReport, DiffSize, EvidenceKey, RankEntry, RankInput, Ranking, ReportEvidence, WorkerStatus } from './domain/code-council/ranking.js';
 export { compareEvidence, contends, rankCandidates, tieGroups } from './domain/code-council/ranking.js';
 export type { JudgeChoice, JudgePack, JudgeScore, Judgment } from './domain/code-council/judging.js';
 export { MAX_SCORE, JudgeValidationError, judgePrompt, parseJudgeAnswer, pickJudge } from './domain/code-council/judging.js';

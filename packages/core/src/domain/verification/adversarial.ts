@@ -24,13 +24,14 @@ export type SurvivalMatrix = Record<string, Record<string, SurvivalCell>>;
 
 /**
  * The validity rule (B6 Tier 2), from the test's result on the base and on the candidates:
- * - `evidence`: fails on the base and passes on at least one candidate.
+ * - `evidence`: fails on the base and passes on at least one candidate of another family than its author.
+ * - `own-family-only`: fails on the base and passes only on candidates of its author's family; carries no weight.
  * - `quarantined`: fails on the base and on every candidate; kept for the judges, carries no weight.
  * - `vacuous`: passes on the base of a bug fix; dropped.
  * - `regression-guard`: passes on the base of any other task type; kept.
  * - `unrunnable`: could not be judged on the base; carries no weight.
  */
-export type TestValidity = 'evidence' | 'quarantined' | 'vacuous' | 'regression-guard' | 'unrunnable';
+export type TestValidity = 'evidence' | 'own-family-only' | 'quarantined' | 'vacuous' | 'regression-guard' | 'unrunnable';
 
 /** What an adversary says it wrote: the files of one test, and the line of the task it enforces. */
 export type AdversarialTestSpec = { files: string[]; specClause: string };
@@ -90,11 +91,13 @@ function fileProblem(path: string, exists: (path: string) => boolean): string | 
   return undefined;
 }
 
-/** The validity rule (see `TestValidity`). */
-export function classifyTest(base: SurvivalCell, candidates: SurvivalCell[], type: TaskType): TestValidity {
+/** The validity rule (see `TestValidity`), for a test by `author` with its cell on each candidate. */
+export function classifyTest(base: SurvivalCell, candidates: { family: string; cell: SurvivalCell }[], author: string, type: TaskType): TestValidity {
   if (base === 'error') return 'unrunnable';
   if (base === 'pass') return type === 'bugfix' ? 'vacuous' : 'regression-guard';
-  return candidates.includes('pass') ? 'evidence' : 'quarantined';
+  const passed = candidates.filter((c) => c.cell === 'pass');
+  if (passed.some((c) => c.family !== author)) return 'evidence';
+  return passed.length > 0 ? 'own-family-only' : 'quarantined';
 }
 
 /** Each candidate's survival over the valid tests other families wrote. */

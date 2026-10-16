@@ -161,20 +161,27 @@ describe('concilium code', () => {
     expect(gc.stdout).toContain('would remove 3 worktrees, would delete 3 branches');
 
     // No gate tells them apart, so a judge orders them. Only claude and codex are installed, the tied families: claude judges, with a note.
+    const sameFamilyReason = 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges';
     expect(record.ranking.judgments).toEqual([expect.objectContaining({
-      status: 'PASS', judge: 'claude', crossFamily: false, candidates: ['claude', 'codex'], totals: { claude: 54, codex: 18 },
-      notes: ['no CLI outside the tied families (anthropic, openai) is usable, so claude judges'],
+      status: 'PASS', judge: 'claude', sameFamily: true, sameFamilyReason, candidates: ['claude', 'codex'], totals: { claude: 54, codex: 18 },
     })]);
+    for (const c of record.candidates) expect(c.report!.evidence).toContainEqual({ kind: 'judge', ok: true, detail: `same-family judge: ${sameFamilyReason}` });
     expect(record.ranking).toMatchObject({ winner: 'claude', reason: 'tied on the evidence, ordered by the judge' });
     expect(claude.report).toMatchObject({ status: 'ISSUES', baseSha: head, headSha: claude.headSha, branch: claude.branch });
     expect(claude.report!.reason).toBe('the final message does not list playbook step 1, 2, 3, 4 as done or skipped');
 
     const unjudged = code('--json', '--no-judge', '--agents', 'claude,codex', 'add input validation to sum with a test');
     expect(unjudged.status).toBe(0);
+    // codex adds one line in one file, claude changes three in two: without a judge the smaller diff wins the tie.
     expect((JSON.parse(unjudged.stdout) as CodeRunRecord).ranking).toMatchObject({
-      winner: null, judgments: [], reason: 'no winner: claude, codex tie on the evidence and no judge ran',
+      winner: 'codex', judgments: [], reason: 'tie broken by smallest diff: claude, codex tie on the evidence and no judge ran; codex changes 1 line in 1 file',
     });
-  }, 60_000);
+
+    // The summary warns about the same-family judge where the ranking is shown.
+    const summary = code('--agents', 'claude,codex', 'add input validation to sum with a test');
+    expect(summary.status).toBe(0);
+    expect(summary.stdout).toContain(`Judge claude on claude, codex: PASS, scored 2 candidates on 3 criteria\n    Warning: same-family judge: ${sameFamilyReason}\n`);
+  }, 90_000);
 
   it('should print a summary with how to inspect and clean up', () => {
     const result = code('--agents', 'claude', '--type', 'bugfix', 'add input validation to sum');
@@ -244,6 +251,7 @@ describe('concilium code', () => {
     expect(result.stdout).toContain('codex: ISSUES at');
     expect(result.stdout).toContain('disqualify: deleted the test file sum.test.js; survived 0/1 adversarial tests by other families, failed anthropic-1;');
     expect(result.stdout).toContain('Winner: claude (best on the evidence)');
+    expect(result.stdout).not.toContain('same-family judge');
 
     const skipped = code('--json', '--no-verify', '--agents', 'claude', 'add input validation to sum');
     expect(skipped.status).toBe(0);
@@ -276,9 +284,10 @@ describe('concilium code', () => {
     expect(result.stdout).toMatch(/adv-anthropic \(claude\): ok, 1 tests\n/);
     expect(result.stdout).toMatch(/adv-openai \(codex\): error, 1 tests; codex exited with code 1/);
     expect(result.stdout).toMatch(/Test\s+Validity\s+base\s+claude\s+codex\s+Clause\n/);
-    expect(result.stdout).toMatch(/anthropic-1\s+evidence\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
+    // claude's test passes only on claude, its own family: it carries no weight against codex.
+    expect(result.stdout).toMatch(/anthropic-1\s+own-family-only\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
     expect(result.stdout).toMatch(/openai-1\s+quarantined\s+fail\s+fail\s+fail\s+reject non-numbers\n/);
-    expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/1, failed anthropic-1');
+    expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/0\n');
     const runId = /Run (\S+) in /.exec(result.stdout)![1];
     expect(git(repo, 'show', `concilium/${runId}/adv-anthropic:claude-adv.test.js`)).toContain('TypeError');
     // The candidates' branches never get the adversarial tests.

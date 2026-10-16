@@ -17,14 +17,15 @@ describe('pickJudge', () => {
   ];
 
   it('should pick the first usable CLI of a family that wrote none of the tied candidates', () => {
-    expect(pickJudge(['anthropic'], usable)).toEqual({ provider: 'codex', crossFamily: true });
-    expect(pickJudge(['openai', 'google'], usable)).toEqual({ provider: 'claude', crossFamily: true });
+    expect(pickJudge(['anthropic'], usable)).toEqual({ provider: 'codex', sameFamily: false, sameFamilyReason: null });
+    expect(pickJudge(['openai', 'google'], usable)).toEqual({ provider: 'claude', sameFamily: false, sameFamilyReason: null });
   });
 
-  it('should fall back to the first usable CLI with a note, never counting an unknown family as another one', () => {
+  it('should fall back to a same-family judge only when no other family is usable, flagged with the reason, never counting an unknown family as another one', () => {
     expect(pickJudge(['anthropic', 'openai'], usable)).toEqual({
-      provider: 'claude', crossFamily: false, note: 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges',
+      provider: 'claude', sameFamily: true, sameFamilyReason: 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges',
     });
+    expect(pickJudge(['anthropic', 'openai'], [...usable, { provider: 'gemini', family: 'google' }])).toMatchObject({ provider: 'gemini', sameFamily: false });
     expect(pickJudge(['anthropic'], [])).toBeNull();
   });
 });

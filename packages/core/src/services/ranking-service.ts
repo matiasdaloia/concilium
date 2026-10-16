@@ -100,8 +100,8 @@ export type JudgeTieInput = {
  */
 export async function judgeTie(input: JudgeTieInput): Promise<Judgment> {
   const judgment: Judgment = {
-    status: 'BLOCKED', candidates: input.tied.map((t) => t.candidate.candidateId), judge: null, crossFamily: false,
-    rubricSha256: input.rubric.sha256, scores: [], totals: {}, reason: '', notes: [],
+    status: 'BLOCKED', candidates: input.tied.map((t) => t.candidate.candidateId), judge: null, sameFamily: false, sameFamilyReason: null,
+    rubricSha256: input.rubric.sha256, scores: [], totals: {}, reason: '',
   };
   const blocked = (reason: string): Judgment => {
     log.warn(`judge on ${judgment.candidates.join(', ')}: BLOCKED, ${reason}`);
@@ -117,8 +117,9 @@ export async function judgeTie(input: JudgeTieInput): Promise<Judgment> {
   const choice = pickJudge(families, await usableClis(input.drivers));
   if (!choice) return blocked('no agent CLI is installed and signed in to judge');
   judgment.judge = choice.provider;
-  judgment.crossFamily = choice.crossFamily;
-  if (choice.note) judgment.notes.push(choice.note);
+  judgment.sameFamily = choice.sameFamily;
+  judgment.sameFamilyReason = choice.sameFamilyReason;
+  if (choice.sameFamily) log.warn(`judge on ${judgment.candidates.join(', ')}: same family, ${choice.sameFamilyReason}`);
 
   const runner = input.runner ?? new GateRunner();
   const labels = input.tied.map((_, i) => String.fromCharCode(65 + i));
@@ -166,7 +167,8 @@ export async function rankRun(input: RankRunInput): Promise<Ranking> {
   const entries: RankInput[] = input.candidates.map((candidate) => {
     const { report, key } = reportCandidate(candidate, { baseSha: input.baseSha, type: input.type, adversarial: input.adversarial });
     candidate.report = report;
-    return { candidateId: candidate.candidateId, status: report.status, key };
+    const d = candidate.diffStat;
+    return { candidateId: candidate.candidateId, status: report.status, key, size: { lines: d ? d.insertions + d.deletions : 0, files: d?.filesChanged ?? 0 } };
   });
 
   const judgments: Judgment[] = [];
@@ -178,6 +180,9 @@ export async function rankRun(input: RankRunInput): Promise<Ranking> {
       });
       const judgment = await judgeTie({ ...input, tied });
       judgments.push(judgment);
+      if (judgment.sameFamily) {
+        for (const { report } of tied) report.evidence.push({ kind: 'judge', ok: true, detail: `same-family judge: ${judgment.sameFamilyReason}` });
+      }
       input.onJudgeDone?.(judgment);
     }
   }

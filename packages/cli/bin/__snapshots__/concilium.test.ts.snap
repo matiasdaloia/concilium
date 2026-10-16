@@ -26,9 +26,9 @@ Options:
                        adversarial tests
   --no-adversarial     Skip the adversarial round, where one agent per family
                        writes tests against the other candidates
-  --no-judge           Leave candidates tied on the evidence tied instead of
-                       asking a judge CLI from another model family to order
-                       them
+  --no-judge           Do not ask a judge CLI (from another model family when
+                       one is usable) to order candidates tied on the evidence;
+                       a tie at the top goes to the smallest diff
   --json               Output the run record as JSON to stdout
   -h, --help           display help for command
 "
