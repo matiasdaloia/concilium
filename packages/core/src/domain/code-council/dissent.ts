@@ -20,10 +20,16 @@ export type DissentSource = 'base-pick' | 'adversarial-test' | 'quarantined-test
 /** Where a dissent can be checked: a commit, an adversarial test, a file, a judgment, the frozen rubric. */
 export type DissentEvidence = { kind: 'commit' | 'test' | 'file' | 'judgment' | 'rubric'; ref: string; sha?: string };
 
-/** `open` has no reason yet; every other resolution says why, and `overruled` points at the evidence that overrules it. */
+/** Why a quarantined test is a warning and not a block. */
+export const QUARANTINED_REASON = 'quarantined: fails on base and every candidate; not classified by a judge';
+
+/**
+ * `open` has no reason yet; every other resolution says why, and `overruled` points at the evidence that overrules it.
+ * A `warning` is shown with the run but never takes the "mergeable" label away.
+ */
 export type DissentResolution =
   | { resolution: 'open'; resolutionReason: null }
-  | { resolution: 'accepted-risk' | 'overruled' | 'resolved'; resolutionReason: string };
+  | { resolution: 'accepted-risk' | 'overruled' | 'resolved' | 'warning'; resolutionReason: string };
 
 type DissentBody = {
   source: DissentSource;
@@ -106,15 +112,15 @@ function failingAtHead(input: DissentInput): Draft[] {
   });
 }
 
-/** Tests that fail on the base and on every candidate: a real gap or an invalid test, which no judge has decided yet. */
+/** Tests that fail on the base and on every candidate: a real gap or an invalid test, which no judge has decided yet. A warning. */
 function quarantined(input: DissentInput): Draft[] {
   return input.tests.filter((t) => t.validity === 'quarantined').map((t): Draft => ({
     source: 'quarantined-test',
     summary: `adversarial test ${t.id} by ${t.author} fails on the base and on every candidate; no judge has said whether it is a real gap or an invalid test`,
     evidence: [{ kind: 'test', ref: t.id }, ...t.files.map((f): DissentEvidence => ({ kind: 'file', ref: f }))],
     acceptanceClause: t.specClause,
-    resolution: 'open',
-    resolutionReason: null,
+    resolution: 'warning',
+    resolutionReason: QUARANTINED_REASON,
   }));
 }
 
@@ -201,6 +207,13 @@ export function blockingDissent(records: Dissent[]): Dissent[] {
   return records.filter((d) => d.resolution === 'open' && d.acceptanceClause !== null);
 }
 
+/** Dissent shown as a warning: it never blocks the "mergeable" label. */
+export function warningDissent(records: Dissent[]): Dissent[] {
+  return records.filter((d) => d.resolution === 'warning');
+}
+
+const RESOLUTION_LABEL = { 'accepted-risk': 'Accepted risk', overruled: 'Overruled', resolved: 'Resolved', warning: 'Warning' } as const;
+
 /** The synthesis with its "mergeable" label taken away, and why, when open dissent concerns an acceptance line. */
 export function withDissent(s: Synthesis, records: Dissent[]): Synthesis {
   const blocking = blockingDissent(records);
@@ -213,17 +226,26 @@ function dissentLines(d: Dissent): string[] {
   if (d.acceptanceClause) lines.push(`  Acceptance line: "${d.acceptanceClause}".`);
   if (d.rationales) lines.push(`  Pick: ${d.rationales.pick}.`, `  Dissent: ${d.rationales.dissent}.`);
   if (d.evidence.length) lines.push(`  Evidence: ${d.evidence.map((e) => `${e.kind} \`${e.ref}\`${e.sha ? ` at \`${e.sha}\`` : ''}`).join(', ')}.`);
-  if (d.resolutionReason) lines.push(`  ${d.resolution === 'overruled' ? 'Overruled' : d.resolution === 'accepted-risk' ? 'Accepted risk' : 'Resolved'}: ${d.resolutionReason}.`);
+  if (d.resolution !== 'open') lines.push(`  ${RESOLUTION_LABEL[d.resolution]}: ${d.resolutionReason}.`);
   return lines;
 }
 
-/** The `## Dissent` section that opens `synthesis.md` and `reframe.md`: open records first. */
+function warningSentence(warnings: Dissent[], blocking: boolean): string {
+  if (warnings.length === 0) return '';
+  const count = `${warnings.length} warning${warnings.length === 1 ? '' : 's'} (${warnings.map((d) => d.id).join(', ')})`;
+  const verb = warnings.length === 1 ? 'does' : 'do';
+  return blocking ? ` ${count} ${verb} not.` : ` ${count} ${verb} not keep the patch from being labelled mergeable.`;
+}
+
+/** The `## Dissent` section that opens `synthesis.md` and `reframe.md`: open records first, then warnings. */
 export function dissentMarkdown(records: Dissent[]): string[] {
   const open = records.filter((d) => d.resolution === 'open');
+  const warnings = warningDissent(records);
   const blocking = blockingDissent(records);
   const lines = ['## Dissent', ''];
   if (records.length === 0) return [...lines, 'None.', ''];
-  lines.push(`${open.length} open of ${records.length}, also in \`${DISSENT_FILE}\`.${blocking.length ? ` Open dissent on an acceptance line (${blocking.map((d) => d.id).join(', ')}) keeps the patch from being labelled mergeable.` : ''}`, '');
-  for (const d of [...open, ...records.filter((d) => d.resolution !== 'open')]) lines.push(...dissentLines(d));
+  lines.push(`${open.length} open of ${records.length}, also in \`${DISSENT_FILE}\`.${blocking.length ? ` Open dissent on an acceptance line (${blocking.map((d) => d.id).join(', ')}) keeps the patch from being labelled mergeable.` : ''}${warningSentence(warnings, blocking.length > 0)}`, '');
+  const rest = records.filter((d) => d.resolution !== 'open' && d.resolution !== 'warning');
+  for (const d of [...open, ...warnings, ...rest]) lines.push(...dissentLines(d));
   return [...lines, ''];
 }

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AdversarialTest } from '../verification/adversarial.js';
-import { blockingDissent, collectDissent, dissentMarkdown, withDissent, type DissentInput } from './dissent.js';
+import { blockingDissent, collectDissent, dissentMarkdown, warningDissent, withDissent, type DissentInput } from './dissent.js';
 import type { Judgment } from './judging.js';
 import type { RankEntry, Ranking } from './ranking.js';
 import type { Graft, Synthesis } from './synthesis.js';
@@ -80,7 +80,7 @@ describe('collectDissent', () => {
     expect(collectDissent(input({ ranking: { ...ranking([judgment('gemini', { claude: 3, codex: 9 })]), winner: null } }))).toEqual([]);
   });
 
-  it('should keep a valid test the integration head still fails and a quarantined test open on their acceptance lines', () => {
+  it('should keep a valid test the integration head still fails open on its acceptance line, and a quarantined test as a warning', () => {
     const tests = [test('openai-1', 'evidence', 'sum rejects letters'), test('google-1', 'quarantined', 'sum is fast'), test('anthropic-1', 'regression-guard')];
     const s = synthesis({ checks: { sha: 'e'.repeat(40), gates: { test: 'pass' }, tests: { 'openai-1': 'fail', 'anthropic-1': 'pass' } } });
     const records = collectDissent(input({ tests, synthesis: s }));
@@ -91,9 +91,14 @@ describe('collectDissent', () => {
         evidence: [{ kind: 'test', ref: 'openai-1' }, { kind: 'file', ref: 'openai-1.test.js' }, { kind: 'commit', ref: 'concilium/r1/integration', sha: 'e'.repeat(40) }],
         acceptanceClause: 'sum rejects letters', resolution: 'open', resolutionReason: null,
       },
-      expect.objectContaining({ id: 'dissent-2', source: 'quarantined-test', acceptanceClause: 'sum is fast', resolution: 'open', resolutionReason: null, evidence: [{ kind: 'test', ref: 'google-1' }, { kind: 'file', ref: 'google-1.test.js' }] }),
+      expect.objectContaining({
+        id: 'dissent-2', source: 'quarantined-test', acceptanceClause: 'sum is fast', resolution: 'warning',
+        resolutionReason: 'quarantined: fails on base and every candidate; not classified by a judge',
+        evidence: [{ kind: 'test', ref: 'google-1' }, { kind: 'file', ref: 'google-1.test.js' }],
+      }),
     ]);
-    expect(blockingDissent(records).map((d) => d.id)).toEqual(['dissent-1', 'dissent-2']);
+    expect(blockingDissent(records).map((d) => d.id)).toEqual(['dissent-1']);
+    expect(warningDissent(records).map((d) => d.id)).toEqual(['dissent-2']);
   });
 
   it('should overrule a rejected graft with the checks that failed after it, and keep one the integrator never delivered open', () => {
@@ -146,8 +151,13 @@ describe('collectDissent', () => {
 
 describe('withDissent', () => {
   it('should take the mergeable label away only for open dissent on an acceptance line', () => {
-    const open = collectDissent(input({ tests: [test('google-1', 'quarantined', 'sum is fast')], synthesis: synthesis() }));
-    expect(withDissent(synthesis(), open)).toMatchObject({ mergeable: false, mergeBlock: 'open dissent on acceptance lines: dissent-1 ("sum is fast")', patchPath: '/run/result.patch' });
+    const failing = synthesis({ checks: { sha: 'e'.repeat(40), gates: { test: 'pass' }, tests: { 'openai-1': 'fail' } } });
+    const open = collectDissent(input({ tests: [test('openai-1', 'evidence', 'sum rejects letters')], synthesis: failing }));
+    expect(withDissent(synthesis(), open)).toMatchObject({ mergeable: false, mergeBlock: 'open dissent on acceptance lines: dissent-1 ("sum rejects letters")', patchPath: '/run/result.patch' });
+
+    // A quarantined test is a warning: it is recorded but leaves the label alone.
+    const quarantined = collectDissent(input({ tests: [test('google-1', 'quarantined', 'sum is fast')], synthesis: synthesis() }));
+    expect(withDissent(synthesis(), quarantined)).toEqual(synthesis());
 
     const overruled = collectDissent(input({ ranking: ranking([judgment('gemini', { claude: 3, codex: 9 })]) }));
     expect(withDissent(synthesis(), overruled)).toEqual(synthesis());
@@ -158,12 +168,15 @@ describe('withDissent', () => {
 describe('dissentMarkdown', () => {
   it('should list open dissent first with its line and evidence, then the rest with their resolution', () => {
     const records = collectDissent(input({
-      ranking: ranking([judgment('gemini', { claude: 3, codex: 9 })]), tests: [test('google-1', 'quarantined', 'sum is fast')],
+      ranking: ranking([judgment('gemini', { claude: 3, codex: 9 })]), tests: [test('openai-1', 'evidence', 'sum rejects letters'), test('google-1', 'quarantined', 'sum is fast')],
+      synthesis: synthesis({ checks: { sha: 'e'.repeat(40), gates: { test: 'pass' }, tests: { 'openai-1': 'fail' } } }),
     }));
     const md = dissentMarkdown(records).join('\n');
-    expect(md).toMatch(/^## Dissent\n\n1 open of 2, also in `dissent.json`. Open dissent on an acceptance line \(dissent-2\) keeps the patch from being labelled mergeable.\n/);
-    expect(md.indexOf('**dissent-2** open, quarantined-test')).toBeLessThan(md.indexOf('**dissent-1** overruled, base-pick'));
+    expect(md).toMatch(/^## Dissent\n\n1 open of 3, also in `dissent.json`. Open dissent on an acceptance line \(dissent-2\) keeps the patch from being labelled mergeable. 1 warning \(dissent-3\) does not.\n/);
+    expect(md.indexOf('**dissent-2** open, adversarial-test')).toBeLessThan(md.indexOf('**dissent-3** warning, quarantined-test'));
+    expect(md.indexOf('**dissent-3** warning, quarantined-test')).toBeLessThan(md.indexOf('**dissent-1** overruled, base-pick'));
     expect(md).toContain('  Acceptance line: "sum is fast".');
+    expect(md).toContain('  Warning: quarantined: fails on base and every candidate; not classified by a judge.');
     expect(md).toContain('  Pick: claude: tie broken by smallest diff');
     expect(md).toContain('  Dissent: codex totals 9 against 3 for claude; clarity 9: codex reads well.');
     expect(md).toContain(`commit \`codex\` at \`${HEADS.codex}\``);
