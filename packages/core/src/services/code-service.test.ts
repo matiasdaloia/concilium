@@ -452,16 +452,18 @@ describe('runCodeCandidates with adversarial', () => {
     });
     expect(cells).toHaveLength(16);
     expect(round.tests.map((t) => [t.id, t.author, t.files, t.specClause, t.validity])).toEqual([
-      ['anthropic-1', 'anthropic', ['adv/second.test.js'], 'clause 1', 'evidence'],
+      // It passes only on claude, of its author's family: no other family shows it can be met.
+      ['anthropic-1', 'anthropic', ['adv/second.test.js'], 'clause 1', 'own-family-only'],
       ['anthropic-2', 'anthropic', ['adv/everywhere.test.js'], 'clause 2', 'quarantined'],
       ['anthropic-3', 'anthropic', ['adv/adds.test.js'], 'clause 3', 'regression-guard'],
+      // It passes on claude, of another family than its author.
       ['openai-1', 'openai', ['first.test.js'], 'clause 1', 'evidence'],
     ]);
-    // An author's own tests carry no weight for it; quarantined ones carry none for anyone.
+    // An author's own tests carry no weight for it; own-family-only and quarantined ones carry none for anyone.
     expect(round.survival).toEqual({
       claude: { counted: 1, survived: 1, failed: [] },
-      codex: { counted: 2, survived: 1, failed: ['anthropic-1'] },
-      gemini: { counted: 3, survived: 0, failed: ['anthropic-1', 'anthropic-3', 'openai-1'] },
+      codex: { counted: 1, survived: 1, failed: [] },
+      gemini: { counted: 2, survived: 0, failed: ['anthropic-3', 'openai-1'] },
     });
     // Each run is recorded at the lane's SHA, with the output of failures.
     const killed = round.runs.find((r) => r.testId === 'anthropic-1' && r.lane === 'codex')!;

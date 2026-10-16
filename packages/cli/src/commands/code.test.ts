@@ -283,9 +283,10 @@ describe('concilium code', () => {
     expect(result.stdout).toMatch(/adv-anthropic \(claude\): ok, 1 tests\n/);
     expect(result.stdout).toMatch(/adv-openai \(codex\): error, 1 tests; codex exited with code 1/);
     expect(result.stdout).toMatch(/Test\s+Validity\s+base\s+claude\s+codex\s+Clause\n/);
-    expect(result.stdout).toMatch(/anthropic-1\s+evidence\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
+    // claude's test passes only on claude, its own family: it carries no weight against codex.
+    expect(result.stdout).toMatch(/anthropic-1\s+own-family-only\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
     expect(result.stdout).toMatch(/openai-1\s+quarantined\s+fail\s+fail\s+fail\s+reject non-numbers\n/);
-    expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/1, failed anthropic-1');
+    expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/0\n');
     const runId = /Run (\S+) in /.exec(result.stdout)![1];
     expect(git(repo, 'show', `concilium/${runId}/adv-anthropic:claude-adv.test.js`)).toContain('TypeError');
     // The candidates' branches never get the adversarial tests.

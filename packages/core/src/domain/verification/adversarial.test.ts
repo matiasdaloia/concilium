@@ -53,27 +53,35 @@ describe('parseAdversarialManifest', () => {
 });
 
 describe('classifyTest', () => {
+  // Cells are on an anthropic candidate, then an openai one; the test's author is anthropic.
   it.each([
-    ['fail', ['pass', 'fail'], 'bugfix', 'evidence'],
+    ['fail', ['fail', 'pass'], 'bugfix', 'evidence'],
+    ['fail', ['pass', 'pass'], 'feature', 'evidence'],
+    ['fail', ['pass', 'fail'], 'feature', 'own-family-only'],
+    ['fail', ['pass', 'error'], 'bugfix', 'own-family-only'],
     ['fail', ['fail', 'error'], 'feature', 'quarantined'],
     ['pass', ['pass', 'fail'], 'bugfix', 'vacuous'],
     ['pass', ['pass', 'fail'], 'feature', 'regression-guard'],
-    ['pass', ['pass'], 'refactor', 'regression-guard'],
-    ['error', ['pass'], 'feature', 'unrunnable'],
-  ] as const)('should call a test that is %s on the base and %j on the candidates of a %s %s', (base, candidates, type, validity) => {
-    expect(classifyTest(base, [...candidates], type)).toBe(validity);
+    ['pass', ['pass', 'pass'], 'refactor', 'regression-guard'],
+    ['error', ['fail', 'pass'], 'feature', 'unrunnable'],
+  ] as const)('should call an anthropic test that is %s on the base and %j on anthropic, openai candidates of a %s %s', (base, [own, other], type, validity) => {
+    expect(classifyTest(base, [{ family: 'anthropic', cell: own }, { family: 'openai', cell: other }], 'anthropic', type)).toBe(validity);
   });
 });
 
 describe('survival', () => {
   it('should count only valid tests by other families, and a non-pass as a failure', () => {
     const test = (id: string, author: string, validity: AdversarialTest['validity']): AdversarialTest => ({ id, author, validity, files: [`${id}.test.js`], specClause: 'c' });
-    const tests = [test('a-1', 'anthropic', 'evidence'), test('a-2', 'anthropic', 'regression-guard'), test('a-3', 'anthropic', 'quarantined'), test('o-1', 'openai', 'evidence')];
+    const tests = [
+      test('a-1', 'anthropic', 'evidence'), test('a-2', 'anthropic', 'regression-guard'), test('a-3', 'anthropic', 'quarantined'),
+      test('o-1', 'openai', 'evidence'), test('o-2', 'openai', 'own-family-only'),
+    ];
     const matrix = {
       'a-1': { base: 'fail', claude: 'pass', codex: 'fail' },
       'a-2': { base: 'pass', claude: 'pass', codex: 'error' },
       'a-3': { base: 'fail', claude: 'fail', codex: 'fail' },
       'o-1': { base: 'fail', claude: 'pass', codex: 'pass' },
+      'o-2': { base: 'fail', claude: 'fail', codex: 'pass' },
     } as const;
     expect(survival(tests, matrix, [{ candidateId: 'claude', family: 'anthropic' }, { candidateId: 'codex', family: 'openai' }])).toEqual({
       claude: { counted: 1, survived: 1, failed: [] },

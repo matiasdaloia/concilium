@@ -234,7 +234,8 @@ export async function runAdversarialRound(input: AdversarialInput): Promise<Adve
         matrix[id][lane.lane] = cell;
         input.onTestDone?.(id, lane.lane, cell);
       }
-      const validity = classifyTest(matrix[id][BASE_LANE], input.candidates.map((c) => matrix[id][c.candidateId]), input.type);
+      const cells = input.candidates.map((c) => ({ family: c.family, cell: matrix[id][c.candidateId] }));
+      const validity = classifyTest(matrix[id][BASE_LANE], cells, adversary.family, input.type);
       tests.push({ id, author: adversary.family, ...spec, validity });
     }
   }

@@ -204,7 +204,8 @@ Then comes the adversarial round (skip it with `--no-adversarial`; it needs the 
 
 | Validity | When | Counts |
 |---|---|---|
-| `evidence` | fails on the base, passes on at least one candidate | yes |
+| `evidence` | fails on the base, passes on at least one candidate of another family than the test's author | yes |
+| `own-family-only` | fails on the base, passes only on candidates of the author's family | no |
 | `quarantined` | fails on the base and on every candidate | no; kept for the judges |
 | `vacuous` | passes on the base of a `bugfix` | no; dropped |
 | `regression-guard` | passes on the base of any other type | yes |
