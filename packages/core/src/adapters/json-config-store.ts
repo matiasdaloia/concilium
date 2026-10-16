@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentInstance } from '../domain/agent/agent-config.js';
+import { createDefaultAgentInstances, isProviderId } from '../domain/agent/providers.js';
 import type { ConfigStore, CouncilConfigPrefs } from '../ports/config-store.js';
 
 interface Preferences {
@@ -16,18 +16,10 @@ function isValidAgentInstance(obj: unknown): obj is AgentInstance {
   const instance = obj as Record<string, unknown>;
   return (
     typeof instance.instanceId === 'string' &&
-    typeof instance.provider === 'string' &&
-    ['opencode', 'codex', 'claude'].includes(instance.provider) &&
+    isProviderId(instance.provider) &&
     typeof instance.model === 'string' &&
     typeof instance.enabled === 'boolean'
   );
-}
-
-function createDefaultAgentInstances(): AgentInstance[] {
-  return [
-    { instanceId: randomUUID(), provider: 'opencode', model: '', enabled: true },
-    { instanceId: randomUUID(), provider: 'opencode', model: '', enabled: true },
-  ];
 }
 
 export class JsonConfigStore implements ConfigStore {

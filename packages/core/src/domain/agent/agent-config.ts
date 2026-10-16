@@ -1,5 +1,7 @@
-export type AgentId = 'codex' | 'claude' | 'opencode';
-export type AgentProviderType = 'opencode' | 'codex' | 'claude';
+import type { AgentProviderType } from './providers.js';
+
+export type { AgentProviderType };
+export type AgentId = AgentProviderType;
 
 export interface AgentInstance {
   instanceId: string;
