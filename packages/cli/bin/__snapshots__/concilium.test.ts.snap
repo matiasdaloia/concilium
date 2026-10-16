@@ -38,6 +38,7 @@ Commands:
   history [options] [run-id]  List or view past deliberation runs
   config                      Manage configuration
   models [options]            List available models
+  doctor [options]            Check installed agent CLIs and how they sign in
   help [command]              display help for command
 "
 `;

@@ -20,7 +20,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models
+│       │   ├── commands/ # run, history, config, models, doctor
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
@@ -60,6 +60,8 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 
 Agent providers are listed once, in the `PROVIDERS` registry (`packages/core/src/domain/agent/providers.ts`), with a factory per id in `services/create-concilium.ts`.
 
+The `HeadlessCliDriver` port (`packages/core/src/ports/headless-cli-driver.ts`) is the replacement being built for `AgentProvider`: one driver per installed agent CLI (`adapters/cli/cli-drivers.ts`), a versioned `Brief` in and a versioned `Report` out (`domain/driver/`), processes spawned through `adapters/cli/subprocess.ts`, and `FakeCliDriver` for tests. Drivers only use the CLI's own login and never read credential files (see `docs/research/subscription-tos.md`). So far only `detect()` is implemented, used by `concilium doctor`.
+
 When modifying deliberation logic, prompts, or ranking — work in `@concilium/core`. When modifying terminal output or CLI flags — work in `@concilium/cli`. When modifying the GUI — work in `desktop/`.
 
 ## Build Commands
@@ -91,6 +93,7 @@ npx concilium run "prompt"          # Run via workspace
 npx concilium config show           # Show config
 npx concilium models                # Discover models
 npx concilium history               # List past runs
+npx concilium doctor                # Check installed agent CLIs and their auth
 ```
 
 ### Desktop App
