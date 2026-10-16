@@ -54,6 +54,7 @@ const args = argv.join(' ');
 if (args === '--version') { console.log('1.0.0'); process.exit(0); }
 if (args === 'auth status') { console.log('{"loggedIn":true,"authMethod":"claude.ai"}'); process.exit(0); }
 if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
+if (args === 'auth list') { console.log('●  Anthropic oauth'); process.exit(0); }
 fs.appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify({ cli, argv }) + '\\n');
 let text = 'Plan from ' + cli;
 if (args.includes('council-prompt.md')) {
@@ -144,6 +145,47 @@ describe('concilium bin (from source)', () => {
     expect(runs).toHaveLength(7);
     const readOnlyFlag: Record<string, string> = { claude: '--permission-mode=plan', codex: '--sandbox=read-only', gemini: '--approval-mode=default' };
     for (const { cli, argv } of runs) expect(argv).toContain(readOnlyFlag[cli]);
+  });
+
+  it('should default the agents to the installed, signed-in CLIs without --agents', () => {
+    // claude and codex are signed in; gemini's login is unknown (no API key variable); opencode holds a Claude
+    // subscription, which doctor warns about. Only claude and codex qualify as default agents.
+    const binDir = join(sandbox, 'default-agents-bin');
+    const argvLog = join(sandbox, 'default-agents-argv.jsonl');
+    mkdirSync(binDir, { recursive: true });
+    for (const cli of ['claude', 'codex', 'gemini', 'opencode']) {
+      writeFileSync(join(binDir, cli), fakeAgentCli(cli, argvLog), { mode: 0o755 });
+    }
+
+    const result = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', 'Add rate limiting'], {
+      cwd: sandbox,
+      encoding: 'utf8',
+      env: { ...sandboxEnv, PATH: binDir },
+    });
+
+    expect(result.stderr).not.toContain('"error"');
+    expect(result.status).toBe(0);
+    const record = JSON.parse(result.stdout) as RunRecord;
+    expect(record.stage1).toEqual([
+      { model: 'claude', response: 'Plan from claude' },
+      { model: 'codex', response: 'Plan from codex' },
+    ]);
+    const runs = readFileSync(argvLog, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { cli: string });
+    expect(runs.map((r) => r.cli)).not.toContain('opencode');
+  });
+
+  it('should fail with a pointer to doctor and the terms doc when no agent CLI is signed in', () => {
+    const result = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', 'task'], {
+      cwd: sandbox,
+      encoding: 'utf8',
+      env: { ...sandboxEnv, PATH: '' },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    const { error } = JSON.parse(result.stderr.trim().split('\n').at(-1)!) as { error: string };
+    expect(error).toContain('concilium doctor');
+    expect(error).toContain('docs/research/subscription-tos.md');
   });
 
   it('should report each agent CLI in doctor --json and exit 0 when some are missing', () => {

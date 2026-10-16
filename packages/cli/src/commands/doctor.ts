@@ -5,9 +5,7 @@
  */
 
 import type { Command } from 'commander';
-import { createHeadlessCliDrivers } from '@concilium/core';
-
-const TERMS_DOC = 'https://github.com/matiasdaloia/concilium/blob/main/docs/research/subscription-tos.md';
+import { createHeadlessCliDrivers, TERMS_OF_USE_URL as TERMS_DOC } from '@concilium/core';
 
 export function registerDoctorCommand(program: Command): void {
   program
@@ -26,7 +24,7 @@ export function registerDoctorCommand(program: Command): void {
 
       const rows = [
         ['CLI', 'Installed', 'Version', 'Auth', 'Notes'],
-        ...clis.map((c) => [c.id, c.installed ? 'yes' : 'no', c.version ?? '-', c.installed ? (c.auth ?? 'unknown') : '-', c.notes ?? '']),
+        ...clis.map((c) => [c.id, c.installed ? 'yes' : 'no', c.version ?? '-', c.installed ? (c.auth ?? 'unknown') : '-', [c.notes, c.warning && `warning: ${c.warning}`].filter(Boolean).join('; ')]),
       ];
       const widths = rows[0].map((_, col) => Math.max(...rows.map((row) => row[col].length)));
       console.log();

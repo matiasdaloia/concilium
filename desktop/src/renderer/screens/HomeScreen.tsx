@@ -99,8 +99,8 @@ export default function HomeScreen({
         setModelOptions(opts);
         setDefaultModels(defaults);
 
-        // Fill in empty models with defaults
-        const updatedInstances = instances.map((inst) => {
+        // Fill in empty models with defaults (the detected default agents can outnumber MAX_AGENTS)
+        const updatedInstances = instances.slice(0, MAX_AGENTS).map((inst) => {
           if (!inst.model && defaults[inst.provider]) {
             return { ...inst, model: defaults[inst.provider] };
           }
@@ -604,7 +604,9 @@ export default function HomeScreen({
                 />
               </svg>
               <p className="text-[11px] font-mono text-amber-warning">
-                Warning: Quorum not met. Enable at least {MIN_AGENTS} agents.
+                {agentInstances.length === 0 && !isLoading
+                  ? "No agent CLI is installed and signed in. Run `concilium doctor` to see what is missing, and see docs/research/subscription-tos.md for the supported logins."
+                  : `Warning: Quorum not met. Enable at least ${MIN_AGENTS} agents.`}
               </p>
             </div>
           )}

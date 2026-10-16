@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { AgentInstance } from './agent-config.js';
-
 /**
  * The provider registry: every agent CLI Concilium knows about.
  * Pure data with no Node imports, so the desktop renderer can import it
@@ -50,21 +48,10 @@ export type AgentProviderType = ProviderInfo['id'];
 
 export const PROVIDER_IDS: readonly AgentProviderType[] = PROVIDERS.map((p) => p.id);
 
-/** Provider used for the default agent instances. */
-export const DEFAULT_PROVIDER: AgentProviderType = 'opencode';
-
 export function isProviderId(value: unknown): value is AgentProviderType {
   return typeof value === 'string' && (PROVIDER_IDS as readonly string[]).includes(value);
 }
 
 export function getProviderInfo(id: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.id === id);
-}
-
-/** Two enabled instances of the default provider, with the provider's own model choice. */
-export function createDefaultAgentInstances(): AgentInstance[] {
-  return [
-    { instanceId: crypto.randomUUID(), provider: DEFAULT_PROVIDER, model: '', enabled: true },
-    { instanceId: crypto.randomUUID(), provider: DEFAULT_PROVIDER, model: '', enabled: true },
-  ];
 }
