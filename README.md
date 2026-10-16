@@ -135,9 +135,6 @@ concilium run --json "Explain the auth flow" | jq '.stage3.response'
 
 # Save synthesis to a file
 concilium run --output solution.md "Migrate the database schema"
-
-# Stage 1 only (skip council review)
-concilium run --stage1-only "Generate test fixtures"
 ```
 
 ### Commands
@@ -195,14 +192,14 @@ concilium/
 │   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
 │   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
 │   │   │   ├── services/ # DeliberationService, ConfigService
-│   │   │   └── shared/   # Logger, error types
+│   │   │   └── shared/   # Logger
 │   │   └── package.json
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, gui
+│       │   ├── commands/ # run, history, config, models
 │       │   ├── ui/       # Ink (React) terminal components
-│       │   ├── adapters/ # XDG paths, terminal secret store
+│       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
 │       └── package.json
 ├── desktop/              # Electron desktop application

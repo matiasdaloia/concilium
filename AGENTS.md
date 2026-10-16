@@ -13,14 +13,14 @@ concilium/
 │   │   │   ├── ports/    # Interfaces (AgentProvider, LlmGateway, etc.)
 │   │   │   ├── adapters/ # OpenRouter, Claude, Codex, OpenCode, JSON storage
 │   │   │   ├── services/ # DeliberationService, ConfigService, ModelDiscoveryService
-│   │   │   └── shared/   # Logger, error types
+│   │   │   └── shared/   # Logger
 │   │   └── package.json
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, gui
+│       │   ├── commands/ # run, history, config, models
 │       │   ├── ui/       # Ink (React) terminal components
-│       │   ├── adapters/ # XDG paths, terminal secret store, callback event bridge
+│       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
 │       └── package.json
 ├── desktop/              # Electron desktop application
@@ -50,7 +50,7 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 
 | Port Interface | CLI Adapter | Desktop Adapter |
 |----------------|-------------|-----------------|
-| `SecretStore` | `PlaintextSecretStore` / `TerminalSecretStore` | `ElectronSecretStore` (OS keychain) |
+| `SecretStore` | `PlaintextSecretStore` | `ElectronSecretStore` (OS keychain) |
 | `ConfigStore` | `JsonConfigStore` (XDG paths) | `JsonConfigStore` (Electron `userData`) |
 | `RunRepository` | `JsonRunRepository` (XDG data dir) | `JsonRunRepository` (Electron `userData`) |
 | `DeliberationEvents` | Callback event bridge / Ink reducer | IPC event bridge (`webContents.send`) |
@@ -96,7 +96,7 @@ npm run test -w concilium           # Run all tests
 npx vitest run packages/core/src/domain/deliberation/ranking.test.ts
 
 # Run specific test pattern
-npx vitest run -t "should parse step_start"
+npx vitest run -t "should read the numbered list after FINAL RANKING"
 
 # Run tests for a specific directory
 npx vitest run packages/core/src/
@@ -141,7 +141,7 @@ import { getConfigDir } from '../adapters/xdg-paths.js';
 - **Utilities**: camelCase (`parseEventLine`, `createLogger`)
 - **Types/Interfaces**: PascalCase (`AgentInstance`, `Stage1Result`)
 - **Constants**: UPPER_SNAKE_CASE for true constants
-- **CLI commands**: kebab-case for flags (`--juror-models`, `--stage1-only`)
+- **CLI commands**: kebab-case for flags (`--juror-models`, `--no-save`)
 
 ### File Headers
 Add MIT license header to new files:
@@ -158,7 +158,6 @@ Add MIT license header to new files:
 - Never swallow errors - log and re-throw or handle gracefully
 - Use early returns to reduce nesting
 - Type guard with `instanceof Error` when catching
-- Use custom error classes from `@concilium/core`: `ConciliumError`, `ConfigError`, `PipelineError`, `AgentError`
 
 ```typescript
 import { createLogger } from '@concilium/core';

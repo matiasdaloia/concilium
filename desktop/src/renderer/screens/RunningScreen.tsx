@@ -124,7 +124,6 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
   const [expandedJuror, setExpandedJuror] = useState<string | null>(null);
   const [showRawDetails, setShowRawDetails] = useState(false);
   const startTime = useRef(Date.now());
-  const [elapsed, setElapsed] = useState('0s');
 
   // Per-agent elapsed timers
   const [agentTimers, setAgentTimers] = useState<Record<string, string>>({});
@@ -166,7 +165,6 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
   useEffect(() => {
     const timer = setInterval(() => {
       const secs = Math.floor((Date.now() - startTime.current) / 1000);
-      setElapsed(secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`);
 
       // Update per-agent timers
       setAgentTimers(() => {

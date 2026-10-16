@@ -1,7 +1,6 @@
 import { createInterface } from 'node:readline';
 import type { Command } from 'commander';
-import { JsonConfigStore, ConfigService } from '@concilium/core';
-import { TerminalSecretStore } from '../adapters/terminal-secret-store.js';
+import { JsonConfigStore, ConfigService, PlaintextSecretStore } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 
 function prompt(question: string): Promise<string> {
@@ -24,7 +23,7 @@ export function registerConfigCommand(program: Command): void {
     .description('Show current configuration')
     .option('--json', 'Output as JSON')
     .action(async (opts: { json?: boolean }) => {
-      const secretStore = new TerminalSecretStore();
+      const secretStore = new PlaintextSecretStore();
       const configStore = new JsonConfigStore(getConfigDir());
       const configService = new ConfigService(configStore, secretStore);
       const resolved = await configService.resolve();
@@ -56,7 +55,7 @@ export function registerConfigCommand(program: Command): void {
     .argument('<key>', 'Configuration key (api-key, chairman, jurors)')
     .argument('[value]', 'Value to set')
     .action(async (key: string, value?: string) => {
-      const secretStore = new TerminalSecretStore();
+      const secretStore = new PlaintextSecretStore();
       const configStore = new JsonConfigStore(getConfigDir());
       const configService = new ConfigService(configStore, secretStore);
 

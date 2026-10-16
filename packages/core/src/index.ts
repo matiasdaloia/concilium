@@ -46,4 +46,3 @@ export { ModelDiscoveryService } from './services/model-discovery-service.js';
 // Shared
 export { createLogger, setLogLevel, getLogLevel } from './shared/logger.js';
 export type { Logger, LogLevel } from './shared/logger.js';
-export { ConciliumError, ConfigError, PipelineError, AgentError } from './shared/errors.js';
