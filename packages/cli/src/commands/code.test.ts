@@ -45,7 +45,7 @@ const RUBRIC = [
 
 /**
  * A fake agent CLI that edits files in its cwd, as the real one would in its worktree. `claude` adds input
- * validation and a test and succeeds; `codex` writes half a change and exits 1. Asked for the rubric (its cwd holds
+ * validation and a test and succeeds; `codex` writes half a change, deletes `sum.test.js` and exits 1. Asked for the rubric (its cwd holds
  * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
@@ -63,6 +63,7 @@ if (${JSON.stringify(cli)} === 'claude') {
   console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Added validation', usage: { input_tokens: 10, output_tokens: 5 } }));
 } else {
   fs.writeFileSync('half.js', 'partial\\n');
+  fs.rmSync('sum.test.js', { force: true });
   console.error('codex: something broke');
   process.exit(1);
 }
@@ -130,7 +131,8 @@ describe('concilium code', () => {
     const saved = JSON.parse(readFileSync(join(sandbox, 'data', 'concilium', 'runs', record.id, 'run.json'), 'utf8')) as CodeRunRecord;
     expect(saved).toEqual(record);
     const gc = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'gc', '--run', record.id, '--dry-run'], { cwd: repo, env, encoding: 'utf8' });
-    expect(gc.stdout).toContain('would remove 2 worktrees, would delete 2 branches');
+    // Two candidates, plus the base the gates ran on.
+    expect(gc.stdout).toContain('would remove 3 worktrees, would delete 3 branches');
   }, 30_000);
 
   it('should print a summary with how to inspect and clean up', () => {
@@ -143,7 +145,8 @@ describe('concilium code', () => {
     // The type and rubric are shown before the first candidate starts.
     expect(result.stderr.indexOf('Type bugfix')).toBeLessThan(result.stderr.indexOf('▶ claude'));
     expect(runId).toBeDefined();
-    expect(result.stdout).toMatch(/claude\s+ok\s+2\s+\+2\/-1\s+1\s+/);
+    expect(result.stdout).toMatch(/claude\s+ok\s+PASS\s+2\s+\+2\/-1\s+1\s+/);
+    expect(result.stdout).toContain('Gates (detected, on the base and each candidate head; only new failures count):\n    none found');
     expect(result.stdout).toContain(`diff ${git(repo, 'rev-parse', 'HEAD').slice(0, 12)}..concilium/${runId}/claude`);
     expect(result.stdout).toContain(`concilium gc --run ${runId}`);
     expect(result.stderr).toContain('claude: ok');
@@ -171,4 +174,34 @@ describe('concilium code', () => {
     expect(result.stdout).toBe('');
     expect(JSON.parse(result.stderr.trim()).error).toBe('--type must be one of bugfix, feature, refactor, perf, prototype, got "bug-fix"');
   });
+
+  it('should run the gates on the base and each candidate and show the gates table and integrity findings', () => {
+    // The test gate passes on the base; the lint gate already fails there.
+    writeFileSync(join(repo, 'sum.test.js'), 'require("./sum")(1, 2);\n');
+    mkdirSync(join(repo, '.concilium'));
+    const node = JSON.stringify(process.execPath);
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), `gates:\n  test: '${node} sum.test.js'\n  lint: '${node} -e "process.exit(1)"'\n`);
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'gates');
+
+    const result = code('--agents', 'claude,codex', 'add input validation to sum');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('✓ base gate test: pass');
+    expect(result.stderr).toContain('✗ base gate lint: fail');
+    expect(result.stdout).toMatch(/claude\s+ok\s+PASS\s/);
+    expect(result.stdout).toMatch(/codex\s+error\s+DISQUALIFIED\s/);
+    expect(result.stdout).toContain('Gates (.concilium/verify.yaml, on the base and each candidate head; only new failures count):');
+    expect(result.stdout).toMatch(/Gate\s+base\s+claude\s+codex\n/);
+    expect(result.stdout).toMatch(/test\s+pass\s+pass\s+fail \(new\)\n/);
+    expect(result.stdout).toMatch(/lint\s+fail\s+fail \(baseline\)\s+fail \(baseline\)\n/);
+    expect(result.stdout).toContain('Integrity:\n    codex: disqualified, deleted the test file sum.test.js');
+
+    const skipped = code('--json', '--no-verify', '--agents', 'claude', 'add input validation to sum');
+    expect(skipped.status).toBe(0);
+    const record = JSON.parse(skipped.stdout) as CodeRunRecord;
+    expect(record.verification).toBeUndefined();
+    expect(skipped.stderr).not.toContain('gate test');
+    expect(git(repo, 'branch', '--list', `concilium/${record.id}/base`)).toBe('');
+  }, 30_000);
 });

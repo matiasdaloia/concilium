@@ -17,10 +17,13 @@ import {
   PlaintextSecretStore,
   runCodeCandidates,
   TASK_TYPES,
+  VERIFY_CONFIG,
+  type CandidateVerification,
   type CodeAgent,
   type CodeCandidate,
   type CodeFrame,
   type CodeRunRecord,
+  type GateVerdict,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
 
@@ -30,6 +33,7 @@ interface CodeOptions {
   cwd: string;
   includeDirty?: boolean;
   timeout?: string;
+  verify: boolean;
   json?: boolean;
 }
 
@@ -51,12 +55,60 @@ function frameLines({ taskType, rubric }: CodeFrame): string[] {
   return [`Type ${taskType.type} (${how})`, `Rubric ${rubric.criteria.length} criteria, ${from}, sha256 ${rubric.sha256.slice(0, 12)}`];
 }
 
+function verdict(v: CandidateVerification | null | undefined): string {
+  if (v === undefined) return '-';
+  if (v === null) return 'not checked';
+  return v.disqualified ? 'DISQUALIFIED' : v.status;
+}
+
+function gateCell(gate: GateVerdict | undefined): string {
+  if (!gate) return '-';
+  if (gate.verdict === 'pass') return 'pass';
+  return `${gate.outcome} (${gate.verdict === 'new-failure' ? 'new' : 'baseline'})`;
+}
+
+function printTable(rows: string[][], indent = '  '): void {
+  const widths = rows[0].map((_, col) => Math.max(...rows.map((row) => row[col].length)));
+  for (const row of rows) console.log(`${indent}${row.map((cell, col) => cell.padEnd(widths[col])).join('  ').trimEnd()}`);
+}
+
+function printVerification(record: CodeRunRecord): void {
+  const run = record.verification;
+  if (!run) {
+    console.log('\n  Verification skipped (--no-verify)');
+    return;
+  }
+  const from = run.plan.source === 'verify.yaml' ? VERIFY_CONFIG : 'detected';
+  console.log(`\n  Gates (${from}, on the base and each candidate head; only new failures count):`);
+  for (const note of [...run.plan.notes, ...run.errors]) console.log(`    ${note}`);
+  if (run.plan.gates.length === 0) console.log('    none found');
+  else {
+    printTable([
+      ['Gate', 'base', ...record.candidates.map((c) => c.candidateId)],
+      ...run.plan.gates.map((gate) => [
+        gate.name,
+        run.baseline?.gates.find((g) => g.name === gate.name)?.outcome ?? '-',
+        ...record.candidates.map((c) => gateCell(c.verification?.gates.find((g) => g.name === gate.name))),
+      ]),
+    ], '    ');
+  }
+
+  const findings = record.candidates.flatMap((c) => (c.verification?.integrity ?? []).map((f) => ({ candidateId: c.candidateId, ...f })));
+  const installs = record.candidates.filter((c) => c.verification?.install && c.verification.install.outcome !== 'pass');
+  const errors = record.candidates.flatMap((c) => (c.verification?.errors ?? []).map((e) => `${c.candidateId}: ${e}`));
+  console.log(findings.length === 0 ? '\n  Integrity: no findings' : '\n  Integrity:');
+  for (const f of findings) console.log(`    ${f.candidateId}: ${f.severity === 'disqualify' ? 'disqualified' : 'penalty'}, ${f.message}`);
+  for (const c of installs) console.log(`    ${c.candidateId}: install (${c.verification!.install!.command}) ${c.verification!.install!.outcome}`);
+  for (const error of errors) console.log(`    ${error}`);
+}
+
 function summaryRows(candidates: CodeCandidate[]): string[][] {
   return [
-    ['Candidate', 'Status', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
+    ['Candidate', 'Status', 'Verified', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
     ...candidates.map((c) => [
       c.candidateId,
       c.status,
+      verdict(c.verification),
       c.diffStat ? String(c.diffStat.filesChanged) : '-',
       c.diffStat ? `+${c.diffStat.insertions}/-${c.diffStat.deletions}` : '-',
       c.diffStat ? String(c.diffStat.commits) : '-',
@@ -68,13 +120,12 @@ function summaryRows(candidates: CodeCandidate[]): string[][] {
 }
 
 function printSummary(record: CodeRunRecord, savedTo: string | null): void {
-  const rows = summaryRows(record.candidates);
-  const widths = rows[0].map((_, col) => Math.max(...rows.map((row) => row[col].length)));
   console.log(`\n  Run ${record.id} in ${record.repoDir}`);
   console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}`);
   for (const line of frameLines(record)) console.log(`  ${line}`);
   console.log();
-  for (const row of rows) console.log(`  ${row.map((cell, col) => cell.padEnd(widths[col])).join('  ').trimEnd()}`);
+  printTable(summaryRows(record.candidates));
+  printVerification(record);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
   if (failed.length > 0) {
@@ -102,6 +153,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--cwd <path>', 'Directory of the git repo to work on', process.cwd())
     .option('--include-dirty', 'Start from the uncommitted changes too (snapshotted to a scratch ref) instead of refusing a dirty tree')
     .option('--timeout <minutes>', `Wall-clock limit per candidate in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
+    .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish`)
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -145,6 +197,8 @@ export function registerCodeCommand(program: Command): void {
           onFramed: (frame) => frameLines(frame).forEach((line) => progress(`  ${line}`)),
           onCandidateStart: (c) => progress(`  ▶ ${c.candidateId}: running in ${c.worktree}`),
           onCandidateDone: (c) => progress(`  ${c.status === 'ok' ? '✓' : '✗'} ${c.candidateId}: ${c.status} in ${formatDuration(c.durationMs)}`),
+          verify: opts.verify,
+          onGateDone: (lane, gate) => progress(`  ${gate.outcome === 'pass' ? '✓' : '✗'} ${lane} gate ${gate.name}: ${gate.outcome} in ${formatDuration(gate.durationMs)}`),
         });
         savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

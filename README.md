@@ -142,7 +142,7 @@ concilium run --output solution.md "Migrate the database schema"
 | Command | Description |
 |---------|-------------|
 | `concilium run <prompt>` | Run a deliberation pipeline |
-| `concilium code <task>` | Have agent CLIs write code, each in its own worktree and `concilium/` branch |
+| `concilium code <task>` | Have agent CLIs write code, each in its own worktree and `concilium/` branch, then run the repo's gates and integrity checks on each against the base |
 | `concilium history` | List past runs |
 | `concilium history <id>` | View a specific run |
 | `concilium history --last --synthesis` | Print the last synthesis |

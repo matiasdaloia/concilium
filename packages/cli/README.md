@@ -182,7 +182,25 @@ Before any candidate starts, the run is framed:
 
 The type, the reason it was picked, and the frozen rubric (`taskType` and `rubric`) are saved in the run record.
 
-It prints one row per candidate (status, files changed, lines added and removed, commits, duration, tokens) and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is judged, tested or merged yet. It exits 1 when no candidate finished `ok`.
+After the candidates finish, every candidate is verified against the base (skip it with `--no-verify`):
+
+- **Gates.** Concilium checks out the base in one more worktree (`concilium/<run-id>/base`) and decides the gates from it, so a candidate cannot change them: the commands in `.concilium/verify.yaml` if the repo has one, otherwise the ones it detects (`package.json` scripts named `typecheck`, `lint` and `test`, the same `Makefile` targets, `go vet ./...` and `go test ./...` for a Go module, `python -m pytest` for a pytest project, `cargo test`). Each gate runs once on the base, then on each candidate's head, one at a time, with a 10-minute limit. When a worktree has a `package-lock.json` and no `node_modules`, `npm ci` runs first. A gate that already fails on the base is a baseline failure and does not count against anyone; only new failures do. The record keeps, per gate, the command, the SHA it ran at, the exit code, the duration and the last 8000 characters of output.
+- **Integrity checks** on each candidate's diff against the base. Deleting or moving a test file, adding `.skip`/`.only`/`xit`/`@Disabled`/`t.Skip`/`@pytest.mark.skip` and similar markers, or lowering a coverage threshold disqualifies the candidate. Editing gate configuration (lint configs, `tsconfig`, test runner configs, CI files, `.concilium/`, the `test`/`lint`/`typecheck` scripts) and adding dependencies (`package.json`, `requirements*.txt`, `go.mod`, `Cargo.toml`) are penalties. Each finding keeps the offending hunk.
+
+A candidate is `PASS` with no new gate failure and no finding, `DISQUALIFIED` when it weakened the tests, and `ISSUES` otherwise. Gates run the target repo's own code, and the code the candidates wrote, on your machine, without a sandbox; only credentials (variables ending in `KEY`, `TOKEN`, `SECRET`, `PASSWORD`) and npm's settings are removed from their environment.
+
+`.concilium/verify.yaml`, committed in the target repo, replaces the detected gates when it lists `gates`, and the install step when it sets `install`:
+
+```yaml
+install: npm ci          # optional; false installs nothing
+gates:
+  typecheck: npm run typecheck
+  test:
+    run: npm test
+    timeout: 900         # seconds, default 600
+```
+
+It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is ranked or merged yet. It exits 1 when no candidate finished `ok`.
 
 ```
 concilium code [options] [task...]
@@ -195,6 +213,7 @@ concilium code [options] [task...]
 | `--cwd <path>` | Directory of the git repo to work on (default: current directory) |
 | `--include-dirty` | Start every candidate from your uncommitted changes too (snapshotted to `refs/concilium/<run-id>/snapshot`). Without it a dirty tree is refused |
 | `--timeout <minutes>` | Wall-clock limit per candidate (default: 30) |
+| `--no-verify` | Skip the gates and the integrity checks after the candidates finish |
 | `--json` | Print the run record as JSON to stdout (progress and errors go to stderr) |
 
 **Examples:**
@@ -212,6 +231,12 @@ concilium gc --run <run-id>
 
 # Head SHA and diffstat of each candidate
 concilium code "fix the flaky retry test" --json | jq '.candidates[] | {candidateId, status, headSha, diffStat}'
+
+# New gate failures and integrity findings of each candidate
+concilium code "fix the flaky retry test" --json | jq '.candidates[] | {candidateId, verdict: .verification.status, newFailures: .verification.newFailures, integrity: [.verification.integrity[].message]}'
+
+# Candidates only, no gates
+concilium code "try a new parser" --type prototype --no-verify
 ```
 
 ### `concilium history`

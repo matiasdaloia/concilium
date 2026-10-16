@@ -19,6 +19,9 @@ Options:
   --include-dirty      Start from the uncommitted changes too (snapshotted to a
                        scratch ref) instead of refusing a dirty tree
   --timeout <minutes>  Wall-clock limit per candidate in minutes (default: 30)
+  --no-verify          Skip the gates (.concilium/verify.yaml, or the detected
+                       test, lint and typecheck commands) and the integrity
+                       checks after the candidates finish
   --json               Output the run record as JSON to stdout
   -h, --help           display help for command
 "
