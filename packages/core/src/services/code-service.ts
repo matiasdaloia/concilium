@@ -8,7 +8,8 @@ import { randomBytes } from 'node:crypto';
 import { framedTask, type CodeFrame } from '../domain/code-council/framing.js';
 import { classifyTask, PLAYBOOKS, type TaskType, type TaskTypeChoice } from '../domain/code-council/playbooks.js';
 import type { Judgment } from '../domain/code-council/judging.js';
-import type { CandidateReport, Ranking } from '../domain/code-council/ranking.js';
+import { contends, type CandidateReport, type Ranking } from '../domain/code-council/ranking.js';
+import { detectDivergence, type Reframe } from '../domain/code-council/reframe.js';
 import type { Graft, Synthesis } from '../domain/code-council/synthesis.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
@@ -24,8 +25,9 @@ import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
 import { runAdversarialRound, type AdversarialInput, type AdversarialRound } from './adversarial-service.js';
 import { rankRun } from './ranking-service.js';
+import { reframeRun } from './reframe-service.js';
 import { runDriver } from './run-driver.js';
-import { synthesize } from './synthesis-service.js';
+import { skippedSynthesis, synthesize } from './synthesis-service.js';
 import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
 const log = createLogger('code');
@@ -65,10 +67,14 @@ export type CodeCandidate = {
   report?: CandidateReport;
 };
 
+/** `reframe-needed`: the candidates diverged, so the run stopped before synthesis with questions and no patch. */
+export type CodeRunStatus = 'done' | 'reframe-needed';
+
 export type CodeRunRecord = {
   version: 1;
   kind: 'code';
   id: string;
+  status: CodeRunStatus;
   createdAt: string;
   finishedAt: string;
   task: string;
@@ -90,6 +96,8 @@ export type CodeRunRecord = {
   ranking: Ranking;
   /** The winner with grafts from the others on the integration branch, and its patch. Absent when not asked for. */
   synthesis?: Synthesis;
+  /** Why the candidates diverged and the questions for the task's author. Present only when `status` is `reframe-needed`. */
+  reframe?: Reframe;
 };
 
 export type CodeRunInput = {
@@ -112,7 +120,10 @@ export type CodeRunInput = {
   adversarial?: boolean;
   /** Send candidates tied on the evidence to one read-only judge CLI, from another model family when one is usable. */
   judge?: boolean;
-  /** After ranking, graft the others' best ideas into the winner on `concilium/<run-id>/integration`, re-verify, and write `result.patch` and `synthesis.md` to `runDir`. */
+  /**
+   * After ranking, graft the others' best ideas into the winner on `concilium/<run-id>/integration`, re-verify, and
+   * write `result.patch` and `synthesis.md` to `runDir`. When the candidates diverge, write `reframe.md` there instead.
+   */
   synthesis?: { runDir: string };
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
@@ -307,16 +318,35 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     });
     log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
 
-    const synthesis = input.synthesis
-      ? await synthesize({
+    // Divergence means the task was underspecified: ask, never blend. A prototype ends in a decision record anyway.
+    const divergence = input.synthesis && taskType.type !== 'prototype'
+      ? detectDivergence({
+        candidates: ranking.order.map((e) => {
+          const c = candidates.find((c) => c.candidateId === e.candidateId)!;
+          return { candidateId: e.candidateId, family: getProviderInfo(c.provider)?.family ?? c.provider, contends: contends(e), newFailures: c.verification?.newFailures ?? [] };
+        }),
+        tests: adversarial?.tests ?? [], matrix: adversarial?.matrix ?? {}, judgments: ranking.judgments,
+      })
+      : [];
+    let synthesis: Synthesis | undefined;
+    let reframe: Reframe | undefined;
+    if (input.synthesis && divergence.length > 0) {
+      reframe = await reframeRun({
+        task: input.task, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, framer: input.agents[0], divergence,
+        candidates: candidates.filter((c) => c.headSha && c.report?.status !== 'BLOCKED'), drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS, signal,
+      });
+      synthesis = skippedSynthesis(`the candidates diverge (${divergence.map((d) => d.trigger).join(', ')}), so the task needs a reframe`);
+    } else if (input.synthesis) {
+      synthesis = await synthesize({
         task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
         verification, adversarial, drivers: input.drivers, workspace: input.workspace, timeoutMs, signal, onGraftDone: input.onGraftDone,
-      })
-      : undefined;
+      });
+    }
     return {
       version: 1,
       kind: 'code',
       id: runId,
+      status: reframe ? 'reframe-needed' : 'done',
       createdAt,
       finishedAt: new Date().toISOString(),
       task: input.task,
@@ -331,6 +361,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       ...(adversarial ? { adversarial } : {}),
       ranking,
       ...(synthesis ? { synthesis } : {}),
+      ...(reframe ? { reframe } : {}),
     };
   } finally {
     await input.workspace.finishRun({ repoDir, runId });

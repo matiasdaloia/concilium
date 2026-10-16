@@ -88,7 +88,7 @@ export { ModelDiscoveryService } from './services/model-discovery-service.js';
 export type { CodeFrame } from './domain/code-council/framing.js';
 export { framedTask, missingPlaybookSteps } from './domain/code-council/framing.js';
 export { runCodeCandidates, codeBrief, newRunId, CODE_TIMEOUT_MS, FRAME_TIMEOUT_MS } from './services/code-service.js';
-export type { CodeAgent, CodeCandidate, CodeRunRecord, CodeRunInput } from './services/code-service.js';
+export type { CodeAgent, CodeCandidate, CodeRunRecord, CodeRunInput, CodeRunStatus } from './services/code-service.js';
 export type { Gate, GatePlan, GateResult, GateVerdict, InstallStep, StepResult } from './domain/verification/gates.js';
 export { VERIFY_CONFIG, GATE_TIMEOUT_MS, INSTALL_TIMEOUT_MS, detectGates, parseVerifyConfig, planGates, judgeGates } from './domain/verification/gates.js';
 export type { FileDiff, IntegrityFinding, IntegrityRule, ManifestChange } from './domain/verification/integrity.js';
@@ -107,7 +107,13 @@ export {
   MAX_GRAFTS_PER_CANDIDATE, RESULT_PATCH, SYNTHESIS_REPORT, graftPrompt, integratorBrief, parseGraftAnswer, synthesisMarkdown,
 } from './domain/code-council/synthesis.js';
 export { JUDGE_DIFF_LIMIT, judgeTie, rankRun, reportCandidate, usableClis } from './services/ranking-service.js';
-export { synthesize } from './services/synthesis-service.js';
+export { skippedSynthesis, synthesize } from './services/synthesis-service.js';
+export type { Conflict, Divergence, DivergenceCandidate, DivergenceTrigger, Reframe, ReframePack, SpecQuestion } from './domain/code-council/reframe.js';
+export {
+  REFRAME_REPORT, completeQuestions, detectDivergence, fallbackQuestion, parseReframeAnswer, reframeMarkdown, reframePrompt,
+} from './domain/code-council/reframe.js';
+export { reframeRun } from './services/reframe-service.js';
+export type { ReframeInput } from './services/reframe-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';

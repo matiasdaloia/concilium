@@ -872,6 +872,10 @@ describe('runCodeCandidates synthesis', () => {
     expect(git(repo, 'status', '--porcelain')).toBe('');
     const gc = await workspace.gc({ runId: 'syn1', dryRun: true });
     expect(gc[0].keptBranches).toEqual(['concilium/syn1/integration']);
+    // No divergence: the run is done and asks nothing.
+    expect(record.status).toBe('done');
+    expect(record.reframe).toBeUndefined();
+    expect(existsSync(join(runDir, 'reframe.md'))).toBe(false);
   }, 60_000);
 
   it('should skip synthesis with fewer than 2 candidates, without a winner, and without the gates', async () => {
@@ -891,4 +895,120 @@ describe('runCodeCandidates synthesis', () => {
     expect(git(repo, 'branch', '--list', 'concilium/*/integration')).toBe('');
     expect(existsSync(runDir)).toBe(false);
   });
+});
+
+describe('runCodeCandidates reframe', () => {
+  const LINE = "slugify('Hello World') joins the words with a separator";
+  const TASK = `Add slugify(text) in slug.js.\nAcceptance:\n- ${LINE}`;
+  const STEPS = '1. done\n2. done\n3. done\n4. skipped: no user surface';
+  const slug = (sep: string) => `module.exports = (s) => s.toLowerCase().split(' ').join('${sep}');\n`;
+  const expects = (out: string) => `if (require('./slug.js')('Hello World') !== '${out}') throw new Error('not ${out}');\n`;
+
+  /** A repo whose `test` gate runs every `*.test.js`, with one test that passes on the base. */
+  function seedSuite(): string {
+    writeFileSync(join(repo, 'run-tests.js'), RUN_TESTS);
+    writeFileSync(join(repo, 'sum.test.js'), "if (require('./sum.js')(1, 2) !== 3) throw new Error('1 + 2');\n");
+    mkdirSync(join(repo, '.concilium'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), 'gates:\n  test: node run-tests.js\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'suite');
+    return git(repo, 'rev-parse', 'HEAD');
+  }
+
+  /**
+   * One reading of LINE, joining with `sep`: as a candidate it writes slug.js, as an adversary a test for its own
+   * reading quoting LINE. Asked for questions (a plan brief whose prompt starts `You are phrasing spec questions`),
+   * it answers `questions`, or fails when there are none; it fails the framing run.
+   */
+  function reading(id: string, sep: string, questions: object[] = [], prompts: string[] = []): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        if (brief.mode === 'plan') {
+          const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+          if (!prompt.startsWith('You are phrasing spec questions') || questions.length === 0) return [{ type: 'error', message: 'no answer' }];
+          prompts.push(prompt);
+          return [{ type: 'text', text: JSON.stringify({ questions }) }];
+        }
+        if (brief.task.startsWith('You are an adversary')) {
+          writeFileSync(join(brief.cwd, `${id}-reading.test.js`), expects(`hello${sep}world`));
+          writeFileSync(join(brief.cwd, 'concilium-adversarial.json'), JSON.stringify({ tests: [{ files: [`${id}-reading.test.js`], specClause: LINE }] }));
+          return [{ type: 'text', text: 'wrote a test' }];
+        }
+        writeFileSync(join(brief.cwd, 'slug.js'), slug(sep));
+        return [{ type: 'text', text: STEPS }];
+      },
+    });
+  }
+
+  it('should end an ambiguous task in reframe-needed, name the line read two ways, and write no patch', async () => {
+    const baseSha = seedSuite();
+    const prompts: string[] = [];
+    const drivers = new Map([
+      ['claude', reading('claude', '-', [{ clause: LINE, question: 'Should the separator be a hyphen or an underscore?' }, { clause: 'other', question: '?' }], prompts)],
+      ['codex', reading('codex', '_')],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'ref1', drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], synthesis: { runDir },
+    });
+
+    // Both pass the gates; each fails the other family's reading of the same line, so neither dominates.
+    expect(record.candidates.map((c) => c.verification!.status)).toEqual(['PASS', 'PASS']);
+    expect(record.adversarial!.matrix).toEqual({
+      'anthropic-1': { base: 'fail', claude: 'pass', codex: 'fail' },
+      'openai-1': { base: 'fail', claude: 'fail', codex: 'pass' },
+    });
+    expect(record.status).toBe('reframe-needed');
+    const reframe = record.reframe!;
+    expect(reframe.divergence).toEqual([{
+      trigger: 'disjoint-survival',
+      detail: 'each candidate that passes the gates fails different adversarial tests: claude fails openai-1; codex fails anthropic-1',
+      conflicts: [{ clause: LINE, evidence: ['claude passes anthropic-1, fails openai-1', 'codex passes openai-1, fails anthropic-1'] }],
+    }]);
+    // The framer's CLI phrased the question read-only, from the evidence and both diffs.
+    expect(reframe).toMatchObject({
+      phraser: 'claude', source: 'phraser', notes: ['questions[1] dropped: names no line in conflict'],
+      questions: [{ clause: LINE, question: 'Should the separator be a hyphen or an underscore?' }],
+    });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain(`- clause: ${LINE}`);
+    expect(prompts[0]).toContain("+module.exports = (s) => s.toLowerCase().split(' ').join('_');");
+    expect(drivers.get('claude')!.runs.filter((r) => r.brief.mode === 'plan').at(-1)!.brief).toMatchObject({ allowedActions: ['read'] });
+
+    // No blend: synthesis is skipped, no integration branch and no patch; reframe.md names the line.
+    expect(record.synthesis).toMatchObject({ skipped: 'the candidates diverge (disjoint-survival), so the task needs a reframe', branch: null, patchPath: null });
+    expect(git(repo, 'branch', '--list', 'concilium/ref1/integration')).toBe('');
+    expect(existsSync(join(runDir, 'result.patch'))).toBe(false);
+    expect(reframe.reportPath).toBe(join(runDir, 'reframe.md'));
+    const md = readFileSync(reframe.reportPath!, 'utf8');
+    expect(md).toContain(`1. On "${LINE}": Should the separator be a hyphen or an underscore?`);
+    expect(md).toContain(baseSha.slice(0, 12));
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+  }, 60_000);
+
+  it('should write the questions from the evidence when the phraser gives no answer, and skip the check without synthesis', async () => {
+    seedSuite();
+    const drivers = new Map([['claude', reading('claude', '-')], ['codex', reading('codex', '_')]]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const run = (runId: string, synthesis?: { runDir: string }) => runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId, drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], synthesis,
+    });
+
+    const record = await run('ref2', { runDir });
+    expect(record.status).toBe('reframe-needed');
+    expect(record.reframe).toMatchObject({ phraser: 'claude', source: 'fallback', notes: ['claude gave no answer, so the questions were written from the evidence'] });
+    expect(record.reframe!.questions).toEqual([{
+      clause: LINE,
+      question: `The candidates read "${LINE}" differently (claude passes anthropic-1, fails openai-1; codex passes openai-1, fails anthropic-1). Which reading is intended? Restate the line so only one reading is left.`,
+    }]);
+    expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain('Written from the evidence');
+
+    // Without synthesis there is no blend to stop: the run is done.
+    const plain = await run('ref3');
+    expect(plain.status).toBe('done');
+    expect(plain.reframe).toBeUndefined();
+  }, 60_000);
 });

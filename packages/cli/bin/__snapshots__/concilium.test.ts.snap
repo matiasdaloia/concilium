@@ -31,7 +31,8 @@ Options:
                        a tie at the top goes to the smallest diff
   --no-synthesis       Do not graft ideas from the other candidates into the
                        winner on the integration branch, and write no
-                       result.patch or synthesis.md
+                       result.patch or synthesis.md; also skips the divergence
+                       check that ends a run in reframe-needed (exit 2)
   --json               Output the run record as JSON to stdout
   -h, --help           display help for command
 "
