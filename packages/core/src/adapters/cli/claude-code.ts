@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { AllowedAction, Brief } from '../../domain/driver/brief.js';
+import { briefPrompt, type AllowedAction, type Brief } from '../../domain/driver/brief.js';
 import type { NormalizedEvent, RunEvent } from '../../domain/driver/normalized-event.js';
 import { buildReport, type ReportStatus } from '../../domain/driver/report.js';
 import type { DriverRunOptions } from '../../ports/headless-cli-driver.js';
@@ -20,11 +20,6 @@ const TOOLS_BY_ACTION: Record<AllowedAction, string[]> = {
   shell: ['Bash'],
   network: ['WebFetch', 'WebSearch'],
 };
-
-export function claudePrompt(brief: Brief): string {
-  if (brief.constraints.length === 0) return brief.task;
-  return `${brief.task}\n\nConstraints:\n${brief.constraints.map((c) => `- ${c}`).join('\n')}`;
-}
 
 /**
  * `claude -p` arguments for a brief. A plan brief runs in plan mode (read-only). A code brief runs in
@@ -42,7 +37,7 @@ export function claudeArgs(brief: Brief, model?: string): string[] {
     `--allowedTools=${tools.join(',')}`,
   ];
   if (model?.trim()) args.push(`--model=${model.trim()}`);
-  args.push('--', claudePrompt(brief));
+  args.push('--', briefPrompt(brief));
   return args;
 }
 

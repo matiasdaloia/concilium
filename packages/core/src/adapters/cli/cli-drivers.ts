@@ -8,6 +8,7 @@ import { parseBrief, type Brief } from '../../domain/driver/brief.js';
 import type { NormalizedEvent } from '../../domain/driver/normalized-event.js';
 import type { CliAuth, CliDetection, DriverRunOptions, HeadlessCliDriver } from '../../ports/headless-cli-driver.js';
 import { runClaudeCode } from './claude-code.js';
+import { runCodex } from './codex.js';
 import { captureSubprocess } from './subprocess.js';
 
 export const HEADLESS_CLI_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
@@ -81,12 +82,12 @@ type CliDefinition = {
 
 const DEFINITIONS: Record<HeadlessCliId, CliDefinition> = {
   claude: { id: 'claude', command: 'claude', auth: { args: ['auth', 'status'], parse: parseClaudeAuthStatus }, run: runClaudeCode },
-  codex: { id: 'codex', command: 'codex', auth: { args: ['login', 'status'], parse: parseCodexLoginStatus } },
+  codex: { id: 'codex', command: 'codex', auth: { args: ['login', 'status'], parse: parseCodexLoginStatus }, run: runCodex },
   gemini: { id: 'gemini', command: 'gemini', auth: { fromEnv: geminiAuthFromEnv } },
   opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList } },
 };
 
-/** Drives an installed agent CLI. `run` works for Claude Code so far; the others arrive in M1.3 to M1.5. */
+/** Drives an installed agent CLI. `run` works for Claude Code and Codex so far; the others arrive in M1.4 and M1.5. */
 export class CliDriver implements HeadlessCliDriver {
   readonly id: HeadlessCliId;
 
