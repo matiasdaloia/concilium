@@ -36,14 +36,27 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, env: { ...env, PATH: process.env.PATH }, encoding: 'utf8' }).trimEnd();
 }
 
+const framerLog = join(sandbox, 'framer.log');
+const RUBRIC = [
+  { name: 'validates', description: 'sum rejects non-numbers, shown by a test.', weight: 3, evidence: 'gate' },
+  { name: 'suite', description: 'The existing tests pass.', weight: 2, evidence: 'gate' },
+  { name: 'small', description: 'Only sum.js and its test change.', weight: 1, evidence: 'judgment' },
+];
+
 /**
  * A fake agent CLI that edits files in its cwd, as the real one would in its worktree. `claude` adds input
- * validation and a test and succeeds; `codex` writes half a change and exits 1.
+ * validation and a test and succeeds; `codex` writes half a change and exits 1. Asked for the rubric (its cwd holds
+ * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
 const fs = require('node:fs');
-fs.appendFileSync(${JSON.stringify(cwdLog)}, ${JSON.stringify(cli)} + ' ' + process.cwd() + '\\n');
+if (${JSON.stringify(cli)} === 'claude' && fs.existsSync('council-prompt.md')) {
+  fs.appendFileSync(${JSON.stringify(framerLog)}, process.argv.slice(2).join(' ') + '\\n');
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ criteria: ${JSON.stringify(RUBRIC)} }) }));
+  process.exit(0);
+}
+if (!fs.existsSync('council-prompt.md')) fs.appendFileSync(${JSON.stringify(cwdLog)}, ${JSON.stringify(cli)} + ' ' + process.cwd() + '\\n');
 if (${JSON.stringify(cli)} === 'claude') {
   fs.writeFileSync('sum.js', 'module.exports = (a, b) => { if (typeof a !== "number") throw new TypeError("a"); return a + b; };\\n');
   fs.writeFileSync('sum.test.js', 'require("./sum")(1, 2);\\n');
@@ -84,6 +97,15 @@ describe('concilium code', () => {
     expect(record).toMatchObject({ kind: 'code', baseSha: head, task: 'add input validation to sum with a test' });
     const [claude, codex] = record.candidates;
 
+    // No --type: the classifier picks one and says why. The first agent tailored the rubric read-only, before the candidates.
+    expect(record.taskType).toEqual({ type: 'feature', source: 'classifier', reason: 'no keyword matched, feature is the default' });
+    expect(record.rubric).toMatchObject({ criteria: RUBRIC, source: 'framer', framer: 'claude' });
+    expect(readFileSync(framerLog, 'utf8')).toContain('--permission-mode=plan');
+    for (const c of record.candidates) {
+      expect(c.brief!.task).toContain('## Playbook: feature');
+      expect(c.brief!.task).toContain(`sha256 ${record.rubric.sha256}`);
+    }
+
     expect(claude).toMatchObject({ status: 'ok', branch: `concilium/${record.id}/claude`, committed: true, usage: { inputTokens: 10, outputTokens: 5 } });
     expect(claude.diffStat).toEqual({ commits: 1, filesChanged: 2, insertions: 2, deletions: 1 });
     expect(git(repo, 'show', `${claude.branch}:sum.js`)).toContain('TypeError');
@@ -111,10 +133,14 @@ describe('concilium code', () => {
   }, 30_000);
 
   it('should print a summary with how to inspect and clean up', () => {
-    const result = code('--agents', 'claude', 'add input validation to sum');
+    const result = code('--agents', 'claude', '--type', 'bugfix', 'add input validation to sum');
 
     expect(result.status).toBe(0);
     const runId = /Run (\S+) in /.exec(result.stdout)?.[1];
+    expect(result.stdout).toContain('Type bugfix (from --type)');
+    expect(result.stdout).toMatch(/Rubric 3 criteria, tailored by claude, sha256 [0-9a-f]{12}\n/);
+    // The type and rubric are shown before the first candidate starts.
+    expect(result.stderr.indexOf('Type bugfix')).toBeLessThan(result.stderr.indexOf('▶ claude'));
     expect(runId).toBeDefined();
     expect(result.stdout).toMatch(/claude\s+ok\s+2\s+\+2\/-1\s+1\s+/);
     expect(result.stdout).toContain(`diff ${git(repo, 'rev-parse', 'HEAD').slice(0, 12)}..concilium/${runId}/claude`);
@@ -132,6 +158,16 @@ describe('concilium code', () => {
 
     const failed = code('--json', '--agents', 'codex', 't');
     expect(failed.status).toBe(1);
-    expect((JSON.parse(failed.stdout) as CodeRunRecord).candidates[0].status).toBe('error');
+    const record = JSON.parse(failed.stdout) as CodeRunRecord;
+    expect(record.candidates[0].status).toBe('error');
+    // The codex framer failed too, so the rubric is the playbook's.
+    expect(record.rubric).toMatchObject({ source: 'playbook', framer: 'codex', note: 'codex gave no answer' });
   }, 30_000);
+
+  it('should refuse an unknown --type before touching the repo', () => {
+    const result = code('--json', '--agents', 'claude', '--type', 'bug-fix', 't');
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(JSON.parse(result.stderr.trim()).error).toBe('--type must be one of bugfix, feature, refactor, perf, prototype, got "bug-fix"');
+  });
 });

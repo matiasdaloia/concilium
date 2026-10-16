@@ -1,5 +1,29 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`concilium bin (from source) > should print stable code --help output 1`] = `
+"Usage: concilium code [options] [task...]
+
+Have agent CLIs write code, one git worktree each
+
+Arguments:
+  task                 The coding task
+
+Options:
+  --agents <list>      Candidate agents (e.g. "claude,codex" or
+                       "claude:opus,codex:gpt-5.2-codex"); default: the
+                       installed, signed-in agent CLIs (see \`concilium doctor\`)
+  --type <type>        Task type, which picks the playbook and default rubric:
+                       bugfix, feature, refactor, perf, prototype (default:
+                       guessed from the task)
+  --cwd <path>         Directory of the git repo to work on (default: "/")
+  --include-dirty      Start from the uncommitted changes too (snapshotted to a
+                       scratch ref) instead of refusing a dirty tree
+  --timeout <minutes>  Wall-clock limit per candidate in minutes (default: 30)
+  --json               Output the run record as JSON to stdout
+  -h, --help           display help for command
+"
+`;
+
 exports[`concilium bin (from source) > should print stable run --help output 1`] = `
 "Usage: concilium run [options] [prompt...]
 
