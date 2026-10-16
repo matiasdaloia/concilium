@@ -383,17 +383,30 @@ describe('concilium code', () => {
       divergence: [{ trigger: 'disjoint-survival', conflicts: [{ clause: AMBIGUOUS_LINE }] }],
       questions: [{ clause: AMBIGUOUS_LINE, question: 'Hyphen or underscore between the words?' }],
     });
-    expect(record.synthesis).toMatchObject({ skipped: 'the candidates diverge (disjoint-survival), so the task needs a reframe' });
+    // Grafting was tried first: claude's fold-in of codex's slug.js changes nothing, so openai-1 still fails at the integration head.
+    const branch = `concilium/${record.id}/integration`;
+    expect(record.synthesis).toMatchObject({
+      base: { candidateId: 'claude' }, branch, patchPath: null, mergeable: false,
+      grafts: [{ id: 'graft-1', candidateId: 'codex', status: 'rejected', reason: 'the integrator made no change' }],
+      divergence: { tests: ['openai-1', 'anthropic-1'], resolved: false, reason: 'at the integration head openai-1 is fail' },
+    });
+    expect(record.reframe!.grafting).toEqual({
+      branch, headSha: record.synthesis!.headSha, applied: 0, rejected: 1, outcome: 'at the integration head openai-1 is fail', synthesisPath: join(runDir, 'synthesis.md'),
+    });
     expect(existsSync(join(runDir, 'result.patch'))).toBe(false);
-    expect(git(repo, 'branch', '--list', `concilium/${record.id}/integration`)).toBe('');
+    expect(git(repo, 'rev-parse', branch)).toBe(record.synthesis!.headSha);
+    expect(readFileSync(join(runDir, 'synthesis.md'), 'utf8')).toContain('Not resolved: at the integration head openai-1 is fail.');
     expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?`);
+    expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`Grafting was tried first on \`${branch}\` (0 applied, 1 rejected)`);
     expect((JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')) as CodeRunRecord).status).toBe('reframe-needed');
 
     const summary = code('--agents', 'claude,codex', task);
     expect(summary.status).toBe(2);
     expect(summary.stderr).toMatch(/✗ reframe needed: 1 questions in \S+reframe\.md\n/);
-    expect(summary.stdout).toContain('Synthesis skipped: the candidates diverge (disjoint-survival), so the task needs a reframe');
+    expect(summary.stdout).toContain('Divergence: disjoint-survival on openai-1, anthropic-1, so grafting was tried first; not resolved: at the integration head openai-1 is fail');
+    expect(summary.stdout).toMatch(/Patch: none, the divergence is not resolved\n/);
     expect(summary.stdout).toContain('Reframe needed: the candidates diverge, so the task can be read more than one way. No patch was written.');
+    expect(summary.stdout).toMatch(/Grafting was tried first on concilium\/\S+\/integration \(0 applied, 1 rejected\): at the integration head openai-1 is fail; the branch is kept for inspection\n/);
     expect(summary.stdout).toContain(`"${AMBIGUOUS_LINE}": claude passes anthropic-1, fails openai-1; codex passes openai-1, fails anthropic-1`);
     expect(summary.stdout).toContain(`Questions (phrased by claude):\n    1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?\n`);
 
