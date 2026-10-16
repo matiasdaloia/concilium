@@ -158,9 +158,8 @@ export function registerRunCommand(program: Command): void {
           },
         });
 
-        const service = await runtime.createDeliberationService(events, overrides);
-
         try {
+          const service = await runtime.createDeliberationService(events, overrides, { repoDir: cwd });
           await service.run({ prompt, images: [], agentInstances, cwd });
           await ink.waitUntilExit();
         } catch (err) {
@@ -241,7 +240,15 @@ export function registerRunCommand(program: Command): void {
         },
       });
 
-      const service = await runtime.createDeliberationService(events, overrides);
+      // The juror and chairman roles of the repo's .concilium/factory.yaml apply; an invalid file stops the run.
+      let service: Awaited<ReturnType<typeof runtime.createDeliberationService>>;
+      try {
+        service = await runtime.createDeliberationService(events, overrides, { repoDir: cwd });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(isJson ? JSON.stringify({ error: message }) : `Error: ${message}`);
+        process.exit(1);
+      }
 
       try {
         await service.run({ prompt, images: [], agentInstances, cwd });

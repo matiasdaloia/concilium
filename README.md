@@ -150,6 +150,8 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium config set api-key` | Set the optional OpenRouter API key |
 | `concilium config set chairman <model>` | Set the chairman (`gemini`, `claude:opus`, or an OpenRouter ID) |
 | `concilium config set jurors <m1,m2,...>` | Set the jurors |
+| `concilium config set <role> <members>` | Save who plays a code-council role (`planner`, `implementer`, `adversary`, `judge`, `integrator`), e.g. `judge codex:gpt-5.2` |
+| `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection) and where it was set |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |
@@ -201,7 +203,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, code, history, config, models, doctor, gc
+│       │   ├── commands/ # run, code, history, config, models, doctor, roles, gc
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/

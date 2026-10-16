@@ -20,7 +20,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, code, history, config, models, doctor, gc
+│       │   ├── commands/ # run, code, history, config, models, doctor, roles, gc
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
@@ -106,6 +106,8 @@ npx concilium code "try a parser" --no-verify    # Skip the gates and integrity 
 npx concilium code "rename a module" --no-adversarial  # Gates, but no adversarial tests
 npx concilium code "add a flag" --no-judge       # Rank on the evidence only; ties stay tied
 npx concilium code "add a flag" --no-synthesis   # Rank only: no grafts, integration branch or result.patch
+npx concilium code "add a flag" --role judge=codex:gpt-5.2  # Who plays a role (planner, implementer, adversary, judge, integrator)
+npx concilium roles                 # The resolved role map and where each role came from
 npx concilium gc --dry-run          # Show what gc would remove (worktrees, concilium/ branches)
 ```
 

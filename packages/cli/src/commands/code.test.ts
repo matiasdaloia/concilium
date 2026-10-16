@@ -403,3 +403,116 @@ describe('concilium code', () => {
     expect((JSON.parse(plain.stdout) as CodeRunRecord).status).toBe('done');
   }, 60_000);
 });
+
+describe('roles', () => {
+  // Its own repo, so its factory.yaml does not reach the cases above.
+  const rolesRepo = join(sandbox, 'roles-repo');
+  const factory = join(rolesRepo, '.concilium', 'factory.yaml');
+  const TASK = 'add input validation to sum with a test';
+
+  function cli(...args: string[]) {
+    return spawnSync(process.execPath, ['--import', tsxLoader, binPath, ...args], { cwd: rolesRepo, env, encoding: 'utf8' });
+  }
+
+  beforeAll(() => {
+    mkdirSync(join(rolesRepo, '.concilium'), { recursive: true });
+    git(rolesRepo, 'init', '-q');
+    writeFileSync(join(rolesRepo, 'sum.js'), 'module.exports = (a, b) => a + b;\n');
+    writeFileSync(factory, 'checks:\n  detect: true\nroles:\n  planner: claude:claude-opus-5-5\n  judge: codex\n');
+    git(rolesRepo, 'add', '.');
+    git(rolesRepo, 'commit', '-q', '-m', 'init');
+  });
+
+  it('should take roles from --role over factory.yaml, show them before the first candidate, and record them', () => {
+    const result = cli('code', '--json', '--no-synthesis', '--agents', 'claude,codex', '--role', 'judge=claude:claude-opus-5-5', TASK);
+    expect(result.status).toBe(0);
+    const record = JSON.parse(result.stdout) as CodeRunRecord;
+    expect(record.roles).toEqual({
+      planner: { value: 'claude:claude-opus-5-5', source: 'repo' },
+      implementer: { value: ['claude', 'codex'], source: 'flag' },
+      adversary: { value: 'same-as-implementer', source: 'default' },
+      judge: { value: 'claude:claude-opus-5-5', source: 'flag' },
+      integrator: { value: 'winner', source: 'default' },
+    });
+    // The planner from factory.yaml tailored the rubric, on its model.
+    expect(record.rubric).toMatchObject({ source: 'framer', framer: 'claude:claude-opus-5-5', criteria: RUBRIC });
+    expect(readFileSync(framerLog, 'utf8').trim().split('\n').at(-1)).toContain('claude-opus-5-5');
+    // The configured judge is of a tied family: it still judges, flagged as such.
+    const sameFamilyReason = 'the configured judge claude:claude-opus-5-5 is of one of the families it reads (anthropic, openai)';
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'PASS', judge: 'claude:claude-opus-5-5', sameFamily: true, sameFamilyReason })]);
+    const saved = JSON.parse(readFileSync(join(sandbox, 'data', 'concilium', 'runs', record.id, 'run.json'), 'utf8')) as CodeRunRecord;
+    expect(saved.roles).toEqual(record.roles);
+
+    // Without --role, factory.yaml's judge applies; the map and the cross-family warning come before the first candidate.
+    const summary = cli('code', '--no-synthesis', '--agents', 'claude,codex', TASK);
+    expect(summary.status).toBe(0);
+    const warning = 'Warning: judge codex is of an implementer family (openai), so ties among openai candidates are judged same-family and flagged';
+    expect(summary.stderr).toMatch(/Roles:\n\s+Role\s+Members\s+Source\n\s+planner\s+claude:claude-opus-5-5\s+repo\n\s+implementer\s+claude, codex\s+flag\n/);
+    expect(summary.stderr).toMatch(/judge\s+codex\s+repo\n/);
+    expect(summary.stderr).toContain(warning);
+    expect(summary.stderr.indexOf('Roles:')).toBeLessThan(summary.stderr.indexOf('▶ claude'));
+    expect(summary.stdout).toMatch(/integrator\s+winner \(the base's CLI and model\)\s+default\n/);
+    expect(summary.stdout).toContain(warning);
+    expect(summary.stdout).toContain('Judge codex on claude, codex: ');
+  }, 120_000);
+
+  it('should exit 1 before touching the repo on an invalid factory.yaml, a bad --role, or --agents with --role implementer', () => {
+    const branches = git(rolesRepo, 'branch', '--list', 'concilium/*');
+    const run = (...args: string[]) => {
+      const result = cli('code', '--json', ...args, 't');
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe('');
+      return JSON.parse(result.stderr.trim().split('\n').at(-1)!).error as string;
+    };
+    expect(run('--role', 'judge=nope')).toBe('--role: judge: "nope" is not an agent CLI (use claude, codex, gemini, opencode, optionally with :model)');
+    expect(run('--agents', 'claude', '--role', 'implementer=codex')).toBe('--agents and --role implementer=... set the same role; use one');
+    expect(run('--role', 'juror=claude')).toContain('juror and chairman are plan-council roles');
+
+    writeFileSync(factory, 'roles:\n  judge: [claude, codex]\n');
+    try {
+      expect(run('--agents', 'claude')).toBe(`${factory} roles: judge: takes one member, not a list`);
+      const roles = cli('roles', '--json');
+      expect(roles.status).toBe(1);
+      expect(JSON.parse(roles.stderr.trim().split('\n').at(-1)!).error).toBe(`${factory} roles: judge: takes one member, not a list`);
+    } finally {
+      git(rolesRepo, 'checkout', '--', '.concilium/factory.yaml');
+    }
+    expect(git(rolesRepo, 'branch', '--list', 'concilium/*')).toBe(branches);
+  }, 60_000);
+
+  it('should print the resolved role map with `concilium roles`, from a subdirectory too', () => {
+    const configSet = cli('config', 'set', 'integrator', 'claude:claude-opus-5-5');
+    expect(configSet.status).toBe(0);
+    expect(configSet.stdout).toContain('Role integrator set to: claude:claude-opus-5-5');
+    try {
+      mkdirSync(join(rolesRepo, 'sub'), { recursive: true });
+      const json = cli('roles', '--json', '--cwd', join(rolesRepo, 'sub'), '--role', 'adversary=gemini');
+      expect(json.status).toBe(0);
+      const map = JSON.parse(json.stdout) as { roles: Record<string, { value: unknown; source: string }>; factoryPath: string; warnings: string[] };
+      expect(map.factoryPath).toBe(factory);
+      expect(map.roles).toEqual({
+        planner: { value: 'claude:claude-opus-5-5', source: 'repo' },
+        implementer: { value: ['claude', 'codex'], source: 'default' },
+        adversary: { value: ['gemini'], source: 'flag' },
+        judge: { value: 'codex', source: 'repo' },
+        integrator: { value: 'claude:claude-opus-5-5', source: 'saved' },
+        juror: { value: ['claude', 'codex'], source: 'default' },
+        chairman: { value: 'codex', source: 'default' },
+      });
+      expect(map.warnings).toEqual(['judge codex is of an implementer family (openai), so ties among openai candidates are judged same-family and flagged']);
+
+      const table = cli('roles');
+      expect(table.status).toBe(0);
+      expect(table.stdout).toMatch(/judge\s+codex\s+repo\n/);
+      expect(table.stdout).toMatch(/chairman\s+codex\s+default\n/);
+      expect(table.stdout).toContain(`repo (${factory})`);
+      expect(table.stdout).toContain('Warning: judge codex is of an implementer family (openai)');
+
+      const bad = cli('config', 'set', 'judge', 'claude,codex');
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain('config set: judge: "claude,codex" is not an agent CLI');
+    } finally {
+      rmSync(join(sandbox, 'config', 'concilium'), { recursive: true, force: true });
+    }
+  }, 60_000);
+});
