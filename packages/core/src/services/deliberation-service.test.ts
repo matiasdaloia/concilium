@@ -1,0 +1,266 @@
+/**
+ * @license MIT
+ * Copyright (c) 2025 Matias Daloia
+ * SPDX-License-Identifier: MIT
+ */
+
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentInstance, AgentProviderType } from '../domain/agent/agent-config.js';
+import type { AgentResult } from '../domain/agent/agent-result.js';
+import type { RunRecord } from '../domain/run/run-record.js';
+import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
+import type { DeliberationEvents } from '../ports/deliberation-events.js';
+import type { LlmGateway, LlmResponse } from '../ports/llm-gateway.js';
+import { JsonConfigStore } from '../adapters/json-config-store.js';
+import { JsonRunRepository } from '../adapters/json-run-repository.js';
+import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
+import { setLogLevel } from '../shared/logger.js';
+import { DeliberationService } from './deliberation-service.js';
+
+const PROMPT = 'Add rate limiting to the API';
+const PLANS: Record<string, string> = {
+  claude: 'Plan: token bucket in middleware',
+  codex: 'Plan: sliding window in Redis',
+};
+const JURORS = ['fake/juror-1', 'fake/juror-2'];
+const CHAIRMAN = 'fake/chairman';
+const SYNTHESIS = 'Final plan: sliding window in Redis, with middleware fallback';
+
+/** Agent that answers with a fixed plan, or fails, without spawning anything. */
+class FakeAgentProvider implements AgentProvider {
+  readonly name: string;
+
+  constructor(
+    readonly id: AgentProviderType,
+    private readonly plan: string | Error,
+  ) {
+    this.name = id;
+  }
+
+  async discoverModels(): Promise<string[]> {
+    return [];
+  }
+
+  async execute({ agent, callbacks }: AgentExecutionConfig): Promise<AgentResult> {
+    const agentKey = agent.instanceId ?? agent.id;
+    const startedAt = new Date().toISOString();
+    callbacks.onStatus?.(agentKey, 'running');
+    const failed = this.plan instanceof Error;
+    const text = failed ? `Error: ${(this.plan as Error).message}` : (this.plan as string);
+    if (!failed) {
+      callbacks.onEvent?.(agentKey, { eventType: 'text', text, rawLine: text });
+    }
+    callbacks.onStatus?.(agentKey, failed ? 'error' : 'success');
+    return {
+      id: agent.id,
+      agentKey,
+      name: agent.name,
+      status: failed ? 'error' : 'success',
+      startedAt,
+      endedAt: new Date().toISOString(),
+      normalizedPlan: text,
+      errors: failed ? [text] : [],
+      command: [],
+      events: [],
+    };
+  }
+}
+
+/**
+ * Jurors rank whichever anonymized response contains `preferred` first.
+ * The chairman answers with SYNTHESIS.
+ */
+class FakeLlmGateway implements LlmGateway {
+  constructor(private readonly preferred: string) {}
+
+  private rank(prompt: string): string {
+    const labels = [...prompt.matchAll(/^Response ([A-Z]):\n(.*)$/gm)].map(([, label, body]) => ({
+      label,
+      preferred: body.includes(this.preferred),
+    }));
+    labels.sort((a, b) => Number(b.preferred) - Number(a.preferred));
+    return `Reviews...\n\nFINAL RANKING:\n${labels.map((l, i) => `${i + 1}. Response ${l.label}`).join('\n')}`;
+  }
+
+  async query(): Promise<LlmResponse | null> {
+    return { content: SYNTHESIS };
+  }
+
+  async queryStreaming(): Promise<LlmResponse | null> {
+    return { content: SYNTHESIS };
+  }
+
+  async queryModelsParallelStreaming(
+    models: string[],
+    messages: Array<{ role: string; content: string }>,
+    onModelStart?: (model: string) => void,
+    onModelChunk?: (model: string, chunk: string) => void,
+    onModelComplete?: (model: string, success: boolean) => void,
+  ): Promise<Record<string, LlmResponse | null>> {
+    const results: Record<string, LlmResponse | null> = {};
+    for (const model of models) {
+      onModelStart?.(model);
+      const content = this.rank(messages[0].content);
+      onModelChunk?.(model, content);
+      onModelComplete?.(model, true);
+      results[model] = { content };
+    }
+    return results;
+  }
+
+  async fetchModels() {
+    return [];
+  }
+
+  getCachedOrFallbackModels() {
+    return [];
+  }
+
+  clearModelCache(): void {}
+}
+
+type RecordedEvents = DeliberationEvents & {
+  stages: number[];
+  completed: RunRecord[];
+  errors: string[];
+};
+
+function recordEvents(): RecordedEvents {
+  const recorded = {
+    stages: [] as number[],
+    completed: [] as RunRecord[],
+    errors: [] as string[],
+    onStageChange: (stage: number) => recorded.stages.push(stage),
+    onAgentStatus: () => {},
+    onAgentEvent: () => {},
+    onJurorStatus: () => {},
+    onJurorChunk: () => {},
+    onJurorComplete: () => {},
+    onSynthesisStart: () => {},
+    onComplete: (record: RunRecord) => recorded.completed.push(record),
+    onError: (error: string) => recorded.errors.push(error),
+  };
+  return recorded;
+}
+
+function agent(provider: AgentProviderType, model: string): AgentInstance {
+  return { instanceId: `${provider}-1`, provider, model, enabled: true };
+}
+
+const AGENTS = [agent('claude', 'sonnet'), agent('codex', 'gpt-5.2-codex')];
+
+describe('DeliberationService (offline, fake providers)', () => {
+  let tmp: string;
+  let configStore: JsonConfigStore;
+  let runRepository: JsonRunRepository;
+  const secretStore = new PlaintextSecretStore();
+
+  beforeAll(() => setLogLevel('error'));
+
+  beforeEach(async () => {
+    // Only the temp config may supply council settings.
+    vi.stubEnv('OPENROUTER_API_KEY', '');
+    vi.stubEnv('COUNCIL_MODELS', '');
+    vi.stubEnv('CHAIRMAN_MODEL', '');
+    vi.stubEnv('OPENROUTER_API_URL', '');
+    tmp = await mkdtemp(join(tmpdir(), 'concilium-e2e-'));
+    configStore = new JsonConfigStore(join(tmp, 'config'));
+    runRepository = new JsonRunRepository(join(tmp, 'data'));
+    await configStore.saveCouncilConfigPrefs({
+      apiKeyEncrypted: secretStore.encrypt('fake-key-never-sent'),
+      councilModels: JURORS,
+      chairmanModel: CHAIRMAN,
+    });
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await rm(tmp, { recursive: true, force: true });
+  });
+
+  function createService(
+    plans: Record<string, string | Error>,
+    events: DeliberationEvents,
+  ): DeliberationService {
+    const providers = new Map<string, AgentProvider>(
+      Object.entries(plans).map(([id, plan]) => [id, new FakeAgentProvider(id as AgentProviderType, plan)]),
+    );
+    return new DeliberationService({
+      providers,
+      llmGateway: new FakeLlmGateway(PLANS.codex),
+      configStore,
+      secretStore,
+      runRepository,
+      events,
+    });
+  }
+
+  it('should run all three stages and persist the run', async () => {
+    const events = recordEvents();
+    const record = await createService(PLANS, events).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
+
+    expect(record.prompt).toBe(PROMPT);
+    expect(record.stage1).toEqual([
+      { model: 'claude · sonnet', response: PLANS.claude },
+      { model: 'codex · gpt-5.2-codex', response: PLANS.codex },
+    ]);
+
+    expect(record.stage2.map((r) => r.model)).toEqual(JURORS);
+    expect(record.metadata.aggregateRankings).toEqual([
+      { model: 'codex · gpt-5.2-codex', averageRank: 1, rankingsCount: 2 },
+      { model: 'claude · sonnet', averageRank: 2, rankingsCount: 2 },
+    ]);
+
+    expect(record.stage3).toMatchObject({ model: CHAIRMAN, response: SYNTHESIS });
+
+    expect(events.stages).toEqual([1, 2, 3]);
+    expect(events.errors).toEqual([]);
+    expect(events.completed).toEqual([record]);
+
+    expect(await runRepository.load(record.id)).toEqual(record);
+    expect(await runRepository.list()).toEqual([
+      { id: record.id, createdAt: record.createdAt, promptPreview: PROMPT, status: 'success' },
+    ]);
+  });
+
+  it('should fall back to the surviving plan when only one agent succeeds', async () => {
+    const events = recordEvents();
+    const record = await createService({ claude: PLANS.claude, codex: new Error('codex crashed') }, events).run({
+      prompt: PROMPT,
+      agentInstances: AGENTS,
+      cwd: tmp,
+    });
+
+    expect(record.stage1).toEqual([{ model: 'claude · sonnet', response: PLANS.claude }]);
+    expect(record.stage2).toEqual([]);
+    expect(record.stage3).toMatchObject({ model: CHAIRMAN, response: PLANS.claude });
+    expect(record.metadata.notes).toContain('Fewer than 2 successful Stage 1 plans; Stage 2 ranking skipped.');
+    expect((await runRepository.list())[0]).toMatchObject({ id: record.id, status: 'partial_error' });
+  });
+
+  it('should skip judging and synthesis when no OpenRouter key is configured', async () => {
+    await configStore.saveCouncilConfigPrefs({ councilModels: JURORS, chairmanModel: CHAIRMAN });
+    const events = recordEvents();
+    const record = await createService(PLANS, events).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
+
+    expect(record.stage1).toHaveLength(2);
+    expect(record.stage2).toEqual([]);
+    expect(record.stage3?.model).toBe('chairman-unavailable');
+    expect(record.metadata.notes).toContain('OPENROUTER_API_KEY is missing, Stage 2 and Stage 3 were skipped.');
+  });
+
+  it('should report an error and persist nothing when every agent fails', async () => {
+    const events = recordEvents();
+    const service = createService({ claude: new Error('down'), codex: new Error('down') }, events);
+
+    await expect(service.run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp })).rejects.toThrow(
+      'All agents failed or were aborted. No responses to judge.',
+    );
+    expect(events.errors).toContain('All agents failed or were aborted. No responses to judge.');
+    expect(events.completed).toEqual([]);
+    expect(await runRepository.list()).toEqual([]);
+  });
+});

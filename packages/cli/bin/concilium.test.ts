@@ -5,16 +5,38 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const cliRoot = fileURLToPath(new URL('..', import.meta.url));
 
+// Keep the CLI away from the user's real config, data and API keys.
+const sandbox = mkdtempSync(join(tmpdir(), 'concilium-cli-test-'));
+const sandboxEnv: NodeJS.ProcessEnv = {
+  PATH: process.env.PATH,
+  HOME: sandbox,
+  XDG_CONFIG_HOME: join(sandbox, 'config'),
+  XDG_DATA_HOME: join(sandbox, 'data'),
+  XDG_CACHE_HOME: join(sandbox, 'cache'),
+  // Module-load info logs (timestamped) would otherwise land in stdout.
+  LOG_LEVEL: 'error',
+};
+
+afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
+
+const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
+const binPath = join(cliRoot, 'bin', 'concilium.ts');
+
+// cwd is '/' so the `run --cwd` default printed in help is the same on every machine.
 function runCli(...args: string[]): string {
-  return execFileSync(process.execPath, ['--import', 'tsx', 'bin/concilium.ts', ...args], {
-    cwd: cliRoot,
+  return execFileSync(process.execPath, ['--import', tsxLoader, binPath, ...args], {
+    cwd: '/',
     encoding: 'utf8',
+    env: sandboxEnv,
   });
 }
 
@@ -29,5 +51,13 @@ describe('concilium bin (from source)', () => {
   it('should print the package.json version for --version', () => {
     const pkg = JSON.parse(readFileSync(`${cliRoot}package.json`, 'utf8')) as { version: string };
     expect(runCli('--version').trim().split('\n').at(-1)).toBe(pkg.version);
+  });
+
+  it('should print stable top-level --help output', () => {
+    expect(runCli('--help')).toMatchSnapshot();
+  });
+
+  it('should print stable run --help output', () => {
+    expect(runCli('run', '--help')).toMatchSnapshot();
   });
 });
