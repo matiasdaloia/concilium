@@ -4,21 +4,23 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { PROVIDER_IDS } from "@concilium/core/providers";
 import type { AgentProvider } from "./types";
 
 /**
- * Renderer display data for each provider in core's registry, in menu order.
+ * Renderer display color for each provider in core's registry.
  * Keyed by the registry's provider type, so adding a provider to core fails
  * to compile here until it has a color.
  */
 const PROVIDER_COLORS = {
-  opencode: "var(--color-provider-opencode)",
-  codex: "var(--color-provider-codex)",
   claude: "var(--color-provider-claude)",
+  codex: "var(--color-provider-codex)",
+  opencode: "var(--color-provider-opencode)",
 } satisfies Record<AgentProvider, string>;
 
+/** Providers in core's registry order, the same order the CLI uses. */
 export const PROVIDER_OPTIONS: { id: AgentProvider; name: string; color: string }[] =
-  (Object.keys(PROVIDER_COLORS) as AgentProvider[]).map((id) => ({
+  PROVIDER_IDS.map((id) => ({
     id,
     name: id,
     color: PROVIDER_COLORS[id],

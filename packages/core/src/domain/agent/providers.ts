@@ -8,7 +8,8 @@ import type { AgentInstance } from './agent-config.js';
 
 /**
  * The provider registry: every agent provider Concilium knows about.
- * Pure data with no Node imports, so the desktop renderer can import it.
+ * Pure data with no Node imports, so the desktop renderer can import it
+ * through the `@concilium/core/providers` subpath.
  * Factories live in `services/create-concilium.ts`, keyed by these ids.
  */
 export const PROVIDERS = [
