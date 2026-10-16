@@ -946,6 +946,15 @@ describe('runCodeCandidates synthesis', () => {
     expect(md).toContain('- `opencode`: BLOCKED: made no change');
     expect(md).toContain('- Mergeable: yes');
 
+    // The rejected graft is dissent overruled by the checks that failed after it; nothing is open, so the label stays.
+    expect(record.dissent).toEqual({ path: join(runDir, 'dissent.json'), records: [expect.objectContaining({ id: 'dissent-1', source: 'rejected-graft', resolution: 'overruled' })] });
+    const [graftDissent] = record.dissent.records;
+    expect(graftDissent.resolutionReason).toBe(`${rejected.evidence.map((e) => `${e.detail}${e.sha ? ` at ${e.sha}` : ''}`).join('; ')}; reverted by ${rejected.revertSha}`);
+    expect(graftDissent.evidence).toContainEqual({ kind: 'commit', ref: 'graft-2', sha: rejected.commitSha });
+    expect(JSON.parse(readFileSync(join(runDir, 'dissent.json'), 'utf8'))).toEqual({ version: 1, runId: 'syn1', records: record.dissent.records });
+    expect(md).toMatch(/^# Synthesis of run syn1\n\nTask: .*\n\n## Dissent\n\n0 open of 1, also in `dissent.json`.\n\n- \*\*dissent-1\*\* overruled, rejected-graft: graft-2 from codex/);
+    expect(md.indexOf('## Dissent')).toBeLessThan(md.indexOf('## Base'));
+
     // The checkout is untouched; gc keeps the integration branch.
     expect(git(repo, 'status', '--porcelain')).toBe('');
     const gc = await workspace.gc({ runId: 'syn1', dryRun: true });
@@ -1005,6 +1014,38 @@ describe('runCodeCandidates synthesis', () => {
     expect(drivers.get('claude')!.runs.some((r) => r.brief.task.startsWith('You are integrating'))).toBe(false);
     expect(git(repo, 'show', `${s.branch}:strings.test.js`)).toBe(STRINGS_TEST.trimEnd());
     expect(record.roles).toEqual(roles);
+  }, 60_000);
+
+  it('should keep the patch but not label it mergeable while dissent on an acceptance line is open', async () => {
+    seedSuite();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': CLAUDE_SUM })],
+      // Its adversary writes a test nothing can pass: quarantined, and no judge has classified it.
+      ['codex', agent('codex', { 'sum.js': 'module.exports = (a, b) => +a + +b;\n', 'strings.test.js': STRINGS_TEST }, {
+        tests: { 'never.test.js': "throw new Error('never');\n" },
+      })],
+      ['gemini', picker('gemini', [], [])],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'syn5', drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], synthesis: { runDir },
+    });
+    const s = record.synthesis!;
+
+    expect(record.adversarial!.tests).toEqual([expect.objectContaining({ id: 'openai-1', validity: 'quarantined', specClause: 'sum adds' })]);
+    expect(record.status).toBe('done');
+    expect(record.dissent.records).toEqual([expect.objectContaining({
+      id: 'dissent-1', source: 'quarantined-test', acceptanceClause: 'sum adds', resolution: 'open', resolutionReason: null,
+      evidence: [{ kind: 'test', ref: 'openai-1' }, { kind: 'file', ref: 'never.test.js' }],
+    })]);
+    // The patch is written and applies, but open dissent on "sum adds" takes the label away.
+    expect(s.mergeCheck).toMatchObject({ applies: true });
+    expect(s).toMatchObject({ mergeable: false, mergeBlock: 'open dissent on acceptance lines: dissent-1 ("sum adds")', patchPath: join(runDir, 'result.patch') });
+    const md = readFileSync(join(runDir, 'synthesis.md'), 'utf8');
+    expect(md).toContain('1 open of 1, also in `dissent.json`. Open dissent on an acceptance line (dissent-1) keeps the patch from being labelled mergeable.');
+    expect(md).toContain('- Mergeable: no, open dissent on acceptance lines: dissent-1 ("sum adds"); `git apply --check`');
+    expect(JSON.parse(readFileSync(join(runDir, 'dissent.json'), 'utf8')).records).toEqual(record.dissent.records);
   }, 60_000);
 
   it('should skip synthesis with fewer than 2 candidates, without a winner, and without the gates', async () => {
@@ -1125,6 +1166,20 @@ describe('runCodeCandidates reframe', () => {
     expect(md).toContain(`1. On "${LINE}": Should the separator be a hyphen or an underscore?`);
     expect(md).toContain('## Grafting\n\nGrafting was tried first on `concilium/ref1/integration`');
     expect(md).toContain(baseSha.slice(0, 12));
+    // The conflicting test the integration head still fails is open dissent on the line, at the top of both reports.
+    // Only claude and codex are installed, so claude names the grafts: a same-family picker, an accepted risk.
+    expect(record.dissent.records).toEqual([
+      expect.objectContaining({
+        source: 'adversarial-test', acceptanceClause: LINE, resolution: 'open', evidence: expect.arrayContaining([{ kind: 'commit', ref: 'concilium/ref1/integration', sha: s.headSha }]),
+      }),
+      expect.objectContaining({ source: 'same-family-judge', resolution: 'accepted-risk', resolutionReason: s.picker!.sameFamilyReason }),
+    ]);
+    expect(s.mergeBlock).toBe(`open dissent on acceptance lines: dissent-1 ("${LINE}")`);
+    expect(md.indexOf('## Dissent')).toBeGreaterThan(0);
+    expect(md.indexOf('## Dissent')).toBeLessThan(md.indexOf('## Divergence'));
+    expect(md).toContain('**dissent-1** open, adversarial-test: the integration head is fail on adversarial test openai-1 by openai.');
+    expect(readFileSync(join(runDir, 'synthesis.md'), 'utf8')).toContain('**dissent-1** open, adversarial-test');
+    expect(existsSync(join(runDir, 'dissent.json'))).toBe(true);
     expect(git(repo, 'status', '--porcelain')).toBe('');
   }, 60_000);
 

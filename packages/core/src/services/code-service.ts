@@ -25,6 +25,7 @@ import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
 import { runAdversarialRound, type AdversarialInput, type AdversarialRound } from './adversarial-service.js';
+import { recordDissent, type RunDissent } from './dissent-service.js';
 import { rankRun } from './ranking-service.js';
 import { reframeRun } from './reframe-service.js';
 import { runDriver } from './run-driver.js';
@@ -79,6 +80,8 @@ export type CodeRunRecord = {
   kind: 'code';
   id: string;
   status: CodeRunStatus;
+  /** B8: disagreements kept as output, open ones first in the reports; `path` is `dissent.json` next to them. */
+  dissent: RunDissent;
   createdAt: string;
   finishedAt: string;
   task: string;
@@ -385,11 +388,17 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
         });
       }
     }
+    const recorded = await recordDissent({
+      run: { id: runId, task: input.task, baseSha: base.baseSha }, ranking, synthesis, reframe,
+      heads: Object.fromEntries(candidates.map((c) => [c.candidateId, c.headSha])), tests: adversarial?.tests ?? [],
+    });
+    synthesis = recorded.synthesis;
     return {
       version: 1,
       kind: 'code',
       id: runId,
       status: reframe ? 'reframe-needed' : 'done',
+      dissent: recorded.dissent,
       createdAt,
       finishedAt: new Date().toISOString(),
       task: input.task,

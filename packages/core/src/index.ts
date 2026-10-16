@@ -114,6 +114,10 @@ export {
 } from './domain/code-council/reframe.js';
 export { reframeRun } from './services/reframe-service.js';
 export type { ReframeInput } from './services/reframe-service.js';
+export type { Dissent, DissentEvidence, DissentInput, DissentResolution, DissentSource } from './domain/code-council/dissent.js';
+export { DISSENT_FILE, RUBRIC_SCORE_SPREAD, blockingDissent, collectDissent, dissentMarkdown, withDissent } from './domain/code-council/dissent.js';
+export { recordDissent } from './services/dissent-service.js';
+export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';

@@ -9,6 +9,7 @@ import type { ReportStatus } from '../driver/report.js';
 import type { SurvivalCell } from '../verification/adversarial.js';
 import type { StepResult } from '../verification/gates.js';
 import type { PatchCheck } from '../../ports/workspace.js';
+import { dissentMarkdown, type Dissent } from './dissent.js';
 import type { JudgeChoice } from './judging.js';
 import { jsonFromAnswer } from './rubric.js';
 
@@ -93,6 +94,8 @@ export type Synthesis = {
   /** The patch applies to the target repo's current `HEAD`. */
   mergeable: boolean;
   mergeCheck: PatchCheck | null;
+  /** Why the patch is not labelled mergeable even when it applies: open dissent on an acceptance line. */
+  mergeBlock?: string;
   /** Set when synthesis ran to settle a `disjoint-survival` divergence. */
   divergence?: SynthesisDivergence;
 };
@@ -206,9 +209,12 @@ function graftLine(g: Graft): string {
   return `**${g.id}** from \`${g.candidateId}\` (${g.files.map((f) => `\`${f}\``).join(', ')}${g.hunk ? `, hunk \`${g.hunk.split('\n')[0]}\`` : ''}): ${g.instruction} Why: ${g.why}`;
 }
 
-/** `synthesis.md`: the base, the applied grafts with their source, the rejected ones with their evidence, the dropouts, the checks and the patch. */
-export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string; baseSha: string }): string {
-  const lines = [`# Synthesis of run ${run.id}`, '', `Task: ${run.task}`, ''];
+/**
+ * `synthesis.md`: the dissent (when given), the base, the applied grafts with their source, the rejected ones with
+ * their evidence, the dropouts, the checks and the patch.
+ */
+export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string; baseSha: string }, dissent?: Dissent[]): string {
+  const lines = [`# Synthesis of run ${run.id}`, '', `Task: ${run.task}`, '', ...(dissent ? dissentMarkdown(dissent) : [])];
   if (s.skipped) return [...lines, `Skipped: ${s.skipped}.`, ''].join('\n');
 
   const applied = s.grafts.filter((g) => g.status === 'applied');
@@ -245,7 +251,7 @@ export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string;
     : `- Patch: \`${s.patchPath ?? RESULT_PATCH}\` (\`${run.baseSha.slice(0, 12)}..${s.headSha?.slice(0, 12)}\`)`);
   const check = s.mergeCheck;
   lines.push(check
-    ? `- Mergeable: ${s.mergeable ? 'yes' : 'no'}, \`git apply --check\` against \`HEAD\` at \`${check.targetSha}\`${check.applies ? '' : `: ${check.output.split('\n')[0]}`}`
-    : '- Mergeable: no, the patch was not checked');
+    ? `- Mergeable: ${s.mergeable ? 'yes' : 'no'}, ${s.mergeBlock ? `${s.mergeBlock}; ` : ''}\`git apply --check\` against \`HEAD\` at \`${check.targetSha}\`${check.applies ? '' : `: ${check.output.split('\n')[0]}`}`
+    : `- Mergeable: no, ${s.mergeBlock ? `${s.mergeBlock}; ` : ''}the patch was not checked`);
   return [...lines, ''].join('\n');
 }
