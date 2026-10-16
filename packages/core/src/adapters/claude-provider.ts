@@ -33,8 +33,8 @@ function mergedEnv(commandEnv?: Record<string, string>): Record<string, string> 
   return { ...process.env as Record<string, string>, ...commandEnv };
 }
 
-function normalizePlan(planFragments: string[], rawOutput: string[]): string {
-  const text = planFragments.join('').trim();
+function normalizePlan(planText: string, rawOutput: string[]): string {
+  const text = planText.trim();
   if (text) return text;
 
   const fallbackLines: string[] = [];
@@ -69,6 +69,9 @@ export class ClaudeProvider implements AgentProvider {
       const rawOutput: string[] = [];
       const events: ParsedEvent[] = [];
       const planFragments: string[] = [];
+      // The `result` event (the only text event with cumulative usage) repeats the final answer
+      // that already streamed as text deltas; it wins when present.
+      let resultText: string | null = null;
       const errors: string[] = [];
       const spawnedAt = Date.now();
 
@@ -108,7 +111,10 @@ export class ClaudeProvider implements AgentProvider {
         for (const parsed of parsedEvents) {
           events.push(parsed);
           callbacks.onEvent?.(agentKey, parsed);
-          if (parsed.eventType === 'text') planFragments.push(parsed.text);
+          if (parsed.eventType === 'text') {
+            if (parsed.tokenUsageCumulative) resultText = parsed.text;
+            else planFragments.push(parsed.text);
+          }
           if (parsed.eventType === 'raw' && line.toLowerCase().includes('error'))
             errors.push(line);
         }
@@ -138,7 +144,7 @@ export class ClaudeProvider implements AgentProvider {
         }
 
         callbacks.onStatus?.(agentKey, status);
-        const normalizedPlan = normalizePlan(planFragments, rawOutput);
+        const normalizedPlan = normalizePlan(resultText ?? planFragments.join(''), rawOutput);
         const endedAt = new Date().toISOString();
 
         resolve({

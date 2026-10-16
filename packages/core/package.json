@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./providers": {
+      "types": "./dist/domain/agent/providers.d.ts",
+      "import": "./dist/domain/agent/providers.js"
     }
   },
   "files": [

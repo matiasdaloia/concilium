@@ -1,6 +1,7 @@
 import { memo, useRef, useMemo } from 'react';
 import MarkdownRenderer from './MarkdownRenderer';
 import { useSmartScroll } from '../hooks/useSmartScroll';
+import { AGENT_COST_LABEL_SHORT } from '../utils/analytics';
 import type { ParsedEvent, TokenUsage } from '../types';
 
 interface AgentPaneProps {
@@ -230,7 +231,7 @@ export default memo(function AgentPane({ name, events, status, elapsed, tokenUsa
           {tokenUsage && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0) && (
             <span className="text-[10px] text-text-muted font-mono">
               {formatTokens(tokenUsage.inputTokens)}↑ {formatTokens(tokenUsage.outputTokens)}↓
-              {tokenUsage.totalCost ? ` · ${formatCost(tokenUsage.totalCost)}` : ''}
+              {tokenUsage.totalCost ? ` · ${formatCost(tokenUsage.totalCost)} ${AGENT_COST_LABEL_SHORT}` : ''}
             </span>
           )}
           {elapsed && <span className="text-[11px] text-text-tertiary font-mono">{elapsed}</span>}

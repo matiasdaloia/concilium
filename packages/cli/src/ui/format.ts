@@ -5,6 +5,12 @@ export function formatTokens(count: number): string {
   return `${count} tok`;
 }
 
+/**
+ * Label for costs reported by an agent CLI (Claude Code `total_cost_usd`, OpenCode `cost`):
+ * what the run would cost at API prices, not what a subscription bills.
+ */
+export const AGENT_COST_LABEL = 'est. API-equivalent';
+
 /** Format a dollar cost, adjusting precision to the value magnitude. */
 export function formatCost(cost: number): string {
   if (cost >= 1) return `$${cost.toFixed(2)}`;
