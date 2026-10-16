@@ -34,6 +34,7 @@ interface CodeOptions {
   includeDirty?: boolean;
   timeout?: string;
   verify: boolean;
+  adversarial: boolean;
   json?: boolean;
 }
 
@@ -102,6 +103,33 @@ function printVerification(record: CodeRunRecord): void {
   for (const error of errors) console.log(`    ${error}`);
 }
 
+function printAdversarial(record: CodeRunRecord): void {
+  const round = record.adversarial;
+  if (!round) {
+    console.log('\n  Adversarial tests skipped (--no-adversarial)');
+    return;
+  }
+  if (round.skipped) {
+    console.log(`\n  Adversarial tests skipped: ${round.skipped}`);
+    return;
+  }
+  const lanes = ['base', ...Object.keys(round.survival)];
+  console.log(`\n  Adversarial tests (one adversary per family, run with \`${round.testCommand}\` on the base and each candidate):`);
+  for (const a of round.adversaries) {
+    const problems = [...a.errors, ...a.notes].map((e) => e.split('\n')[0]);
+    console.log(`    ${a.lane} (${a.provider}): ${a.status}, ${round.tests.filter((t) => t.author === a.family).length} tests${problems.length ? `; ${problems.join('; ')}` : ''}`);
+  }
+  if (round.tests.length === 0) return;
+  printTable([
+    ['Test', 'Validity', ...lanes, 'Clause'],
+    ...round.tests.map((t) => [t.id, t.validity, ...lanes.map((lane) => round.matrix[t.id]?.[lane] ?? '-'), t.specClause.length > 60 ? `${t.specClause.slice(0, 57)}...` : t.specClause]),
+  ], '    ');
+  console.log('\n  Survival (valid tests by other families):');
+  for (const [candidateId, s] of Object.entries(round.survival)) {
+    console.log(`    ${candidateId}: ${s.survived}/${s.counted}${s.failed.length ? `, failed ${s.failed.join(', ')}` : ''}`);
+  }
+}
+
 function summaryRows(candidates: CodeCandidate[]): string[][] {
   return [
     ['Candidate', 'Status', 'Verified', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
@@ -126,6 +154,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   console.log();
   printTable(summaryRows(record.candidates));
   printVerification(record);
+  printAdversarial(record);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
   if (failed.length > 0) {
@@ -152,8 +181,9 @@ export function registerCodeCommand(program: Command): void {
     .option('--type <type>', `Task type, which picks the playbook and default rubric: ${TASK_TYPES.join(', ')} (default: guessed from the task)`)
     .option('--cwd <path>', 'Directory of the git repo to work on', process.cwd())
     .option('--include-dirty', 'Start from the uncommitted changes too (snapshotted to a scratch ref) instead of refusing a dirty tree')
-    .option('--timeout <minutes>', `Wall-clock limit per candidate in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
-    .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish`)
+    .option('--timeout <minutes>', `Wall-clock limit per candidate and per adversary in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
+    .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish; also skips the adversarial tests`)
+    .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -199,6 +229,9 @@ export function registerCodeCommand(program: Command): void {
           onCandidateDone: (c) => progress(`  ${c.status === 'ok' ? '✓' : '✗'} ${c.candidateId}: ${c.status} in ${formatDuration(c.durationMs)}`),
           verify: opts.verify,
           onGateDone: (lane, gate) => progress(`  ${gate.outcome === 'pass' ? '✓' : '✗'} ${lane} gate ${gate.name}: ${gate.outcome} in ${formatDuration(gate.durationMs)}`),
+          adversarial: opts.adversarial,
+          onAdversaryDone: (a) => progress(`  ${a.status === 'ok' ? '✓' : '✗'} ${a.lane}: ${a.status} in ${formatDuration(a.durationMs)}`),
+          onTestDone: (testId, lane, cell) => progress(`  ${cell === 'pass' ? '✓' : '✗'} ${testId} on ${lane}: ${cell}`),
         });
         savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

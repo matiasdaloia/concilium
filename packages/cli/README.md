@@ -200,7 +200,19 @@ gates:
     timeout: 900         # seconds, default 600
 ```
 
-It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is ranked or merged yet. It exits 1 when no candidate finished `ok`.
+Then comes the adversarial round (skip it with `--no-adversarial`; it needs the gates, and at least 2 candidates with a branch). Each model family among the candidates (Claude, OpenAI, Google; OpenCode counts as its own) gets one fresh adversary: the first candidate's CLI of that family, in its own scratch worktree from the base (`concilium/<run-id>/adv-<family>`), with the other families' diffs as read-only patch files. It writes up to 5 tests that a correct solution passes and the base fails, aimed at the task and at the weak spots it sees, and lists them in `concilium-adversarial.json` at the root of its worktree, each with the part of the task it enforces (`specClause`). Entries that are not existing test files or that name no clause are dropped with a note. Each test then runs under the repo's test gate (`test`, `npm:test`, `make:test`, `go:test`, `pytest` or `cargo:test`) on the base and on every candidate: its files are copied into that worktree for the run and removed after, so no branch changes. A lane whose suite already fails without the test is not run and gets `error`. The result is the survival matrix, and the validity rule sorts each test:
+
+| Validity | When | Counts |
+|---|---|---|
+| `evidence` | fails on the base, passes on at least one candidate | yes |
+| `quarantined` | fails on the base and on every candidate | no; kept for the judges |
+| `vacuous` | passes on the base of a `bugfix` | no; dropped |
+| `regression-guard` | passes on the base of any other type | yes |
+| `unrunnable` | could not run on the base | no |
+
+A candidate's survival is how many of the counted tests by other families it passes; its own family's tests carry no weight for it. The test gate runs the tests only if its command picks up new test files (a runner such as `npm test` with vitest or jest does; `node sum.test.js` does not).
+
+It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, the adversaries, the survival matrix with each test's validity and clause, each candidate's survival, and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is ranked or merged yet. It exits 1 when no candidate finished `ok`.
 
 ```
 concilium code [options] [task...]
@@ -212,8 +224,9 @@ concilium code [options] [task...]
 | `--type <type>` | Task type, which picks the playbook and the default rubric: `bugfix`, `feature`, `refactor`, `perf`, `prototype`. Default: guessed from the task |
 | `--cwd <path>` | Directory of the git repo to work on (default: current directory) |
 | `--include-dirty` | Start every candidate from your uncommitted changes too (snapshotted to `refs/concilium/<run-id>/snapshot`). Without it a dirty tree is refused |
-| `--timeout <minutes>` | Wall-clock limit per candidate (default: 30) |
-| `--no-verify` | Skip the gates and the integrity checks after the candidates finish |
+| `--timeout <minutes>` | Wall-clock limit per candidate and per adversary (default: 30) |
+| `--no-verify` | Skip the gates and the integrity checks after the candidates finish, and with them the adversarial round |
+| `--no-adversarial` | Skip the adversarial round (one adversary per model family writes tests that run on the base and every candidate) |
 | `--json` | Print the run record as JSON to stdout (progress and errors go to stderr) |
 
 **Examples:**
@@ -234,6 +247,12 @@ concilium code "fix the flaky retry test" --json | jq '.candidates[] | {candidat
 
 # New gate failures and integrity findings of each candidate
 concilium code "fix the flaky retry test" --json | jq '.candidates[] | {candidateId, verdict: .verification.status, newFailures: .verification.newFailures, integrity: [.verification.integrity[].message]}'
+
+# Each test's validity and survival, and how each candidate fared
+concilium code "sum() must reject non-numbers" --json | jq '{tests: [.adversarial.tests[] | {id, validity, specClause}], survival: .adversarial.survival}'
+
+# Gates, no adversarial round
+concilium code "rename the parser module" --type refactor --no-adversarial
 
 # Candidates only, no gates
 concilium code "try a new parser" --type prototype --no-verify
