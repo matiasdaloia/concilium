@@ -18,6 +18,7 @@ import type { DriverUsage } from '../domain/driver/normalized-event.js';
 import type { ReportStatus } from '../domain/driver/report.js';
 import { testGate } from '../domain/verification/adversarial.js';
 import { getProviderInfo } from '../domain/agent/providers.js';
+import { defaultCodeRoles, ROLE_KEYWORDS, specAgent, type CodeRoleMap } from '../domain/roles/roles.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
 import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
@@ -85,6 +86,8 @@ export type CodeRunRecord = {
   baseSha: string;
   snapshotRef?: string;
   taskType: TaskTypeChoice;
+  /** Who played each role, and where that came from. */
+  roles: CodeRoleMap;
   /** Frozen before the first candidate started; every candidate brief holds it. */
   rubric: FrozenRubric;
   candidates: CodeCandidate[];
@@ -104,7 +107,13 @@ export type CodeRunInput = {
   task: string;
   /** Any directory inside the target repo. */
   repoDir: string;
+  /** The candidates: the implementer role. */
   agents: CodeAgent[];
+  /**
+   * Who plays each role (see `runtime.resolveCodeRoles`), recorded on the run. Without it: the first agent plans,
+   * one adversary per candidate family, the judge is picked per tie, and the winner integrates.
+   */
+  roles?: CodeRoleMap;
   /** Without it, `classifyTask` picks one from the task. */
   type?: TaskType;
   includeDirty?: boolean;
@@ -178,15 +187,22 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function agentSpec(agent: CodeAgent): string {
+  return agent.model ? `${agent.provider}:${agent.model}` : agent.provider;
+}
+
+/** The role map of a run given only its candidates. */
+function rolesOf(input: CodeRunInput): CodeRoleMap {
+  return input.roles ?? defaultCodeRoles(input.agents.map(agentSpec));
+}
+
 /**
- * Asks the first agent's CLI, read-only, to tailor the playbook's rubric to the task, and freezes the result.
+ * Asks the planner's CLI, read-only, to tailor the playbook's rubric to the task, and freezes the result.
  * Any failure (no answer, no JSON, a rubric outside 3 to 6 criteria) falls back to the playbook's defaults.
  */
-async function frameRubric(input: CodeRunInput, type: TaskType, signal: AbortSignal): Promise<FrozenRubric> {
+async function frameRubric(input: CodeRunInput, framer: string, type: TaskType, signal: AbortSignal): Promise<FrozenRubric> {
   const playbook = PLAYBOOKS[type];
-  const agent = input.agents[0];
-  if (!agent) return freezeRubric(playbook.rubric, { source: 'playbook', note: 'no agent to tailor the rubric' });
-  const framer = agent.model ? `${agent.provider}:${agent.model}` : agent.provider;
+  if (!framer) return freezeRubric(playbook.rubric, { source: 'playbook', note: 'no agent to tailor the rubric' });
   const gateway = new CliCouncilGateway({ drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS });
   const response = await gateway.query(framer, [{ role: 'user', content: rubricPrompt(input.task, playbook) }], undefined, signal);
   if (!response) return freezeRubric(playbook.rubric, { source: 'playbook', framer, note: `${framer} gave no answer` });
@@ -201,7 +217,7 @@ async function frameRubric(input: CodeRunInput, type: TaskType, signal: AbortSig
 
 /** Tier 2 on the candidates with a head, judged under the repo's test gate on the base and on each head. */
 function attack(
-  input: CodeRunInput, repoDir: string, runId: string, baseSha: string, type: TaskType, verification: RunVerification, candidates: CodeCandidate[], timeoutMs: number, signal: AbortSignal,
+  input: CodeRunInput, roles: CodeRoleMap, repoDir: string, runId: string, baseSha: string, type: TaskType, verification: RunVerification, candidates: CodeCandidate[], timeoutMs: number, signal: AbortSignal,
 ): Promise<AdversarialRound> {
   const gate = testGate(verification.plan);
   const testOutcome = (gates: GateResult[] | undefined) => gates?.find((g) => g.name === gate?.name)?.outcome ?? null;
@@ -213,6 +229,12 @@ function attack(
       family: getProviderInfo(c.provider)?.family ?? c.provider, worktree: c.worktree, headSha: c.headSha,
       testOutcome: testOutcome(c.verification?.gates),
     }] : [])),
+    ...(Array.isArray(roles.adversary.value) ? {
+      adversaries: roles.adversary.value.map((spec) => {
+        const agent = specAgent(spec);
+        return { ...agent, family: getProviderInfo(agent.provider)?.family ?? agent.provider };
+      }),
+    } : {}),
     drivers: input.drivers, workspace: input.workspace, timeoutMs, signal,
     onAdversaryDone: input.onAdversaryDone, onTestDone: input.onTestDone,
   });
@@ -228,6 +250,9 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   const createdAt = new Date().toISOString();
   const timeoutMs = input.timeoutMs ?? CODE_TIMEOUT_MS;
   const signal = input.signal ?? new AbortController().signal;
+  const roles = rolesOf(input);
+  const judgeSpec = roles.judge.value === ROLE_KEYWORDS.judge ? undefined : roles.judge.value;
+  const integrator = roles.integrator.value === ROLE_KEYWORDS.integrator ? undefined : specAgent(roles.integrator.value);
   const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty });
   const repoDir = base.repoDir;
 
@@ -288,7 +313,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   try {
     // The type and the rubric are fixed before any worktree or candidate exists.
     const taskType: TaskTypeChoice = input.type ? { type: input.type, source: 'flag', reason: 'set with --type' } : classifyTask(input.task);
-    const frame: CodeFrame = { taskType, rubric: await frameRubric(input, taskType.type, signal) };
+    const frame: CodeFrame = { taskType, rubric: await frameRubric(input, roles.planner.value, taskType.type, signal) };
     input.onFramed?.(frame);
     log.info(`code run ${runId}: ${taskType.type}, rubric ${frame.rubric.sha256.slice(0, 12)}, ${input.agents.length} candidates from ${base.baseSha}`);
 
@@ -308,13 +333,13 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     let adversarial: AdversarialRound | undefined;
     if (input.adversarial) {
       adversarial = verification
-        ? await attack(input, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
+        ? await attack(input, roles, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
         : { skipped: 'the gates did not run', testCommand: null, adversaries: [], tests: [], matrix: {}, survival: {}, runs: [] };
     }
 
     const ranking = await rankRun({
       task: input.task, repoDir, baseSha: base.baseSha, type: taskType.type, rubric: frame.rubric, candidates, adversarial,
-      judge: input.judge ?? false, drivers: input.drivers, signal, onJudgeDone: input.onJudgeDone,
+      judge: input.judge ?? false, judgeSpec, drivers: input.drivers, signal, onJudgeDone: input.onJudgeDone,
     });
     log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
 
@@ -332,14 +357,14 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     let reframe: Reframe | undefined;
     if (input.synthesis && divergence.length > 0) {
       reframe = await reframeRun({
-        task: input.task, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, framer: input.agents[0], divergence,
+        task: input.task, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, framer: roles.planner.value ? specAgent(roles.planner.value) : undefined, divergence,
         candidates: candidates.filter((c) => c.headSha && c.report?.status !== 'BLOCKED'), drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS, signal,
       });
       synthesis = skippedSynthesis(`the candidates diverge (${divergence.map((d) => d.trigger).join(', ')}), so the task needs a reframe`);
     } else if (input.synthesis) {
       synthesis = await synthesize({
         task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
-        verification, adversarial, drivers: input.drivers, workspace: input.workspace, timeoutMs, signal, onGraftDone: input.onGraftDone,
+        verification, adversarial, drivers: input.drivers, workspace: input.workspace, pickerSpec: judgeSpec, integrator, timeoutMs, signal, onGraftDone: input.onGraftDone,
       });
     }
     return {
@@ -355,6 +380,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       baseSha: base.baseSha,
       ...(base.snapshotRef ? { snapshotRef: base.snapshotRef } : {}),
       taskType,
+      roles,
       rubric: frame.rubric,
       candidates,
       ...(verification ? { verification } : {}),

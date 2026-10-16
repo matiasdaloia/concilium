@@ -15,26 +15,32 @@ import {
   JsonConfigStore,
   JsonRunRepository,
   newRunId,
+  parseRoleFlags,
   PlaintextSecretStore,
+  roleWarnings,
   runCodeCandidates,
+  specAgent,
   TASK_TYPES,
   VERIFY_CONFIG,
   type CandidateVerification,
-  type CodeAgent,
   type CodeCandidate,
   type CodeFrame,
+  type CodeRoleMap,
   type CodeRunRecord,
   type GateVerdict,
   type Graft,
   type Judgment,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
+import { roleRows, tableLines } from '../formatters/roles.js';
+import { collect } from './roles.js';
 
 /** The exit code of a run that ended in `reframe-needed`: it finished, but needs the task restated before a patch. */
 export const REFRAME_EXIT_CODE = 2;
 
 interface CodeOptions {
   agents?: string;
+  role?: string[];
   type?: string;
   cwd: string;
   includeDirty?: boolean;
@@ -46,11 +52,9 @@ interface CodeOptions {
   json?: boolean;
 }
 
-function parseAgents(list: string): CodeAgent[] {
-  return list.split(',').map((s) => s.trim()).filter(Boolean).map((spec) => {
-    const [provider, model] = spec.includes(':') ? spec.split(':', 2) : [spec, ''];
-    return { provider: provider.trim(), ...(model.trim() && { model: model.trim() }) };
-  });
+/** The role table and its warnings. */
+function roleLines(roles: CodeRoleMap): string[] {
+  return ['Roles:', ...tableLines(roleRows(roles), '  '), ...roleWarnings(roles).map((w) => `Warning: ${w}`)];
 }
 
 function formatDuration(ms: number): string {
@@ -232,6 +236,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   console.log(`\n  Run ${record.id} in ${record.repoDir}`);
   console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}`);
   for (const line of frameLines(record)) console.log(`  ${line}`);
+  for (const line of roleLines(record.roles)) console.log(`  ${line}`);
   console.log();
   printTable(summaryRows(record.candidates));
   printVerification(record);
@@ -261,7 +266,8 @@ export function registerCodeCommand(program: Command): void {
     .command('code')
     .description('Have agent CLIs write code, one git worktree each')
     .argument('[task...]', 'The coding task')
-    .option('--agents <list>', 'Candidate agents (e.g. "claude,codex" or "claude:opus,codex:gpt-5.2-codex"); default: the installed, signed-in agent CLIs (see `concilium doctor`)')
+    .option('--agents <list>', 'Candidate agents, the implementer role (e.g. "claude,codex" or "claude:opus,codex:gpt-5.2-codex"); default: the installed, signed-in agent CLIs (see `concilium doctor`)')
+    .option('--role <role=members>', 'Who plays a role: planner, implementer, adversary, judge or integrator, as cli[:model] (e.g. "judge=codex:gpt-5.2", "adversary=claude,gemini"); repeatable, and beats .concilium/factory.yaml and saved config (see `concilium roles`)', collect)
     .option('--type <type>', `Task type, which picks the playbook and default rubric: ${TASK_TYPES.join(', ')} (default: guessed from the task)`)
     .option('--cwd <path>', 'Directory of the git repo to work on', process.cwd())
     .option('--include-dirty', 'Start from the uncommitted changes too (snapshotted to a scratch ref) instead of refusing a dirty tree')
@@ -296,10 +302,16 @@ export function registerCodeCommand(program: Command): void {
       let record: CodeRunRecord;
       let savedTo: string | null = null;
       try {
-        const agents = opts.agents
-          ? parseAgents(opts.agents)
-          : (await runtime.defaultAgentInstances()).map((a) => ({ provider: a.provider }));
-        if (agents.length === 0) fail('--agents names no agent');
+        const roleFlags = opts.role ?? [];
+        if (opts.agents !== undefined && roleFlags.some((r) => r.split('=')[0].trim() === 'implementer')) {
+          fail('--agents and --role implementer=... set the same role; use one');
+        }
+        const flags = parseRoleFlags([...(opts.agents !== undefined ? [`implementer=${opts.agents}`] : []), ...roleFlags]);
+        if (flags.juror || flags.chairman) fail('juror and chairman are plan-council roles; set them with `concilium run --juror-models` and `--chairman`');
+        const roles = await runtime.resolveCodeRoles({ repoDir: resolve(opts.cwd), flags });
+        const agents = roles.implementer.value.map(specAgent);
+        if (agents.length === 0) fail('no implementer to run');
+        for (const line of roleLines(roles)) progress(`  ${line}`);
 
         const store = new JsonCodeRunStore(getDataDir());
         const runId = newRunId();
@@ -308,6 +320,7 @@ export function registerCodeCommand(program: Command): void {
           runId,
           repoDir: resolve(opts.cwd),
           agents,
+          roles,
           type,
           includeDirty: opts.includeDirty,
           timeoutMs: timeoutMinutes === undefined ? undefined : timeoutMinutes * 60_000,

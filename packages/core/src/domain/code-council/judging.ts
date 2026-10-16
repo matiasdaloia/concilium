@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { specFamily } from '../roles/roles.js';
 import { jsonFromAnswer, type FrozenRubric } from './rubric.js';
 
 /** Scores run from 0 (misses the criterion) to this. */
@@ -20,7 +21,7 @@ export type Judgment = {
   status: 'PASS' | 'BLOCKED';
   /** The tied candidates, in the order they were labelled A, B, ... */
   candidates: string[];
-  /** The CLI that judged, on its own default model. */
+  /** The CLI that judged: a configured `cli[:model]`, or a picked CLI on its own default model. */
   judge: string | null;
   /** The judge is not known to be of another family than the tied candidates: allowed only when no such CLI is usable. */
   sameFamily: boolean;
@@ -46,6 +47,22 @@ export function pickJudge(tiedFamilies: string[], usable: { provider: string; fa
   const first = usable[0];
   if (!first) return null;
   return { provider: first.provider, sameFamily: true, sameFamilyReason: `no CLI outside the tied families (${tiedFamilies.join(', ')}) is usable, so ${first.provider} judges` };
+}
+
+/**
+ * A judge set in the role config. It is always used; like a picked one, it is flagged `sameFamily` when its family
+ * wrote one of `families` or is unknown.
+ */
+export function configuredJudge(spec: string, families: string[]): JudgeChoice {
+  const family = specFamily(spec);
+  if (family !== null && !families.includes(family)) return { provider: spec, sameFamily: false, sameFamilyReason: null };
+  return {
+    provider: spec,
+    sameFamily: true,
+    sameFamilyReason: family === null
+      ? `the configured judge ${spec} is of an unknown family`
+      : `the configured judge ${spec} is of one of the families it reads (${families.join(', ')})`,
+  };
 }
 
 /** What a judge sees of one candidate: a letter, its diff against the base and its evidence, never who wrote it. */

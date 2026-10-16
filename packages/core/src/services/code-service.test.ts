@@ -13,6 +13,7 @@ import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
 import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
 import type { RunEvent } from '../domain/driver/normalized-event.js';
+import { defaultCodeRoles, type CodeRoleMap } from '../domain/roles/roles.js';
 import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { DirtyWorktreeError, GitWorktreeWorkspace } from '../adapters/git-worktree-workspace.js';
@@ -500,6 +501,35 @@ describe('runCodeCandidates with adversarial', () => {
     expect(gc[0].deletedBranches).toEqual(expect.arrayContaining(['concilium/adv1/adv-anthropic', 'concilium/adv1/adv-openai', 'concilium/adv1/adv-google']));
   });
 
+  it('should let the adversary role replace a family\'s default adversary and add one for a family with no candidate', async () => {
+    seedSuite();
+    const seen: Record<string, { cwd: string; patches: string[] }> = {};
+    const sum = 'module.exports = (a, b) => a + b;\n';
+    // Each adversary writes a regression guard, which counts for every candidate of another family.
+    const adds = (a: number, b: number) => `if (require('./sum.js')(${a}, ${b}) !== ${a + b}) throw new Error('adds');\n`;
+    const drivers = new Map([
+      ['claude', agent('claude', sum, { 'a.test.js': adds(1, 1) }, seen)],
+      ['codex', agent('codex', sum, { 'b.test.js': adds(2, 2) }, seen)],
+      ['gemini', agent('gemini', sum, { 'c.test.js': adds(3, 3) }, seen)],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, repoDir: repo, runId: 'adv4', drivers, workspace, verify: true, adversarial: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+      roles: { ...defaultCodeRoles(['claude', 'codex']), adversary: { value: ['codex:gpt-5.2', 'gemini'], source: 'repo' } },
+    });
+    const round = record.adversarial!;
+    expect(round.adversaries.map((a) => [a.lane, a.provider, a.model, a.peers])).toEqual([
+      ['adv-anthropic', 'claude', null, ['codex']],
+      ['adv-openai', 'codex', 'gpt-5.2', ['claude']],
+      // Of no candidate's family, it attacks both, and its tests count against both.
+      ['adv-google', 'gemini', null, ['claude', 'codex']],
+    ]);
+    expect(drivers.get('codex')!.runs.find((r) => r.brief.task.startsWith('You are an adversary'))!.opts.model).toBe('gpt-5.2');
+    expect(drivers.get('gemini')!.runs.map((r) => r.brief.task.startsWith('You are an adversary'))).toEqual([true]);
+    expect(round.survival.claude.counted).toBe(2);
+    expect(round.survival.codex.counted).toBe(2);
+  });
+
   it('should drop a test that passes on the base of a bug fix, and skip the round with fewer than 2 candidates', async () => {
     seedSuite();
     const seen: Record<string, { cwd: string; patches: string[] }> = {};
@@ -665,6 +695,54 @@ describe('runCodeCandidates ranking', () => {
       expect(c.report!.evidence).toContainEqual({ kind: 'judge', ok: true, detail: `same-family judge: ${reason}` });
     }
     expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
+  });
+
+  it('should use a configured judge and planner over the picked ones, flag a judge of a tied family, and record the role map', async () => {
+    seedTest();
+    const prompts: string[] = [];
+    const geminiPrompts: string[] = [];
+    // gemini, of another family, would be picked; the configured judge is claude on a set model.
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER }, STEPS, { prefer: UNARY, prompts })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+      ['gemini', judge('gemini', UNARY, geminiPrompts)],
+    ]);
+    const roles: CodeRoleMap = {
+      ...defaultCodeRoles(['claude', 'codex']),
+      planner: { value: 'codex:gpt-5.2', source: 'saved' },
+      judge: { value: 'claude:claude-opus-5-5', source: 'flag' },
+    };
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank7', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], roles,
+    });
+
+    expect(record.roles).toEqual(roles);
+    const reason = 'the configured judge claude:claude-opus-5-5 is of one of the families it reads (anthropic, openai)';
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'PASS', judge: 'claude:claude-opus-5-5', sameFamily: true, sameFamilyReason: reason })]);
+    for (const c of record.candidates) expect(c.report!.evidence).toContainEqual({ kind: 'judge', ok: true, detail: `same-family judge: ${reason}` });
+    expect(geminiPrompts).toEqual([]);
+    const judgeRun = drivers.get('claude')!.runs.find((r) => r.brief.mode === 'plan')!;
+    expect(judgeRun.opts.model).toBe('claude-opus-5-5');
+    // The planner, not the first agent, framed the rubric (its answer failed, so the playbook's stands).
+    expect(record.rubric).toMatchObject({ source: 'playbook', framer: 'codex:gpt-5.2' });
+    expect(drivers.get('codex')!.runs[0]).toMatchObject({ brief: { mode: 'plan' }, opts: { model: 'gpt-5.2' } });
+  });
+
+  it('should record the default role map when given only the agents', async () => {
+    seedTest();
+    const drivers = new Map([['claude', agent('claude', { 'sum.js': NUMBER })], ['codex', agent('codex', { 'sum.js': UNARY })]]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank8', drivers, workspace, verify: false, judge: false,
+      agents: [{ provider: 'claude', model: 'claude-opus-5-5' }, { provider: 'codex' }],
+    });
+    expect(record.roles).toEqual({
+      planner: { value: 'claude:claude-opus-5-5', source: 'default' },
+      implementer: { value: ['claude:claude-opus-5-5', 'codex'], source: 'default' },
+      adversary: { value: 'same-as-implementer', source: 'default' },
+      judge: { value: 'auto', source: 'default' },
+      integrator: { value: 'winner', source: 'default' },
+    });
   });
 
   it('should block the judge when the rubric no longer matches its frozen hash, and break the tie by the smallest diff', async () => {
@@ -876,6 +954,57 @@ describe('runCodeCandidates synthesis', () => {
     expect(record.status).toBe('done');
     expect(record.reframe).toBeUndefined();
     expect(existsSync(join(runDir, 'reframe.md'))).toBe(false);
+  }, 60_000);
+
+  it('should let the configured judge name the grafts and the configured integrator fold them in', async () => {
+    seedSuite();
+    const prompts: string[] = [];
+    const seen: Brief[] = [];
+    const graft = { candidate: 'A', files: ['strings.test.js'], instruction: 'Add the numeric strings test.', why: 'The base has no test for the task.' };
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': CLAUDE_SUM })],
+      // A bigger diff, and the configured judge: it names the grafts on a set model.
+      ['codex', new FakeCliDriver({
+        id: 'codex',
+        respond: (brief: Brief) => {
+          if (brief.mode === 'plan') {
+            const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+            if (!prompt.startsWith('You are choosing grafts')) return [{ type: 'error', message: 'no framing' }];
+            prompts.push(prompt);
+            return [{ type: 'text', text: JSON.stringify({ grafts: [graft] }) }];
+          }
+          writeFileSync(join(brief.cwd, 'sum.js'), 'module.exports = (a, b) => +a + +b;\n');
+          writeFileSync(join(brief.cwd, 'strings.test.js'), STRINGS_TEST);
+          return [{ type: 'text', text: STEPS }];
+        },
+      })],
+      // No candidate: only the configured integrator.
+      ['gemini', agent('gemini', {}, { seen, integrate: { 'graft-1': { 'strings.test.js': STRINGS_TEST } } })],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const roles: CodeRoleMap = {
+      ...defaultCodeRoles(['claude', 'codex']),
+      judge: { value: 'codex:gpt-5.2', source: 'repo' },
+      integrator: { value: 'gemini:gemini-3-pro', source: 'flag' },
+    };
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'syn4', drivers, workspace, verify: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], roles, synthesis: { runDir },
+    });
+    const s = record.synthesis!;
+
+    expect(s.base?.candidateId).toBe('claude');
+    expect(s.picker).toEqual({
+      provider: 'codex:gpt-5.2', sameFamily: true, sameFamilyReason: 'the configured judge codex:gpt-5.2 is of one of the families it reads (anthropic, openai)',
+    });
+    expect(prompts).toHaveLength(1);
+    expect(drivers.get('codex')!.runs.find((r) => r.brief.mode === 'plan')!.opts.model).toBe('gpt-5.2');
+    expect(s.grafts).toEqual([expect.objectContaining({ id: 'graft-1', status: 'applied', integrator: expect.objectContaining({ provider: 'gemini', model: 'gemini-3-pro', status: 'ok' }) })]);
+    expect(seen.map((b) => b.cwd)).toEqual([s.worktree]);
+    expect(drivers.get('gemini')!.runs[0].opts.model).toBe('gemini-3-pro');
+    expect(drivers.get('claude')!.runs.some((r) => r.brief.task.startsWith('You are integrating'))).toBe(false);
+    expect(git(repo, 'show', `${s.branch}:strings.test.js`)).toBe(STRINGS_TEST.trimEnd());
+    expect(record.roles).toEqual(roles);
   }, 60_000);
 
   it('should skip synthesis with fewer than 2 candidates, without a winner, and without the gates', async () => {

@@ -151,6 +151,35 @@ describe('concilium bin (from source)', () => {
     for (const { cli, argv } of runs) expect(argv).toContain(readOnlyFlag[cli]);
   });
 
+  it('should take the jurors and chairman from the juror and chairman roles of the repo factory.yaml, and exit 1 on an invalid one', () => {
+    const binDir = join(sandbox, 'council-bin');
+    const argvLog = join(sandbox, 'roles-argv.jsonl');
+    mkdirSync(binDir, { recursive: true });
+    for (const cli of ['claude', 'codex', 'gemini']) writeFileSync(join(binDir, cli), fakeAgentCli(cli, argvLog), { mode: 0o755 });
+    const repo = join(sandbox, 'roles-repo');
+    mkdirSync(join(repo, '.git'), { recursive: true });
+    mkdirSync(join(repo, '.concilium'), { recursive: true });
+    const factory = join(repo, '.concilium', 'factory.yaml');
+    writeFileSync(factory, 'roles:\n  juror: [claude, codex]\n  chairman: claude\n');
+    const run = () => spawnSync(
+      process.execPath,
+      ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', '--agents', 'claude,codex', '--cwd', repo, 'Add rate limiting'],
+      { cwd: sandbox, encoding: 'utf8', env: { ...sandboxEnv, PATH: binDir } },
+    );
+
+    const result = run();
+    expect(result.status).toBe(0);
+    const record = JSON.parse(result.stdout) as RunRecord;
+    expect(record.stage2.map((r) => r.model)).toEqual(['claude', 'codex']);
+    expect(record.stage3).toMatchObject({ model: 'claude', response: 'Synthesis from claude' });
+
+    writeFileSync(factory, 'roles:\n  chairman: [claude, codex]\n');
+    const invalid = run();
+    expect(invalid.status).toBe(1);
+    expect(invalid.stdout).toBe('');
+    expect(JSON.parse(invalid.stderr.trim().split('\n').at(-1)!).error).toBe(`${factory} roles: chairman: takes one member, not a list`);
+  });
+
   it('should default the agents to the installed, signed-in CLIs without --agents', () => {
     // claude and codex are signed in; gemini's login is unknown (no API key variable); opencode holds a Claude
     // subscription, which doctor warns about. Only claude and codex qualify as default agents.

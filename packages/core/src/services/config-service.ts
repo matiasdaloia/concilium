@@ -1,5 +1,6 @@
 import type { CouncilConfig } from '../domain/council/council-config.js';
 import { OPENROUTER_API_URL } from '../domain/council/council-config.js';
+import { validateRoles, type RoleSettings, type RoleSource } from '../domain/roles/roles.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { SecretStore } from '../ports/secret-store.js';
 import { createLogger } from '../shared/logger.js';
@@ -13,10 +14,19 @@ export class ConfigService {
   ) {}
 
   /**
-   * Per setting, highest first: `overrides` (CLI flags, `deliberate()` options), env var, saved config, default.
+   * Per setting, highest first: `overrides` (CLI flags, `deliberate()` options), env var, the repo's `factory.yaml`
+   * (`repo`, its `juror` and `chairman` roles), saved config, default.
    * Jurors and chairman default to empty, which the runtime fills in from the installed agent CLIs.
    */
-  async resolve(overrides: Partial<CouncilConfig> = {}): Promise<CouncilConfig> {
+  async resolve(overrides: Partial<CouncilConfig> = {}, repo: RoleSettings = {}): Promise<CouncilConfig> {
+    return (await this.resolveWithSources(overrides, repo)).config;
+  }
+
+  /** `resolve`, plus where the jurors and the chairman came from. */
+  async resolveWithSources(
+    overrides: Partial<CouncilConfig> = {},
+    repo: RoleSettings = {},
+  ): Promise<{ config: CouncilConfig; sources: { councilModels: RoleSource; chairmanModel: RoleSource } }> {
     // Check environment variables first
     const envApiKey = process.env.OPENROUTER_API_KEY ?? '';
     const envCouncilModels = process.env.COUNCIL_MODELS ?? '';
@@ -44,17 +54,41 @@ export class ConfigService {
     const apiUrl = envApiUrl || OPENROUTER_API_URL;
 
     const envCouncil = envCouncilModels.split(',').map((s) => s.trim()).filter(Boolean);
-    const councilModels = envCouncil.length > 0 ? envCouncil : prefCouncilModels;
-
-    const chairmanModel = envChairmanModel || prefs.chairmanModel || '';
+    const repoJurors = Array.isArray(repo.juror) ? repo.juror : [];
+    const repoChairman = typeof repo.chairman === 'string' ? repo.chairman : '';
+    const [councilModels, jurorSource]: [string[], RoleSource] = overrides.councilModels !== undefined ? [overrides.councilModels, 'flag']
+      : envCouncil.length > 0 ? [envCouncil, 'env']
+      : repoJurors.length > 0 ? [repoJurors, 'repo']
+      : prefCouncilModels.length > 0 ? [prefCouncilModels, 'saved']
+      : [[], 'default'];
+    const [chairmanModel, chairmanSource]: [string, RoleSource] = overrides.chairmanModel !== undefined ? [overrides.chairmanModel, 'flag']
+      : envChairmanModel ? [envChairmanModel, 'env']
+      : repoChairman ? [repoChairman, 'repo']
+      : prefs.chairmanModel ? [prefs.chairmanModel, 'saved']
+      : ['', 'default'];
 
     return {
-      openRouterApiKey: apiKey,
-      openRouterApiUrl: apiUrl,
-      councilModels,
-      chairmanModel,
-      ...overrides,
+      config: {
+        openRouterApiKey: apiKey,
+        openRouterApiUrl: apiUrl,
+        ...overrides,
+        councilModels,
+        chairmanModel,
+      },
+      sources: { councilModels: jurorSource, chairmanModel: chairmanSource },
     };
+  }
+
+  /** The saved code-council roles. */
+  async savedRoles(): Promise<RoleSettings> {
+    return validateRoles((await this.configStore.getCouncilConfigPrefs()).roles, 'saved roles');
+  }
+
+  /** Merge `roles` into the saved roles; roles not given keep their saved value. */
+  async saveRoles(roles: RoleSettings): Promise<void> {
+    const config = await this.configStore.getCouncilConfigPrefs();
+    config.roles = { ...config.roles, ...roles };
+    await this.configStore.saveCouncilConfigPrefs(config);
   }
 
   async saveApiKey(key: string): Promise<void> {

@@ -76,7 +76,7 @@ export async function deliberate(options: ConciliumOptions): Promise<RunRecord> 
     ? createCallbackEventBridge(options.onProgress)
     : noopEvents;
 
-  const service = await runtime.createDeliberationService(events, overrides);
+  const service = await runtime.createDeliberationService(events, overrides, { repoDir: cwd });
 
   return service.run({ prompt: options.prompt, images: [], agentInstances, cwd });
 }

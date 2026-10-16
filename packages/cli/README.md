@@ -223,6 +223,8 @@ Then comes synthesis (skip it with `--no-synthesis`; it is skipped with fewer th
 
 Before synthesis, Concilium checks whether the candidates diverge, because divergence means the task can be read more than one way and a blend would hide that. It looks only at candidates that are neither blocked nor disqualified, and only when there are at least 2 of them: none of them passes the gates (each has a new gate failure); or, among those that pass the gates, each fails at least one adversarial test written by another family that fails on the base and passes on some candidate (`evidence`, `own-family-only` or `regression-guard`), and no two fail the same test, so none dominates; or judges of the same tie pick different bases (today one judge runs per tie, so this one cannot fire yet). On divergence the run ends with `status: "reframe-needed"`: nothing is grafted, no integration branch is made and no `result.patch` is written. One read-only run of the first agent's CLI (the one that framed the rubric) turns each line in conflict (the `specClause` the split tests quote, or the gate no one passes) into a question for you; every line it leaves out, or all of them when it gives no usable answer, gets a question written from the evidence. The divergence, the lines in conflict with what each candidate did, and the questions go to `reframe.md` next to `run.json`, to `reframe` on the record and to the summary. Answer them, restate the task, and run again. `--no-synthesis` skips this check, since there is no blend to stop.
 
+Each step is a role, and each role can be played by any agent CLI on any model (`cli[:model]`): the **planner** tailors the rubric and phrases the reframe questions (default: the first implementer); the **implementers** are the candidates (default: the installed, signed-in CLIs); the **adversaries** write the adversarial tests, at most one per model family (default `same-as-implementer`: the first candidate of each family; a configured adversary replaces its family's default, or attacks every candidate when no candidate is of its family); the **judge** orders ties and names the grafts (default `auto`: a usable CLI of another family, as above); the **integrator** folds in each graft (default `winner`: the base's CLI and model). A configured judge is used even when it is of a family it reads; its judgments and graft picks are then flagged same-family, with a warning, exactly like a picked one. Set roles with `--role`, in `.concilium/factory.yaml` or with `concilium config set <role>`, and see the result with [`concilium roles`](#concilium-roles). The resolved map is printed (on stderr) before the first candidate starts, shown in the summary, and recorded as `roles` on the run record.
+
 It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, the adversaries, the survival matrix with each test's validity and clause, each candidate's survival, the ranking with the judge's totals, the winner, each candidate's report, the grafts, the integration branch, the patch path and whether it is mergeable (or, when the candidates diverge, the lines in conflict and the questions), and the commands to inspect each branch and clean up. The run record (with `report` on each candidate, and `status`, `ranking`, `synthesis` and `reframe` on the run) is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`, which keeps the integration branch. Nothing is merged into your branch. It exits 1 when no candidate finished `ok`, and 2 when the run ends in `reframe-needed`.
 
 ```
@@ -231,7 +233,8 @@ concilium code [options] [task...]
 
 | Flag | Description |
 |------|-------------|
-| `--agents <list>` | Candidate agents, comma-separated, each `cli[:model]` (`claude,codex`, `claude:opus,codex:gpt-5.2-codex`). Default: the installed, signed-in agent CLIs, as for `run` |
+| `--agents <list>` | Candidate agents (the implementer role), comma-separated, each `cli[:model]` (`claude,codex`, `claude:opus,codex:gpt-5.2-codex`). Default: the installed, signed-in agent CLIs, as for `run` |
+| `--role <role=members>` | Who plays a role for this run: `planner`, `implementer`, `adversary`, `judge` or `integrator`, each member `cli[:model]` (`--role judge=codex:gpt-5.2`, `--role adversary=claude,gemini`). Repeatable; a list role adds up across flags. Beats `.concilium/factory.yaml` and saved config. See [`concilium roles`](#concilium-roles) |
 | `--type <type>` | Task type, which picks the playbook and the default rubric: `bugfix`, `feature`, `refactor`, `perf`, `prototype`. Default: guessed from the task |
 | `--cwd <path>` | Directory of the git repo to work on (default: current directory) |
 | `--include-dirty` | Start every candidate from your uncommitted changes too (snapshotted to `refs/concilium/<run-id>/snapshot`). Without it a dirty tree is refused |
@@ -250,6 +253,9 @@ concilium code "add input validation to sum() with a test" --agents claude,codex
 
 # A bug fix: every candidate follows the bugfix playbook
 concilium code "sum() crashes on empty input" --type bugfix --agents claude,codex
+
+# Pick the models per role: Opus plans and writes, Codex writes too, GPT-5.2 judges
+concilium code "add a dry-run flag" --role planner=claude:claude-opus-5-5 --role implementer=claude:claude-opus-5-5,codex --role judge=codex:gpt-5.2
 
 # Compare a candidate with the base, then clean up
 git diff <base>..concilium/<run-id>/claude
@@ -329,6 +335,7 @@ concilium config [subcommand]
 | `set api-key [value]` | Set the optional OpenRouter API key (prompts if value omitted) |
 | `set chairman <model>` | Set the default chairman (a council member) |
 | `set jurors <m1,m2,...>` | Set the default jurors (council members) |
+| `set <role> <members>` | Save a code-council role: `planner`, `implementer`, `adversary`, `judge` or `integrator`, each member `cli[:model]` (comma-separated for `implementer` and `adversary`). See [`concilium roles`](#concilium-roles) |
 | `reset` | Reset all config to defaults |
 | `path` | Print the config directory path |
 
@@ -336,8 +343,9 @@ concilium config [subcommand]
 
 1. `run` flags (`--juror-models`, `--chairman`) and the `deliberate()` options (`councilModels`, `chairmanModel`, `apiKey`)
 2. Environment variables: `OPENROUTER_API_KEY`, `COUNCIL_MODELS` (jurors), `CHAIRMAN_MODEL`, `OPENROUTER_API_URL`
-3. Saved config (`concilium config set ...`); each `config set` changes only its own setting
-4. Built-in defaults: no API key, and jurors and chairman chosen from the installed agent CLIs at run time
+3. The `juror` and `chairman` roles of the repo's `.concilium/factory.yaml` (see [`concilium roles`](#concilium-roles))
+4. Saved config (`concilium config set ...`); each `config set` changes only its own setting
+5. Built-in defaults: no API key, and jurors and chairman chosen from the installed agent CLIs at run time
 
 **Examples:**
 
@@ -408,6 +416,53 @@ concilium doctor
 
 # Installed CLIs only
 concilium doctor --json | jq '.clis[] | select(.installed)'
+```
+
+### `concilium roles`
+
+Print who plays each role and where that came from: the code council's `planner`, `implementer`, `adversary`, `judge` and `integrator` (see [`concilium code`](#concilium-code)), and the plan council's `juror` and `chairman` (see [`concilium run`](#concilium-run)). Each member is `cli[:model]` (`claude`, `codex:gpt-5.2`, `opencode:openai/gpt-5.2`); jurors and the chairman may also be OpenRouter model ids. Per role, highest first:
+
+1. Flags: `code --role` and `code --agents` (the implementers); `run --juror-models` and `run --chairman`
+2. Environment variables, for jurors and the chairman only: `COUNCIL_MODELS`, `CHAIRMAN_MODEL`
+3. The `roles:` section of `.concilium/factory.yaml`, the nearest one from `--cwd` up to the repo root, read when the command runs
+4. Saved config: `concilium config set <role> <members>` (jurors and chairman: `config set jurors`, `config set chairman`)
+5. Defaults from [`concilium doctor`](#concilium-doctor) detection: the installed, signed-in CLIs implement and the first one plans, one adversary per implementer family (`same-as-implementer`), a judge of another family per tie (`auto`), the winner integrates (`winner`), and the jurors and chairman as for `run`
+
+```yaml
+# .concilium/factory.yaml (only roles: is read today)
+roles:
+  planner: claude:claude-opus-5-5
+  implementer: [claude:claude-opus-5-5, codex]
+  adversary: same-as-implementer   # or a list, at most one per model family
+  judge: codex:gpt-5.2             # or auto
+  integrator: winner               # or cli[:model]
+  juror: [claude, codex:gpt-5.2]
+  chairman: gemini
+```
+
+An unknown role, a list for a single-member role, a member that is not an agent CLI (for a code role), an empty model or two adversaries of one family is an error naming the file and every problem, and `code`, `run` and `roles` exit 1 before running anything. A judge of an implementer family (or of an unknown family, such as OpenCode) is allowed, with a warning: its judgments of ties among its family and its graft picks are flagged same-family.
+
+```
+concilium roles [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <path>` | Directory of the repo whose `.concilium/factory.yaml` applies (default: current directory) |
+| `--role <role=members>` | Set a role for this preview, as `code --role` does (repeatable) |
+| `--json` | Output as JSON: `roles` (each with `value` and `source`), `factoryPath`, `warnings`, `notes` |
+
+**Examples:**
+
+```bash
+# The role map for this repo
+concilium roles
+
+# What a run with this judge would use
+concilium roles --role judge=gemini --json | jq '.roles.judge'
+
+# Save a default integrator for every repo
+concilium config set integrator claude:claude-opus-5-5
 ```
 
 ### `concilium gc`

@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline';
 import type { Command } from 'commander';
-import { JsonConfigStore, ConfigService, PlaintextSecretStore } from '@concilium/core';
+import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, type CodeRoleName } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 
 function prompt(question: string): Promise<string> {
@@ -33,8 +33,10 @@ export function registerConfigCommand(program: Command): void {
         openRouterApiUrl: resolved.openRouterApiUrl,
         councilModels: resolved.councilModels,
         chairmanModel: resolved.chairmanModel,
+        roles: await configService.savedRoles(),
         configDir: getConfigDir(),
       };
+      const savedRoles = Object.entries(display.roles).map(([role, v]) => `${role}=${Array.isArray(v) ? v.join(',') : v}`);
       const AUTO = 'auto (chosen from the installed agent CLIs at run time)';
 
       if (opts.json) {
@@ -45,6 +47,7 @@ export function registerConfigCommand(program: Command): void {
         console.log(`  API URL:        ${display.openRouterApiUrl}`);
         console.log(`  Juror Models:   ${display.councilModels.join(', ') || AUTO}`);
         console.log(`  Chairman:       ${display.chairmanModel || AUTO}`);
+        console.log(`  Code roles:     ${savedRoles.join(' ') || '(none saved; see concilium roles)'}`);
         console.log(`  Config Dir:     ${display.configDir}`);
         console.log();
       }
@@ -53,7 +56,7 @@ export function registerConfigCommand(program: Command): void {
   config
     .command('set')
     .description('Set a configuration value')
-    .argument('<key>', 'Configuration key (api-key, chairman, jurors)')
+    .argument('<key>', `Configuration key (api-key, chairman, jurors, or a code role: ${CODE_ROLES.join(', ')})`)
     .argument('[value]', 'Value to set')
     .action(async (key: string, value?: string) => {
       const secretStore = new PlaintextSecretStore();
@@ -90,9 +93,25 @@ export function registerConfigCommand(program: Command): void {
           console.log(`Juror models set to: ${models.join(', ')}`);
           break;
         }
-        default:
-          console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors`);
-          process.exit(1);
+        default: {
+          if (!(CODE_ROLES as readonly string[]).includes(key)) {
+            console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors, ${CODE_ROLES.join(', ')}`);
+            process.exit(1);
+          }
+          if (!value) {
+            console.error(`Usage: concilium config set ${key} <cli[:model]${isListRole(key as CodeRoleName) ? ',...' : ''}>`);
+            process.exit(1);
+          }
+          try {
+            const roles = parseRoleFlags([`${key}=${value}`], 'config set');
+            await configService.saveRoles(roles);
+            const saved = roles[key as CodeRoleName]!;
+            console.log(`Role ${key} set to: ${Array.isArray(saved) ? saved.join(', ') : saved}`);
+          } catch (err) {
+            console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+            process.exit(1);
+          }
+        }
       }
     });
 

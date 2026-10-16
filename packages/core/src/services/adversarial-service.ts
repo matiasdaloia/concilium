@@ -36,7 +36,10 @@ import { BASE_LANE } from './verification-service.js';
 
 const log = createLogger('adversarial');
 
-/** One adversary: a fresh run of the first candidate's CLI of its family, in its own scratch worktree from the base. */
+/**
+ * One adversary: a fresh run of the adversary role's member of its family, else of the first candidate's CLI of
+ * that family, in its own scratch worktree from the base.
+ */
 export type Adversary = {
   family: string;
   provider: string;
@@ -98,6 +101,11 @@ export type AdversarialInput = {
   /** The base's test gate outcome without the adversarial tests. */
   baseTestOutcome: StepResult['outcome'] | null;
   candidates: AdversarialCandidate[];
+  /**
+   * The adversary role, at most one per family. Each replaces the default adversary of its family, or adds one for a
+   * family no candidate has; candidate families left out keep their default.
+   */
+  adversaries?: { provider: string; model?: string; family: string }[];
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
   workspace: WorkspaceManager;
   /** Wall-clock limit per adversary. */
@@ -140,7 +148,7 @@ export async function runTestInLane(runner: GateRunner, gate: Gate, from: string
 }
 
 async function runAdversary(
-  input: AdversarialInput, family: string, author: AdversarialCandidate, patches: { candidateId: string; path: string }[], testCommand: string, signal: AbortSignal,
+  input: AdversarialInput, family: string, author: { provider: string; model?: string }, patches: { candidateId: string; path: string }[], testCommand: string, signal: AbortSignal,
 ): Promise<{ adversary: Adversary; specs: AdversarialTestSpec[] }> {
   const lane = `adv-${family}`;
   const adversary: Adversary = {
@@ -200,8 +208,9 @@ export async function runAdversarialRound(input: AdversarialInput): Promise<Adve
 
   const runner = input.runner ?? new GateRunner();
   const signal = input.signal ?? new AbortController().signal;
-  const authors = new Map<string, AdversarialCandidate>();
+  const authors = new Map<string, { provider: string; model?: string }>();
   for (const c of input.candidates) if (!authors.has(c.family)) authors.set(c.family, c);
+  for (const a of input.adversaries ?? []) authors.set(a.family, a);
 
   // Peers' diffs are files outside every worktree, labelled by position, not by agent.
   const patchDir = await mkdtemp(join(tmpdir(), 'concilium-adversary-'));

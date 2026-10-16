@@ -1,9 +1,12 @@
 import type { AgentInstance } from '../domain/agent/agent-config.js';
+import type { RoleSettings } from '../domain/roles/roles.js';
 
 export interface CouncilConfigPrefs {
   chairmanModel?: string;
   councilModels?: string[];
   apiKeyEncrypted?: string;
+  /** Saved code-council roles (`concilium config set <role> ...`). Jurors and the chairman stay in the fields above. */
+  roles?: RoleSettings;
 }
 
 export interface ConfigStore {

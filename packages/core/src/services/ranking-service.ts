@@ -6,7 +6,7 @@
 
 import { PROVIDER_IDS, getProviderInfo } from '../domain/agent/providers.js';
 import { missingPlaybookSteps } from '../domain/code-council/framing.js';
-import { judgePrompt, parseJudgeAnswer, pickJudge, type JudgePack, type Judgment } from '../domain/code-council/judging.js';
+import { configuredJudge, judgePrompt, parseJudgeAnswer, pickJudge, type JudgePack, type Judgment } from '../domain/code-council/judging.js';
 import { PLAYBOOKS, type TaskType } from '../domain/code-council/playbooks.js';
 import { contends, rankCandidates, tieGroups, type CandidateReport, type EvidenceKey, type RankInput, type Ranking, type ReportEvidence } from '../domain/code-council/ranking.js';
 import { rubricHash, type FrozenRubric } from '../domain/code-council/rubric.js';
@@ -90,13 +90,15 @@ export type JudgeTieInput = {
   /** The tied candidates, each with its report. */
   tied: { candidate: CodeCandidate; report: CandidateReport }[];
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
+  /** The judge role's `cli[:model]`. Without it, `pickJudge` takes a usable CLI of another family. */
+  judgeSpec?: string;
   runner?: GateRunner;
   signal?: AbortSignal;
 };
 
 /**
- * Tier 3 for one tie group: checks the rubric still matches its frozen hash, picks a judge CLI from a family that
- * wrote none of the tied candidates, and has it score each one blind on every criterion, read-only.
+ * Tier 3 for one tie group: checks the rubric still matches its frozen hash, takes the configured judge or picks a
+ * judge CLI from a family that wrote none of the tied candidates, and has it score each one blind on every criterion, read-only.
  */
 export async function judgeTie(input: JudgeTieInput): Promise<Judgment> {
   const judgment: Judgment = {
@@ -114,7 +116,7 @@ export async function judgeTie(input: JudgeTieInput): Promise<Judgment> {
   }
 
   const families = [...new Set(input.tied.map((t) => getProviderInfo(t.candidate.provider)?.family ?? t.candidate.provider))];
-  const choice = pickJudge(families, await usableClis(input.drivers));
+  const choice = input.judgeSpec ? configuredJudge(input.judgeSpec, families) : pickJudge(families, await usableClis(input.drivers));
   if (!choice) return blocked('no agent CLI is installed and signed in to judge');
   judgment.judge = choice.provider;
   judgment.sameFamily = choice.sameFamily;

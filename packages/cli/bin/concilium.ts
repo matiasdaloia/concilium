@@ -10,6 +10,7 @@ import { registerDoctorCommand } from "../src/commands/doctor.js";
 import { registerGcCommand } from "../src/commands/gc.js";
 import { registerHistoryCommand } from "../src/commands/history.js";
 import { registerModelsCommand } from "../src/commands/models.js";
+import { registerRolesCommand } from "../src/commands/roles.js";
 import { registerRunCommand } from "../src/commands/run.js";
 
 // Walk up to the nearest package.json: bin/ in dev (tsx), dist/bin/ when built.
@@ -39,5 +40,6 @@ registerHistoryCommand(program);
 registerConfigCommand(program);
 registerModelsCommand(program);
 registerDoctorCommand(program);
+registerRolesCommand(program);
 registerGcCommand(program);
 program.parse();

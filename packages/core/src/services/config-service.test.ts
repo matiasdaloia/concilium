@@ -30,6 +30,9 @@ import { createConciliumRuntime } from './create-concilium.js';
  *   Jurors:    override (`--juror-models`, `councilModels`) > COUNCIL_MODELS     > saved config (`config set jurors`)   > [] (installed CLIs)
  *   Chairman:  override (`--chairman`, `chairmanModel`)     > CHAIRMAN_MODEL     > saved config (`config set chairman`) > '' (installed CLIs)
  *
+ * Given a repo, the `juror` and `chairman` roles of its `.concilium/factory.yaml` rank between the env var and the
+ * saved config (see role-service.test.ts).
+ *
  * The runtime fills an empty juror list or chairman from the installed agent CLIs (see council-members.test.ts).
  */
 
