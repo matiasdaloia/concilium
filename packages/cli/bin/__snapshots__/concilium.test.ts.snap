@@ -45,6 +45,7 @@ Commands:
   config                      Manage configuration
   models [options]            List available models
   doctor [options]            Check installed agent CLIs and how they sign in
+  gc [options]                Remove worktrees and branches of finished runs
   help [command]              display help for command
 "
 `;

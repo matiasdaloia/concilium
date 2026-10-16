@@ -7,7 +7,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, realpathSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -248,6 +248,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
           }
           results.push(await this.collectRun(manifest, runDir, options));
         }
+        if (!options.dryRun) await rmdir(join(this.root, hash)).catch(() => undefined); // only once no run is left
       }
       return results;
     });

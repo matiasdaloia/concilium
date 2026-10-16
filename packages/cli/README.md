@@ -297,6 +297,29 @@ concilium doctor
 concilium doctor --json | jq '.clis[] | select(.installed)'
 ```
 
+### `concilium gc`
+
+Remove the git worktrees, the `concilium/<run-id>/*` branches and the `refs/concilium/<run-id>/*` scratch refs of finished runs. Candidate worktrees live under `$XDG_CACHE_HOME/concilium/worktrees/<repo-hash>/<run-id>/<candidate-id>`, outside your repo. A run whose process was killed counts as finished. A run whose process is still alive is skipped. `gc` never deletes a branch outside `concilium/`, and keeps the `concilium/<run-id>/integration` branch until you delete it. Running it twice leaves the same state. It exits 1 if a step failed (for example a `concilium/` branch checked out in your own checkout).
+
+```
+concilium gc [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--run <id>` | Only this run |
+| `--dry-run` | Show what would be removed, change nothing |
+
+**Examples:**
+
+```bash
+# See what would be removed
+concilium gc --dry-run
+
+# Clean up one run
+concilium gc --run 2026-10-16-a1b2
+```
+
 ## Configuration
 
 ### File locations
