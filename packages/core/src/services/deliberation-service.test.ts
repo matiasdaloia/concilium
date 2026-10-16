@@ -269,6 +269,25 @@ describe('DeliberationService (offline, fake providers)', () => {
     expect(await runRepository.list()).toEqual([]);
   });
 
+  it('should rank two agents with the same provider and no model separately', async () => {
+    const agents: AgentInstance[] = [
+      { instanceId: 'opencode-1', provider: 'opencode', model: '', enabled: true },
+      { instanceId: 'opencode-2', provider: 'opencode', model: '', enabled: true },
+    ];
+    const record = await createService({ opencode: PLANS.claude }, recordEvents()).run({
+      prompt: PROMPT,
+      agentInstances: agents,
+      cwd: tmp,
+    });
+
+    expect(record.stage1.map((r) => r.model)).toEqual(['opencode', 'opencode #2']);
+    expect(record.metadata.aggregateRankings).toEqual([
+      { model: 'opencode', averageRank: 1, rankingsCount: 2 },
+      { model: 'opencode #2', averageRank: 2, rankingsCount: 2 },
+    ]);
+    expect(Object.keys(record.metadata.modelSnapshots ?? {})).toEqual(['opencode', 'opencode #2']);
+  });
+
   it('should not price subscription CLI agents with API per-token prices', async () => {
     const pricedModels: OpenRouterModelInfo[] = [
       { id: 'openai/gpt-5.2-codex', name: 'GPT-5.2 Codex', context_length: 1, pricing: { prompt: 2, completion: 8 } },
