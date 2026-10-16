@@ -27,3 +27,17 @@ export function framedTask(task: string, taskType: TaskTypeChoice): string {
     ...playbook.verification.map((line) => `- ${line}`),
   ].join('\n');
 }
+
+/**
+ * The playbook steps (1-based) a candidate's final message does not acknowledge. A step is acknowledged by a line
+ * that starts with its number (after list markers, `Step`, bold) and says `done`, `skip` or `skipped`.
+ */
+export function missingPlaybookSteps(finalText: string, stepCount: number): number[] {
+  const lines = finalText.split('\n');
+  const missing: number[] = [];
+  for (let n = 1; n <= stepCount; n++) {
+    const numbered = new RegExp(`^[\\s>*_#-]*(?:step\\s*)?${n}(?!\\d)`, 'i');
+    if (!lines.some((line) => numbered.test(line) && /\b(done|skip|skipped)\b/i.test(line))) missing.push(n);
+  }
+  return missing;
+}
