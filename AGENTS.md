@@ -20,7 +20,7 @@ concilium/
 │       ├── src/
 │       │   ├── commands/ # run, history, config, models, gui
 │       │   ├── ui/       # Ink (React) terminal components
-│       │   ├── adapters/ # XDG paths, terminal secret store, callback event bridge
+│       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
 │       └── package.json
 ├── desktop/              # Electron desktop application
@@ -50,7 +50,7 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 
 | Port Interface | CLI Adapter | Desktop Adapter |
 |----------------|-------------|-----------------|
-| `SecretStore` | `PlaintextSecretStore` / `TerminalSecretStore` | `ElectronSecretStore` (OS keychain) |
+| `SecretStore` | `PlaintextSecretStore` | `ElectronSecretStore` (OS keychain) |
 | `ConfigStore` | `JsonConfigStore` (XDG paths) | `JsonConfigStore` (Electron `userData`) |
 | `RunRepository` | `JsonRunRepository` (XDG data dir) | `JsonRunRepository` (Electron `userData`) |
 | `DeliberationEvents` | Callback event bridge / Ink reducer | IPC event bridge (`webContents.send`) |

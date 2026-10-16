@@ -7,9 +7,9 @@ import {
   OpenRouterGateway,
   ConfigService,
   JsonConfigStore,
+  PlaintextSecretStore,
   type AgentProvider,
 } from '@concilium/core';
-import { TerminalSecretStore } from '../adapters/terminal-secret-store.js';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 
 export function registerModelsCommand(program: Command): void {
@@ -21,7 +21,7 @@ export function registerModelsCommand(program: Command): void {
     .option('--json', 'Output as JSON')
     .action(async (opts: { agent?: string; council?: boolean; json?: boolean }) => {
       if (opts.council) {
-        const secretStore = new TerminalSecretStore();
+        const secretStore = new PlaintextSecretStore();
         const configStore = new JsonConfigStore(getConfigDir());
         const configService = new ConfigService(configStore, secretStore);
         const config = await configService.resolve();

@@ -12,13 +12,13 @@ import {
   JsonRunRepository,
   JsonConfigStore,
   ConfigService,
+  PlaintextSecretStore,
   setLogLevel,
   type AgentInstance,
   type AgentProvider,
   type RunRecord,
 } from '@concilium/core';
 import { createCallbackEventBridge } from '../adapters/callback-event-bridge.js';
-import { TerminalSecretStore } from '../adapters/terminal-secret-store.js';
 import { getConfigDir, getDataDir } from '../adapters/xdg-paths.js';
 import { App } from '../ui/App.js';
 import {
@@ -115,7 +115,7 @@ export function registerRunCommand(program: Command): void {
       const isQuiet = opts.quiet ?? false;
 
       // Set up dependencies
-      const secretStore = new TerminalSecretStore();
+      const secretStore = new PlaintextSecretStore();
       const configStore = new JsonConfigStore(getConfigDir());
       const configService = new ConfigService(configStore, secretStore);
       const config = await configService.resolve();
