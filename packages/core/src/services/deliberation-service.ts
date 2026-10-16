@@ -55,17 +55,22 @@ export class DeliberationService {
       const config = await this.configService.resolve();
       const workingDir = input.cwd;
 
-      // Build agent configs from instances
+      // Build agent configs from instances. The name keys rankings and stats,
+      // so repeated provider + model pairs get a "#n" suffix to stay distinct.
+      const nameCounts = new Map<string, number>();
       const agentConfigs: AgentConfig[] = input.agentInstances
         .filter((inst) => inst.enabled)
         .map((inst) => {
           const modelParts = inst.model?.split('/') ?? [];
           const shortModel =
             modelParts.length > 1 ? modelParts.slice(1).join('/') : (inst.model ?? '');
+          const baseName = shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider;
+          const count = (nameCounts.get(baseName) ?? 0) + 1;
+          nameCounts.set(baseName, count);
           return {
             id: inst.provider,
             instanceId: inst.instanceId,
-            name: shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider,
+            name: count > 1 ? `${baseName} #${count}` : baseName,
             enabled: true,
             model: inst.model || null,
             cwd: workingDir,
@@ -142,30 +147,17 @@ export class DeliberationService {
 
       // Build model performance snapshots
       const modelSnapshots: Record<string, ModelPerformanceSnapshot> = {};
-      const cachedModels = this.deps.llmGateway.getCachedOrFallbackModels();
-      const agentKeyToModel = new Map<string, string>();
-      for (const cfg of agentConfigs) {
-        const key = cfg.instanceId ?? cfg.id;
-        if (cfg.model) agentKeyToModel.set(key, cfg.model);
-      }
       for (const agent of agentResults) {
         if (agent.status !== 'success') continue;
         const latencyMs =
           agent.startedAt && agent.endedAt
             ? new Date(agent.endedAt).getTime() - new Date(agent.startedAt).getTime()
             : 0;
-        const agentKey = agent.agentKey ?? agent.id;
-        const fullModelId = agentKeyToModel.get(agentKey) ?? '';
-        const modelInfo = cachedModels.find(
-          (m) => m.id === fullModelId || fullModelId.endsWith(m.id) || m.id.endsWith(fullModelId),
-        );
-        const costPer1k = modelInfo
-          ? (modelInfo.pricing.prompt + modelInfo.pricing.completion) / 2 / 1000
-          : 0;
         modelSnapshots[agent.name] = {
           modelId: agent.name,
           provider: agent.id,
-          costPer1kTokens: costPer1k,
+          // Agents run through local CLIs on the user's subscription, so API per-token prices don't apply.
+          costPer1kTokens: null,
           latencyMs,
           speedTier: latencyMs < 15000 ? 'fast' : latencyMs < 60000 ? 'balanced' : 'slow',
         };

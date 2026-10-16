@@ -185,10 +185,12 @@ async function streamSessionEvents(options: {
   planFragments: string[];
   rawOutput: string[];
   abortSignal?: AbortSignal;
+  directory: string;
 }): Promise<void> {
-  const { client, sessionId, agentKey, callbacks, events, planFragments, rawOutput } = options;
+  const { client, sessionId, agentKey, callbacks, events, planFragments, rawOutput, directory } = options;
 
-  const { stream } = await client.event.subscribe();
+  // The server publishes events per project directory, so subscribe to the session's one.
+  const { stream } = await client.event.subscribe({ query: { directory } });
 
   const abortPromise = new Promise<{ done: true; value: undefined }>((resolve) => {
     if (options.abortSignal?.aborted) {
@@ -316,9 +318,13 @@ export class OpenCodeProvider implements AgentProvider {
   readonly id = 'opencode';
   readonly name = 'OpenCode';
 
+  constructor(
+    private readonly connect: () => Promise<{ client: OpencodeClient }> = () => ensureOpenCodeServer({}),
+  ) {}
+
   async discoverModels(): Promise<string[]> {
     try {
-      const { client } = await ensureOpenCodeServer({});
+      const { client } = await this.connect();
       const providersRes = await client.config.providers();
       const providersData = providersRes.data;
 
@@ -360,10 +366,13 @@ export class OpenCodeProvider implements AgentProvider {
     log.info(`execute: starting ${agent.name} (${agentKey})`);
 
     try {
-      const { client } = await ensureOpenCodeServer({});
+      const { client } = await this.connect();
+      // Every request names the run's working directory; otherwise OpenCode uses the server's cwd.
+      const query = { directory: agent.cwd };
 
       const sessionRes = await client.session.create({
         body: { title: `Concilium: ${agent.name}` },
+        query,
       });
       const session = sessionRes.data;
       if (!session) throw new Error('Failed to create OpenCode session');
@@ -374,7 +383,7 @@ export class OpenCodeProvider implements AgentProvider {
 
       let toolsMap: Record<string, boolean> = { ...READONLY_TOOLS };
       try {
-        const toolIdsRes = await client.tool.ids();
+        const toolIdsRes = await client.tool.ids({ query });
         const allToolIds = toolIdsRes.data;
         if (Array.isArray(allToolIds)) {
           const fullMap: Record<string, boolean> = {};
@@ -396,6 +405,7 @@ export class OpenCodeProvider implements AgentProvider {
         planFragments,
         rawOutput,
         abortSignal: config.abortSignal,
+        directory: agent.cwd,
       });
 
       const wrappedPrompt = wrapPromptForResearch(prompt);
@@ -427,6 +437,7 @@ export class OpenCodeProvider implements AgentProvider {
 
       await client.session.promptAsync({
         path: { id: sessionId },
+        query,
         body: {
           parts: parts as any,
           tools: toolsMap,
@@ -436,7 +447,7 @@ export class OpenCodeProvider implements AgentProvider {
       });
       await eventPromise;
 
-      const messagesRes = await client.session.messages({ path: { id: sessionId } });
+      const messagesRes = await client.session.messages({ path: { id: sessionId }, query });
       const messages = messagesRes.data;
       let finalTokenUsage: TokenUsage | null = null;
 

@@ -68,13 +68,14 @@ For each plan, give a concise review highlighting strengths and weaknesses. Be s
 IMPORTANT: Your final ranking MUST be formatted EXACTLY as follows:
 - Start with the line "FINAL RANKING:" (all caps, with colon)
 - Then list the responses from best to worst as a numbered list
-- Each line should be: number, period, space, then ONLY the response label (e.g., "1. Response A")
+- Each line should be: number, period, space, then ONLY the response label, written as "Response" followed by its letter
 - Do not add any other text or explanations in the ranking section
 
+Format (replace each <letter> with the label of the response in that position):
 FINAL RANKING:
-1. Response C
-2. Response A
-3. Response B
+1. Response <letter>
+2. Response <letter>
+...
 
 Now provide your code review and ranking:`;
 
