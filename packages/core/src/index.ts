@@ -55,6 +55,8 @@ export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
 export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
 export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
 export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
+export { CliDriver, createHeadlessCliDrivers, HEADLESS_CLI_IDS } from './adapters/cli/cli-drivers.js';
+export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
 // Application services
