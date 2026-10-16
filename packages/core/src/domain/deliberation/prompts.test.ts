@@ -21,7 +21,12 @@ describe('buildRankingPrompt', () => {
 
     expect(instructions).toContain('FINAL RANKING:');
     expect(instructions).not.toMatch(/Response [A-Z]\b/);
-    expect(parseRankingFromText(instructions)).toEqual([]);
+  });
+
+  it('should keep the requested format readable by the ranking parser', () => {
+    const answer = 'Reviews...\n\nFINAL RANKING:\n1. Response B\n2. Response C\n3. Response A';
+
+    expect(parseRankingFromText(answer)).toEqual(['Response B', 'Response C', 'Response A']);
   });
 
   it('should map every response label to its model', () => {
