@@ -5,9 +5,9 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
 import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
@@ -346,12 +346,174 @@ describe('runCodeCandidates with verify', () => {
     expect(gc[0].deletedBranches).toContain('concilium/verify1/base');
   });
 
-  it('should not verify unless asked', async () => {
+  it('should not verify unless asked, and skip the adversarial round without the gates', async () => {
     seedGates();
     const drivers = new Map([['claude', writer('claude', { 'x.txt': 'x\n' })]]);
     const record = await runCodeCandidates({ task: 't', repoDir: repo, agents: [{ provider: 'claude' }], runId: 'verify2', drivers, workspace });
     expect(record.verification).toBeUndefined();
     expect(record.candidates[0].verification).toBeUndefined();
+    expect(record.adversarial).toBeUndefined();
     expect(git(repo, 'branch', '--list', 'concilium/verify2/base')).toBe('');
+
+    const unverified = await runCodeCandidates({
+      task: 't', repoDir: repo, agents: [{ provider: 'claude' }, { provider: 'claude' }], runId: 'verify3', drivers, workspace, adversarial: true,
+    });
+    expect(unverified.adversarial).toMatchObject({ skipped: 'the gates did not run', tests: [] });
+  });
+});
+
+describe('runCodeCandidates with adversarial', () => {
+  /** Runs every `*.test.js` under the worktree; any that throws fails the suite. */
+  const RUN_TESTS = [
+    "const fs = require('node:fs'); const path = require('node:path');",
+    'const files = [];',
+    "(function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === '.git') continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith('.test.js')) files.push(p); } })('.');",
+    'let failed = 0;',
+    "for (const f of files) { try { require(path.resolve(f)); } catch (e) { failed++; console.error(f + ': ' + e.message); } }",
+    'process.exit(failed ? 1 : 0);',
+    '',
+  ].join('\n');
+  const throwsOn = (args: string, from = '.') =>
+    `const sum = require('${from}/sum.js'); let threw = false; try { sum(${args}); } catch (e) { threw = e instanceof TypeError; } if (!threw) throw new Error(${JSON.stringify(`sum(${args}) did not throw`)});\n`;
+  const TASK = 'sum must reject an argument that is not a number with a TypeError';
+
+  function seedSuite(): string {
+    writeFileSync(join(repo, 'run-tests.js'), RUN_TESTS);
+    writeFileSync(join(repo, 'sum.test.js'), "if (require('./sum.js')(1, 2) !== 3) throw new Error('1 + 2');\n");
+    mkdirSync(join(repo, '.concilium'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), 'gates:\n  test: node run-tests.js\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'suite');
+    return git(repo, 'rev-parse', 'HEAD');
+  }
+
+  /**
+   * A fake CLI that, as a candidate, writes `sum.js`; as an adversary (its brief says so), writes `tests` and a
+   * manifest naming them with `extra` entries. `seen` records each adversary's cwd and the patches it was given.
+   */
+  function agent(id: string, sum: string, tests: Record<string, string>, seen: Record<string, { cwd: string; patches: string[] }>, extra: object[] = []): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        if (!brief.task.startsWith('You are an adversary')) {
+          writeFileSync(join(brief.cwd, 'sum.js'), sum);
+          return [{ type: 'text', text: `${id} done` }];
+        }
+        const patches = brief.constraints.filter((c) => c.startsWith('Candidate diff, read-only: ')).map((c) => readFileSync(c.slice(27), 'utf8'));
+        seen[id] = { cwd: brief.cwd, patches };
+        if (Object.keys(tests).length === 0) return [{ type: 'text', text: 'no tests' }];
+        for (const [name, content] of Object.entries(tests)) {
+          mkdirSync(dirname(join(brief.cwd, name)), { recursive: true });
+          writeFileSync(join(brief.cwd, name), content);
+        }
+        const manifest = [...Object.keys(tests).map((name, i) => ({ files: [name], specClause: `clause ${i + 1}` })), ...extra];
+        writeFileSync(join(brief.cwd, 'concilium-adversarial.json'), JSON.stringify({ tests: manifest }));
+        return [{ type: 'text', text: `${id} attacked` }];
+      },
+    });
+  }
+
+  it('should build the survival matrix on the base and every candidate and apply the validity rule', async () => {
+    const baseSha = seedSuite();
+    const seen: Record<string, { cwd: string; patches: string[] }> = {};
+    const good = 'module.exports = (a, b) => { if (typeof a !== "number" || typeof b !== "number") throw new TypeError("not a number"); return a + b; };\n';
+    const drivers = new Map([
+      // Validates both arguments. Its adversary (anthropic) finds that codex misses the second one.
+      ['claude', agent('claude', good, {
+        'adv/second.test.js': throwsOn("1, 'x'", '..'),
+        'adv/everywhere.test.js': "if (require('../sum.js')(2, 2) !== 5) throw new Error('2 + 2 is not 5');\n",
+        'adv/adds.test.js': "if (require('../sum.js')(2, 3) !== 5) throw new Error('2 + 3');\n",
+      }, seen)],
+      // Validates only the first argument. Its adversary (openai) writes a test both pass, and lists a non-test file.
+      ['codex', agent('codex', 'module.exports = (a, b) => { if (typeof a !== "number") throw new TypeError("a"); return a + b; };\n', {
+        'first.test.js': throwsOn("'x', 1"),
+      }, seen, [{ files: ['sum.js'], specClause: 'cheat' }])],
+      // Breaks the suite, so no adversarial test can be judged on it; its adversary writes no manifest.
+      ['gemini', agent('gemini', 'module.exports = () => 0;\n', {}, seen)],
+    ]);
+    const cells: string[] = [];
+
+    const record = await runCodeCandidates({
+      task: TASK, repoDir: repo, runId: 'adv1', drivers, workspace, verify: true, adversarial: true, timeoutMs: 60_000,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }, { provider: 'gemini' }],
+      onTestDone: (testId, lane, cell) => cells.push(`${testId} ${lane} ${cell}`),
+    });
+    const round = record.adversarial!;
+    const [claude, codex, gemini] = record.candidates;
+
+    expect(round.skipped).toBeUndefined();
+    expect(round.testCommand).toBe('node run-tests.js');
+    expect(round.matrix).toEqual({
+      'anthropic-1': { base: 'fail', claude: 'pass', codex: 'fail', gemini: 'error' },
+      'anthropic-2': { base: 'fail', claude: 'fail', codex: 'fail', gemini: 'error' },
+      'anthropic-3': { base: 'pass', claude: 'pass', codex: 'pass', gemini: 'error' },
+      'openai-1': { base: 'fail', claude: 'pass', codex: 'pass', gemini: 'error' },
+    });
+    expect(cells).toHaveLength(16);
+    expect(round.tests.map((t) => [t.id, t.author, t.files, t.specClause, t.validity])).toEqual([
+      ['anthropic-1', 'anthropic', ['adv/second.test.js'], 'clause 1', 'evidence'],
+      ['anthropic-2', 'anthropic', ['adv/everywhere.test.js'], 'clause 2', 'quarantined'],
+      ['anthropic-3', 'anthropic', ['adv/adds.test.js'], 'clause 3', 'regression-guard'],
+      ['openai-1', 'openai', ['first.test.js'], 'clause 1', 'evidence'],
+    ]);
+    // An author's own tests carry no weight for it; quarantined ones carry none for anyone.
+    expect(round.survival).toEqual({
+      claude: { counted: 1, survived: 1, failed: [] },
+      codex: { counted: 2, survived: 1, failed: ['anthropic-1'] },
+      gemini: { counted: 3, survived: 0, failed: ['anthropic-1', 'anthropic-3', 'openai-1'] },
+    });
+    // Each run is recorded at the lane's SHA, with the output of failures.
+    const killed = round.runs.find((r) => r.testId === 'anthropic-1' && r.lane === 'codex')!;
+    expect(killed).toMatchObject({ outcome: 'fail', sha: codex.headSha });
+    expect(killed.output).toContain("sum(1, 'x') did not throw");
+    expect(round.runs.find((r) => r.lane === 'base')!.sha).toBe(baseSha);
+    expect(round.runs.some((r) => r.lane === 'gemini')).toBe(false);
+
+    // One adversary per family, from the base in its own worktree, with the other families' diffs and not its own.
+    const [anthropic, openai, google] = round.adversaries;
+    expect(anthropic).toMatchObject({ family: 'anthropic', provider: 'claude', lane: 'adv-anthropic', status: 'ok', peers: ['codex', 'gemini'], notes: [] });
+    expect(openai).toMatchObject({ family: 'openai', peers: ['claude', 'gemini'], notes: ['tests[1] dropped: sum.js is not a test file'] });
+    expect(google).toMatchObject({ family: 'google', status: 'error', errors: ['wrote no concilium-adversarial.json'] });
+    expect(seen.claude.cwd).toBe(anthropic.worktree);
+    expect(seen.claude.patches.join('\n')).toContain('if (typeof a !== "number") throw new TypeError("a")');
+    expect(seen.claude.patches.join('\n')).not.toContain('typeof b');
+    expect(anthropic.brief).toMatchObject({ mode: 'code', allowedActions: ['read', 'write', 'shell'] });
+    expect(anthropic.brief!.task).toContain(TASK);
+    const adversaryRun = drivers.get('claude')!.runs.find((r) => r.brief.task.startsWith('You are an adversary'))!;
+    expect(adversaryRun.opts.timeoutMs).toBe(60_000);
+    // The patch files are gone after the round; the tests are on the adversary's branch.
+    for (const c of anthropic.brief!.constraints.filter((c) => c.startsWith('Candidate diff'))) expect(existsSync(c.slice(27))).toBe(false);
+    expect(git(repo, 'show', `${anthropic.branch}:adv/second.test.js`)).toContain("sum(1, 'x')");
+    expect(git(repo, 'rev-parse', anthropic.branch)).toBe(anthropic.headSha);
+
+    // Candidate branches and worktrees are as the candidates left them.
+    for (const c of [claude, codex, gemini]) {
+      expect(git(repo, 'rev-parse', c.branch)).toBe(c.headSha);
+      expect(git(c.worktree, 'status', '--porcelain')).toBe('');
+    }
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+    const gc = await workspace.gc({ runId: 'adv1', dryRun: true });
+    expect(gc[0].deletedBranches).toEqual(expect.arrayContaining(['concilium/adv1/adv-anthropic', 'concilium/adv1/adv-openai', 'concilium/adv1/adv-google']));
+  });
+
+  it('should drop a test that passes on the base of a bug fix, and skip the round with fewer than 2 candidates', async () => {
+    seedSuite();
+    const seen: Record<string, { cwd: string; patches: string[] }> = {};
+    const drivers = new Map([
+      ['claude', agent('claude', 'module.exports = (a, b) => a + b;\n', { 'adds.test.js': "if (require('./sum.js')(2, 3) !== 5) throw new Error('2 + 3');\n" }, seen)],
+      ['codex', agent('codex', 'module.exports = (a, b) => a + b;\n', {}, seen)],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'bugfix', repoDir: repo, runId: 'adv2', drivers, workspace, verify: true, adversarial: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+    expect(record.adversarial!.tests).toEqual([expect.objectContaining({ id: 'anthropic-1', validity: 'vacuous' })]);
+    expect(record.adversarial!.survival.codex).toEqual({ counted: 0, survived: 0, failed: [] });
+
+    const single = await runCodeCandidates({
+      task: TASK, repoDir: repo, runId: 'adv3', drivers, workspace, verify: true, adversarial: true, agents: [{ provider: 'claude' }],
+    });
+    expect(single.adversarial).toEqual({ skipped: 'fewer than 2 candidates', testCommand: null, adversaries: [], tests: [], matrix: {}, survival: {}, runs: [] });
+    expect(git(repo, 'branch', '--list', 'concilium/adv3/adv-*')).toBe('');
   });
 });

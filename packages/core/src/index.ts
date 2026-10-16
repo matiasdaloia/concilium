@@ -93,7 +93,11 @@ export type { Gate, GatePlan, GateResult, GateVerdict, InstallStep, StepResult }
 export { VERIFY_CONFIG, GATE_TIMEOUT_MS, INSTALL_TIMEOUT_MS, detectGates, parseVerifyConfig, planGates, judgeGates } from './domain/verification/gates.js';
 export type { FileDiff, IntegrityFinding, IntegrityRule, ManifestChange } from './domain/verification/integrity.js';
 export { checkIntegrity, parseDiff, isTestFile } from './domain/verification/integrity.js';
+export type { AdversarialTest, AdversarialTestSpec, Survival, SurvivalCell, SurvivalMatrix, TestValidity } from './domain/verification/adversarial.js';
+export { ADVERSARIAL_MANIFEST, MAX_TESTS_PER_ADVERSARY, adversaryBrief, classifyTest, parseAdversarialManifest, survival, testGate } from './domain/verification/adversarial.js';
 export { GateRunner, type LaneResult } from './adapters/gate-runner.js';
+export { runAdversarialRound } from './services/adversarial-service.js';
+export type { Adversary, AdversarialCandidate, AdversarialInput, AdversarialRound, AdversarialRun } from './services/adversarial-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';

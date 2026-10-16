@@ -11,12 +11,16 @@ import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from
 import type { Brief } from '../domain/driver/brief.js';
 import type { GateResult } from '../domain/verification/gates.js';
 import type { DriverUsage } from '../domain/driver/normalized-event.js';
-import type { Report, ReportStatus } from '../domain/driver/report.js';
+import type { ReportStatus } from '../domain/driver/report.js';
+import { testGate } from '../domain/verification/adversarial.js';
+import { getProviderInfo } from '../domain/agent/providers.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
 import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
+import { runAdversarialRound, type AdversarialInput, type AdversarialRound } from './adversarial-service.js';
+import { runDriver } from './run-driver.js';
 import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
 const log = createLogger('code');
@@ -73,6 +77,8 @@ export type CodeRunRecord = {
   candidates: CodeCandidate[];
   /** The gates and the baseline on the base. Absent when the run was not verified. */
   verification?: RunVerification;
+  /** Tier 2 adversarial tests and their survival matrix. Absent when not asked for. */
+  adversarial?: AdversarialRound;
 };
 
 export type CodeRunInput = {
@@ -91,11 +97,15 @@ export type CodeRunInput = {
   signal?: AbortSignal;
   /** After the candidates finish, run the repo's gates on the base and on each candidate, and the integrity checks. */
   verify?: boolean;
+  /** After verifying, one adversary per candidate family writes tests, run on the base and every candidate. Needs `verify`. */
+  adversarial?: boolean;
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
   onCandidateDone?: (candidate: CodeCandidate) => void;
   onGateDone?: (lane: string, result: GateResult) => void;
+  onAdversaryDone?: AdversarialInput['onAdversaryDone'];
+  onTestDone?: AdversarialInput['onTestDone'];
 };
 
 /** A run id that sorts by start time and is a safe directory and ref component: `20261016T141015-a1b2c3`. */
@@ -161,13 +171,23 @@ async function frameRubric(input: CodeRunInput, type: TaskType, signal: AbortSig
   }
 }
 
-async function runDriver(driver: HeadlessCliDriver, brief: Brief, model: string | undefined, timeoutMs: number, signal: AbortSignal): Promise<Report> {
-  let report: Report | undefined;
-  for await (const event of driver.run(brief, { cwd: brief.cwd, model, timeoutMs, signal })) {
-    if (event.type === 'done') report = event.report;
-  }
-  if (!report) throw new Error(`${driver.id} ended without a report`);
-  return report;
+/** Tier 2 on the candidates with a head, judged under the repo's test gate on the base and on each head. */
+function attack(
+  input: CodeRunInput, repoDir: string, runId: string, baseSha: string, type: TaskType, verification: RunVerification, candidates: CodeCandidate[], timeoutMs: number, signal: AbortSignal,
+): Promise<AdversarialRound> {
+  const gate = testGate(verification.plan);
+  const testOutcome = (gates: GateResult[] | undefined) => gates?.find((g) => g.name === gate?.name)?.outcome ?? null;
+  return runAdversarialRound({
+    task: input.task, type, repoDir, runId, baseSha, plan: verification.plan,
+    baseTestOutcome: testOutcome(verification.baseline?.gates),
+    candidates: candidates.flatMap((c) => (c.worktree && c.headSha ? [{
+      candidateId: c.candidateId, provider: c.provider, ...(c.model ? { model: c.model } : {}),
+      family: getProviderInfo(c.provider)?.family ?? c.provider, worktree: c.worktree, headSha: c.headSha,
+      testOutcome: testOutcome(c.verification?.gates),
+    }] : [])),
+    drivers: input.drivers, workspace: input.workspace, timeoutMs, signal,
+    onAdversaryDone: input.onAdversaryDone, onTestDone: input.onTestDone,
+  });
 }
 
 /**
@@ -256,6 +276,13 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       verification = result.run;
       for (const c of candidates) c.verification = result.candidates.get(c.candidateId) ?? null;
     }
+
+    let adversarial: AdversarialRound | undefined;
+    if (input.adversarial) {
+      adversarial = verification
+        ? await attack(input, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
+        : { skipped: 'the gates did not run', testCommand: null, adversaries: [], tests: [], matrix: {}, survival: {}, runs: [] };
+    }
     return {
       version: 1,
       kind: 'code',
@@ -271,6 +298,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       rubric: frame.rubric,
       candidates,
       ...(verification ? { verification } : {}),
+      ...(adversarial ? { adversarial } : {}),
     };
   } finally {
     await input.workspace.finishRun({ repoDir, runId });
