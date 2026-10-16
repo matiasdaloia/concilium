@@ -42,6 +42,15 @@ export type GcRunResult = {
   errors: string[];
 };
 
+/** What a candidate branch changed against the run's base. */
+export type DiffStat = {
+  /** Commits on the branch since the base. */
+  commits: number;
+  filesChanged: number;
+  insertions: number;
+  deletions: number;
+};
+
 export type GcOptions = {
   /** Only this run. Without it, every finished or crashed run under the worktree root. */
   runId?: string;
@@ -64,6 +73,13 @@ export interface WorkspaceManager {
   list(input: { repoDir: string; runId?: string }): Promise<Workspace[]>;
   /** Remove a candidate's worktree. Its branch stays (gc deletes it). */
   remove(input: { repoDir: string; runId: string; candidateId: string }): Promise<void>;
+  /**
+   * Commit everything left uncommitted in the candidate's worktree (ignored files excepted) on its branch, as
+   * `concilium`. Returns the branch head, and whether a commit was made.
+   */
+  commit(input: { repoDir: string; runId: string; candidateId: string; message: string }): Promise<{ headSha: string; committed: boolean }>;
+  /** The candidate branch against the run's base. */
+  diffStat(input: { repoDir: string; runId: string; candidateId: string }): Promise<DiffStat>;
   /** Mark the run finished, so gc collects it. */
   finishRun(input: { repoDir: string; runId: string }): Promise<void>;
   /** Remove worktrees, `concilium/` branches and scratch refs of finished (or crashed) runs. */

@@ -11,7 +11,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFi
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { GcOptions, GcRunResult, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
+import type { DiffStat, GcOptions, GcRunResult, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
 import { createLogger } from '../shared/logger.js';
 
 const log = createLogger('workspace');
@@ -20,6 +20,12 @@ const execFileAsync = promisify(execFile);
 export const BRANCH_PREFIX = 'concilium/';
 export const INTEGRATION_CANDIDATE = 'integration';
 const MANIFEST = 'manifest.json';
+const CONCILIUM_IDENTITY = {
+  GIT_AUTHOR_NAME: 'concilium',
+  GIT_AUTHOR_EMAIL: 'concilium@localhost',
+  GIT_COMMITTER_NAME: 'concilium',
+  GIT_COMMITTER_EMAIL: 'concilium@localhost',
+};
 /** Ids become a directory name and a ref component: no dots, slashes or leading dash. */
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /** Inherited from a git hook, these would point every command at the wrong repo or index. */
@@ -222,6 +228,41 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     });
   }
 
+  async commit(input: { repoDir: string; runId: string; candidateId: string; message: string }): Promise<{ headSha: string; committed: boolean }> {
+    assertId('run id', input.runId);
+    assertId('candidate id', input.candidateId);
+    return this.serial(async () => {
+      const repoDir = await this.repoRoot(input.repoDir);
+      const path = join(this.runDir(repoDir, input.runId), input.candidateId);
+      if (!existsSync(path)) throw new Error(`Candidate ${input.candidateId} of run ${input.runId} has no worktree at ${path}`);
+      await git(path, ['add', '--all']);
+      const staged = await git(path, ['diff', '--cached', '--name-only']);
+      // The candidate's work is recorded as it is, so the target repo's commit hooks do not run.
+      if (staged) await git(path, ['commit', '--quiet', '--no-verify', '--no-gpg-sign', '-m', input.message], CONCILIUM_IDENTITY);
+      return { headSha: await git(path, ['rev-parse', 'HEAD']), committed: staged !== '' };
+    });
+  }
+
+  async diffStat(input: { repoDir: string; runId: string; candidateId: string }): Promise<DiffStat> {
+    assertId('run id', input.runId);
+    assertId('candidate id', input.candidateId);
+    return this.serial(async () => {
+      const repoDir = await this.repoRoot(input.repoDir);
+      const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
+      if (!manifest) throw new Error(`Run ${input.runId} has no base for ${repoDir}`);
+      const range = `${manifest.baseSha}..${candidateBranch(input.runId, input.candidateId)}`;
+      const stat: DiffStat = { commits: Number(await git(repoDir, ['rev-list', '--count', range])), filesChanged: 0, insertions: 0, deletions: 0 };
+      for (const line of (await git(repoDir, ['diff', '--numstat', range])).split('\n').filter(Boolean)) {
+        const [added, deleted] = line.split('\t');
+        stat.filesChanged++;
+        // Binary files show "-" for both counts.
+        stat.insertions += Number(added) || 0;
+        stat.deletions += Number(deleted) || 0;
+      }
+      return stat;
+    });
+  }
+
   async finishRun(input: { repoDir: string; runId: string }): Promise<void> {
     assertId('run id', input.runId);
     return this.serial(async () => {
@@ -313,8 +354,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
       const env = { GIT_INDEX_FILE: index };
       await git(repoDir, ['add', '--all'], env);
       const tree = await git(repoDir, ['write-tree'], env);
-      const identity = { GIT_AUTHOR_NAME: 'concilium', GIT_AUTHOR_EMAIL: 'concilium@localhost', GIT_COMMITTER_NAME: 'concilium', GIT_COMMITTER_EMAIL: 'concilium@localhost' };
-      const sha = await git(repoDir, ['commit-tree', '--no-gpg-sign', tree, '-p', headSha, '-m', `concilium: snapshot of the dirty tree for run ${runId}`], identity);
+      const sha = await git(repoDir, ['commit-tree', '--no-gpg-sign', tree, '-p', headSha, '-m', `concilium: snapshot of the dirty tree for run ${runId}`], CONCILIUM_IDENTITY);
       await git(repoDir, ['update-ref', ref, sha]);
       return sha;
     } finally {
