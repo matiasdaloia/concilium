@@ -254,6 +254,28 @@ concilium models --council
 concilium models --council --json | jq '.[].id'
 ```
 
+### `concilium doctor`
+
+Check which agent CLIs (Claude Code, Codex, Gemini CLI, OpenCode) are installed, their versions, and how each is signed in: `subscription`, `api-key`, `none` or `unknown`. It runs each CLI's `--version` and its non-secret status command (`claude auth status`, `codex login status`, `opencode auth list`). For Gemini CLI, which has no status command, it only checks whether `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set. It never reads credential files. It exits 0 even when some CLIs are missing, and prints a link to the [terms-of-use notes](../../docs/research/subscription-tos.md).
+
+```
+concilium doctor [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON |
+
+**Examples:**
+
+```bash
+# Table of CLIs, versions and auth
+concilium doctor
+
+# Installed CLIs only
+concilium doctor --json | jq '.clis[] | select(.installed)'
+```
+
 ## Configuration
 
 ### File locations
