@@ -29,7 +29,7 @@ export const PUSH_CREDENTIAL_VARS = [
  *
  * Limits: an agent can still pass its own `git -c credential.helper=...`, read a stored credential file such as
  * `~/.git-credentials`, or use an ssh key on disk that has no passphrase. This takes the credentials out of reach of
- * a plain `git push`; it is not a sandbox.
+ * a plain push from the agent; it is not a sandbox.
  */
 export function withoutPushCredentials(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const clean: NodeJS.ProcessEnv = {};
