@@ -105,13 +105,13 @@ function candidateIds(agents: CodeAgent[]): string[] {
 }
 
 /**
- * The write-mode brief a candidate gets: the task with its playbook and rubric, its own worktree, read, write and shell.
+ * The write-mode brief a candidate gets: the task with its playbook (never the rubric), its own worktree, read, write and shell.
  * Each driver keeps what its CLI can do safely.
  */
-export function codeBrief(task: string, frame: CodeFrame, worktree: string, branch: string): Brief {
+export function codeBrief(task: string, taskType: TaskTypeChoice, worktree: string, branch: string): Brief {
   return {
     version: 1,
-    task: framedTask(task, frame),
+    task: framedTask(task, taskType),
     mode: 'code',
     cwd: worktree,
     constraints: [
@@ -174,7 +174,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty });
   const repoDir = base.repoDir;
 
-  const runCandidate = async (agent: CodeAgent, candidateId: string, frame: CodeFrame): Promise<CodeCandidate> => {
+  const runCandidate = async (agent: CodeAgent, candidateId: string, taskType: TaskTypeChoice): Promise<CodeCandidate> => {
     const candidate: CodeCandidate = {
       candidateId,
       provider: agent.provider,
@@ -196,7 +196,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       const workspace = await input.workspace.create({ repoDir, runId, candidateId });
       candidate.worktree = workspace.path;
       input.onCandidateStart?.({ candidateId, provider: agent.provider, worktree: workspace.path });
-      candidate.brief = codeBrief(input.task, frame, workspace.path, workspace.branch);
+      candidate.brief = codeBrief(input.task, taskType, workspace.path, workspace.branch);
 
       const driver = input.drivers.get(agent.provider);
       if (!driver) throw new Error(`No agent CLI driver for "${agent.provider}"`);
@@ -236,7 +236,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     log.info(`code run ${runId}: ${taskType.type}, rubric ${frame.rubric.sha256.slice(0, 12)}, ${input.agents.length} candidates from ${base.baseSha}`);
 
     const ids = candidateIds(input.agents);
-    const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i], frame)));
+    const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i], taskType)));
     return {
       version: 1,
       kind: 'code',

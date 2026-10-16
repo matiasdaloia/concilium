@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`codeBrief > should hold the bugfix playbook steps and verification verbatim, and the frozen rubric 1`] = `
+exports[`codeBrief > should hold the bugfix playbook steps and verification verbatim, and never the rubric 1`] = `
 "do the task
 
 ## Playbook: bugfix
@@ -13,17 +13,10 @@ Follow these steps in order. In your final message, list every step as done, or 
 
 ## Verification expected
 - A test that fails on the base and passes with the fix.
-- The existing tests still pass.
-
-## Rubric
-Your work will be judged on these criteria, fixed before you started (sha256 63cb2cc04a0c5110380c824445fecf30aea879698e9c32178c61916bf6f0d76f):
-- reproduced (weight 3, evidence: gate): A test reproduces the bug: it fails on the base and passes on the branch.
-- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
-- root-cause (weight 2, evidence: adversarial): The change fixes the cause, not a symptom, and holds against tests written by other candidates.
-- minimal (weight 1, evidence: judgment): The diff is the smallest change the evidence justifies."
+- The existing tests still pass."
 `;
 
-exports[`codeBrief > should hold the feature playbook steps and verification verbatim, and the frozen rubric 1`] = `
+exports[`codeBrief > should hold the feature playbook steps and verification verbatim, and never the rubric 1`] = `
 "do the task
 
 ## Playbook: feature
@@ -36,17 +29,10 @@ Follow these steps in order. In your final message, list every step as done, or 
 ## Verification expected
 - Tests for the new behavior.
 - The existing tests still pass.
-- The feature exercised through its real entry point.
-
-## Rubric
-Your work will be judged on these criteria, fixed before you started (sha256 8dbece0a7c3c17ae9376b5b4a02586112b2a96255f0ef49884d13c0603932046):
-- works (weight 3, evidence: gate): The feature does what the task asks, shown by tests through its real entry point.
-- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
-- edge-cases (weight 2, evidence: adversarial): It holds against edge-case tests written by other candidates.
-- fit (weight 1, evidence: judgment): It follows the codebase's existing patterns and keeps its boundaries clear."
+- The feature exercised through its real entry point."
 `;
 
-exports[`codeBrief > should hold the perf playbook steps and verification verbatim, and the frozen rubric 1`] = `
+exports[`codeBrief > should hold the perf playbook steps and verification verbatim, and never the rubric 1`] = `
 "do the task
 
 ## Playbook: perf
@@ -58,17 +44,10 @@ Follow these steps in order. In your final message, list every step as done, or 
 
 ## Verification expected
 - The same probe run on the base and on the branch, with both numbers.
-- The existing tests still pass.
-
-## Rubric
-Your work will be judged on these criteria, fixed before you started (sha256 a15ba13c903531e7125b3ebb70361049f9d7f750b435873fe6a5045aec8f6599):
-- measured-gain (weight 3, evidence: gate): The same probe shows an improvement from the base to the branch, with numbers.
-- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
-- same-results (weight 2, evidence: adversarial): Results stay the same under tests written by other candidates.
-- contained (weight 1, evidence: judgment): The optimization is contained and explained where it lives."
+- The existing tests still pass."
 `;
 
-exports[`codeBrief > should hold the prototype playbook steps and verification verbatim, and the frozen rubric 1`] = `
+exports[`codeBrief > should hold the prototype playbook steps and verification verbatim, and never the rubric 1`] = `
 "do the task
 
 ## Playbook: prototype
@@ -79,16 +58,10 @@ Follow these steps in order. In your final message, list every step as done, or 
 4. Finish with a decision and the evidence for it, not mergeable code.
 
 ## Verification expected
-- A written decision (DECISION.md) with the evidence from the variants that ran.
-
-## Rubric
-Your work will be judged on these criteria, fixed before you started (sha256 3a4ee4f7da3dd9aaffe1eaffea237cd2937a1d554bf6816625ccb11258d37d88):
-- decision (weight 3, evidence: judgment): The output names the decision and recommends one option.
-- evidence (weight 2, evidence: judgment): The recommendation rests on evidence from variants that actually ran.
-- comparable (weight 1, evidence: judgment): The variants can be compared side by side."
+- A written decision (DECISION.md) with the evidence from the variants that ran."
 `;
 
-exports[`codeBrief > should hold the refactor playbook steps and verification verbatim, and the frozen rubric 1`] = `
+exports[`codeBrief > should hold the refactor playbook steps and verification verbatim, and never the rubric 1`] = `
 "do the task
 
 ## Playbook: refactor
@@ -101,11 +74,5 @@ Follow these steps in order. In your final message, list every step as done, or 
 
 ## Verification expected
 - Characterization tests that pass on the base and on the branch.
-- No test changed to fit the new code.
-
-## Rubric
-Your work will be judged on these criteria, fixed before you started (sha256 559d4ffc896d0554dd4d567c89bbf4278fc0a83e12c928d11cc4039cb9b68bfc):
-- behavior-preserved (weight 3, evidence: gate): Characterization tests pass on the base and on the branch.
-- equivalence (weight 2, evidence: adversarial): No behavior change shows up under tests written by other candidates.
-- reader-load (weight 2, evidence: judgment): The code is easier to read: less code and fewer concepts."
+- No test changed to fit the new code."
 `;

@@ -101,9 +101,10 @@ describe('concilium code', () => {
     expect(record.taskType).toEqual({ type: 'feature', source: 'classifier', reason: 'no keyword matched, feature is the default' });
     expect(record.rubric).toMatchObject({ criteria: RUBRIC, source: 'framer', framer: 'claude' });
     expect(readFileSync(framerLog, 'utf8')).toContain('--permission-mode=plan');
+    // Candidates get the playbook, never the rubric.
     for (const c of record.candidates) {
       expect(c.brief!.task).toContain('## Playbook: feature');
-      expect(c.brief!.task).toContain(`sha256 ${record.rubric.sha256}`);
+      expect(c.brief!.task).not.toContain(record.rubric.sha256);
     }
 
     expect(claude).toMatchObject({ status: 'ok', branch: `concilium/${record.id}/claude`, committed: true, usage: { inputTokens: 10, outputTokens: 5 } });

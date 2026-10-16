@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
-import { freezeRubric, rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
+import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
 import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
@@ -98,14 +98,13 @@ function framerAndWriter(id: string, answer: string | null, order: string[], fil
 }
 
 describe('codeBrief', () => {
-  it.each(TASK_TYPES)('should hold the %s playbook steps and verification verbatim, and the frozen rubric', (type) => {
-    const rubric = freezeRubric(PLAYBOOKS[type].rubric, { source: 'playbook' }, new Date('2026-10-16T12:00:00Z'));
-    const brief = codeBrief('do the task', { taskType: { type, source: 'flag', reason: 'set with --type' }, rubric }, '/wt/claude', 'concilium/r/claude');
+  it.each(TASK_TYPES)('should hold the %s playbook steps and verification verbatim, and never the rubric', (type) => {
+    const brief = codeBrief('do the task', { type, source: 'flag', reason: 'set with --type' }, '/wt/claude', 'concilium/r/claude');
 
     for (const step of PLAYBOOKS[type].steps) expect(brief.task).toContain(step);
     for (const line of PLAYBOOKS[type].verification) expect(brief.task).toContain(line);
-    for (const c of rubric.criteria) expect(brief.task).toContain(c.description);
-    expect(brief.task).toContain(rubric.sha256);
+    for (const c of PLAYBOOKS[type].rubric) expect(brief.task).not.toContain(c.description);
+    expect(brief.task).not.toMatch(/rubric|sha256/i);
     expect(brief.task).toMatchSnapshot();
   });
 });
@@ -190,7 +189,7 @@ describe('runCodeCandidates', () => {
     expect(git(repo, 'status', '--porcelain')).toBe(' M sum.js');
   });
 
-  it('should freeze a rubric tailored by the first agent before any candidate starts, and give it to every candidate', async () => {
+  it('should freeze a rubric tailored by the first agent before any candidate starts, and keep it from every candidate', async () => {
     const order: string[] = [];
     const drivers = new Map([
       ['claude', framerAndWriter('claude', `\`\`\`json\n${JSON.stringify({ criteria: TAILORED })}\n\`\`\``, order)],
@@ -222,8 +221,8 @@ describe('runCodeCandidates', () => {
 
     for (const candidate of record.candidates) {
       expect(candidate.brief!.task).toContain(PLAYBOOKS.bugfix.steps[0]);
-      expect(candidate.brief!.task).toContain(`sha256 ${record.rubric.sha256}`);
-      expect(candidate.brief!.task).toContain('- repro (weight 3, evidence: gate): A test fails on empty input before the fix.');
+      expect(candidate.brief!.task).not.toContain(record.rubric.sha256);
+      for (const c of TAILORED) expect(candidate.brief!.task).not.toContain(c.description);
     }
   });
 
@@ -246,7 +245,7 @@ describe('runCodeCandidates', () => {
     expect(rejected.taskType.type).toBe('perf');
     expect(rejected.rubric).toMatchObject({ criteria: PLAYBOOKS.perf.rubric, source: 'playbook', framer: 'claude' });
     expect(rejected.rubric.note).toContain('must hold 3 to 6 criteria, got 2');
-    expect(rejected.candidates[0].brief!.task).toContain(`sha256 ${rubricHash(PLAYBOOKS.perf.rubric)}`);
+    expect(rejected.candidates[0].brief!.task).not.toContain(rubricHash(PLAYBOOKS.perf.rubric));
   });
 
   it('should save the record under runs/<id>/run.json', async () => {

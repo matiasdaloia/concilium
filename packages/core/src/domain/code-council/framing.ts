@@ -10,9 +10,12 @@ import type { FrozenRubric } from './rubric.js';
 /** What every candidate of a run shares, fixed before the first one starts. */
 export type CodeFrame = { taskType: TaskTypeChoice; rubric: FrozenRubric };
 
-/** The task, then the type's playbook steps and verification verbatim, then the frozen rubric. */
-export function framedTask(task: string, frame: CodeFrame): string {
-  const playbook = PLAYBOOKS[frame.taskType.type];
+/**
+ * The task, then the type's playbook steps and verification verbatim.
+ * Candidates never see the rubric: it takes a task type, not a frame, so the rubric cannot reach a brief.
+ */
+export function framedTask(task: string, taskType: TaskTypeChoice): string {
+  const playbook = PLAYBOOKS[taskType.type];
   return [
     task,
     '',
@@ -22,9 +25,5 @@ export function framedTask(task: string, frame: CodeFrame): string {
     '',
     '## Verification expected',
     ...playbook.verification.map((line) => `- ${line}`),
-    '',
-    '## Rubric',
-    `Your work will be judged on these criteria, fixed before you started (sha256 ${frame.rubric.sha256}):`,
-    ...frame.rubric.criteria.map((c) => `- ${c.name} (weight ${c.weight}, evidence: ${c.evidence}): ${c.description}`),
   ].join('\n');
 }
