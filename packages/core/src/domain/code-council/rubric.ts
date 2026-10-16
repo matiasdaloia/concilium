@@ -90,18 +90,27 @@ export function rubricPrompt(task: string, playbook: Playbook): string {
   ].join('\n');
 }
 
-/** Reads the criteria out of a framer's answer: a JSON object (`{"criteria": [...]}`) or array, bare or in a code fence. */
-export function parseRubricAnswer(text: string): RubricCriterion[] {
+/** The JSON object or array in a CLI's answer, bare or in a code fence. Throws `holds no JSON` or `is not valid JSON`. */
+export function jsonFromAnswer(text: string): unknown {
   const fenced = /```(?:json)?\s*\n([\s\S]*?)```/.exec(text)?.[1];
   const body = (fenced ?? text).trim();
   const start = body.search(/[[{]/);
   const end = Math.max(body.lastIndexOf('}'), body.lastIndexOf(']'));
-  if (start < 0 || end < start) throw new RubricValidationError(['answer: holds no JSON']);
+  if (start < 0 || end < start) throw new Error('holds no JSON');
+  try {
+    return JSON.parse(body.slice(start, end + 1));
+  } catch {
+    throw new Error('is not valid JSON');
+  }
+}
+
+/** Reads the criteria out of a framer's answer: a JSON object (`{"criteria": [...]}`) or array, bare or in a code fence. */
+export function parseRubricAnswer(text: string): RubricCriterion[] {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(body.slice(start, end + 1));
-  } catch {
-    throw new RubricValidationError(['answer: is not valid JSON']);
+    parsed = jsonFromAnswer(text);
+  } catch (err) {
+    throw new RubricValidationError([`answer: ${(err as Error).message}`]);
   }
   const criteria = Array.isArray(parsed) ? parsed : (parsed as { criteria?: unknown } | null)?.criteria;
   return parseRubricCriteria(criteria);

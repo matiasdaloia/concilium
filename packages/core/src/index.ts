@@ -86,7 +86,7 @@ export type { DeliberationInput, DeliberationDeps } from './services/deliberatio
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
 export type { CodeFrame } from './domain/code-council/framing.js';
-export { framedTask } from './domain/code-council/framing.js';
+export { framedTask, missingPlaybookSteps } from './domain/code-council/framing.js';
 export { runCodeCandidates, codeBrief, newRunId, CODE_TIMEOUT_MS, FRAME_TIMEOUT_MS } from './services/code-service.js';
 export type { CodeAgent, CodeCandidate, CodeRunRecord, CodeRunInput } from './services/code-service.js';
 export type { Gate, GatePlan, GateResult, GateVerdict, InstallStep, StepResult } from './domain/verification/gates.js';
@@ -98,6 +98,12 @@ export { ADVERSARIAL_MANIFEST, MAX_TESTS_PER_ADVERSARY, adversaryBrief, classify
 export { GateRunner, type LaneResult } from './adapters/gate-runner.js';
 export { runAdversarialRound } from './services/adversarial-service.js';
 export type { Adversary, AdversarialCandidate, AdversarialInput, AdversarialRound, AdversarialRun } from './services/adversarial-service.js';
+export type { CandidateReport, EvidenceKey, RankEntry, RankInput, Ranking, ReportEvidence, WorkerStatus } from './domain/code-council/ranking.js';
+export { compareEvidence, contends, rankCandidates, tieGroups } from './domain/code-council/ranking.js';
+export type { JudgeChoice, JudgePack, JudgeScore, Judgment } from './domain/code-council/judging.js';
+export { MAX_SCORE, JudgeValidationError, judgePrompt, parseJudgeAnswer, pickJudge } from './domain/code-council/judging.js';
+export { JUDGE_DIFF_LIMIT, judgeTie, rankRun, reportCandidate } from './services/ranking-service.js';
+export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';

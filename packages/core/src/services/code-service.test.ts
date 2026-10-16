@@ -517,3 +517,163 @@ describe('runCodeCandidates with adversarial', () => {
     expect(git(repo, 'branch', '--list', 'concilium/adv3/adv-*')).toBe('');
   });
 });
+
+describe('runCodeCandidates ranking', () => {
+  const SUM_TEST = "if (require('./sum.js')(1, 2) !== 3) throw new Error('1 + 2');\n";
+  /** Lists the four feature playbook steps, so the report has no playbook finding. */
+  const STEPS = '1. done\n2. done\n3. done\n4. skipped: no user surface';
+
+  /** A repo whose only gate, `test`, passes on the base. */
+  function seedTest(): string {
+    writeFileSync(join(repo, 'sum.test.js'), SUM_TEST);
+    mkdirSync(join(repo, '.concilium'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), 'gates:\n  test: node sum.test.js\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'test gate');
+    return git(repo, 'rev-parse', 'HEAD');
+  }
+
+  /** A candidate that fails the framing run (so the rubric is the playbook's), changes files (null deletes) and ends with `finalText`. */
+  function agent(id: string, files: Record<string, string | null>, finalText = STEPS): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        if (brief.mode === 'plan') return [{ type: 'error', message: 'no framing' }];
+        for (const [name, content] of Object.entries(files)) {
+          if (content === null) rmSync(join(brief.cwd, name));
+          else writeFileSync(join(brief.cwd, name), content);
+        }
+        return [{ type: 'text', text: finalText }];
+      },
+    });
+  }
+
+  /** A judge that scores every criterion 9 for the candidate whose section of the prompt holds `prefer`, 4 for the others. */
+  function judge(id: string, prefer: string, prompts: string[]): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+        prompts.push(prompt);
+        const scores = prompt.split('## Candidate ').slice(1).flatMap((section) => PLAYBOOKS.feature.rubric.map((c) => ({
+          candidate: section[0], criterion: c.name, score: section.includes(prefer) ? 9 : 4, reason: `${c.name}: see the diff`,
+        })));
+        return [{ type: 'text', text: JSON.stringify({ scores }) }];
+      },
+    });
+  }
+
+  const NUMBER = 'module.exports = (a, b) => Number(a) + Number(b);\n';
+  const UNARY = 'module.exports = (a, b) => +a + +b;\n';
+  const TASK = 'make sum accept numeric strings';
+
+  it('should rank a clear evidence winner without a judge and report each candidate with its SHAs and evidence', async () => {
+    const baseSha = seedTest();
+    const prompts: string[] = [];
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER })],
+      ['codex', agent('codex', { 'sum.js': 'module.exports = (a, b) => a - b;\n' }, 'all done')],
+      ['gemini', judge('gemini', NUMBER, prompts)],
+      ['opencode', agent('opencode', {})],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank1', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }, { provider: 'opencode' }],
+    });
+    const [claude, codex, opencode] = record.candidates;
+
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.status])).toEqual([[1, 'claude', 'PASS'], [2, 'codex', 'ISSUES'], [3, 'opencode', 'BLOCKED']]);
+    expect(record.ranking).toMatchObject({ winner: 'claude', reason: 'best on the evidence', judgments: [] });
+    expect(prompts).toEqual([]);
+
+    expect(claude.report).toEqual({
+      status: 'PASS', branch: 'concilium/rank1/claude', baseSha, headSha: claude.headSha, reason: 'every check passed',
+      evidence: [
+        { kind: 'agent', ok: true, detail: 'the agent finished' },
+        { kind: 'gate', ok: true, detail: 'test: pass', sha: claude.headSha },
+        { kind: 'playbook', ok: true, detail: 'every playbook step listed as done or skipped' },
+      ],
+    });
+    // The new gate failure, and the M3.1 check: steps the final message does not acknowledge are an issue.
+    expect(codex.report).toMatchObject({ status: 'ISSUES', headSha: codex.headSha });
+    expect(codex.report!.reason).toBe('test: fail, passes on the base; the final message does not list playbook step 1, 2, 3, 4 as done or skipped');
+    expect(codex.report!.evidence).toContainEqual({ kind: 'gate', ok: false, detail: 'test: fail, passes on the base', sha: codex.headSha });
+    expect(opencode.report).toMatchObject({ status: 'BLOCKED', reason: 'made no change' });
+  });
+
+  it('should send an exact tie to a judge of another family, blind, and let its scores order only the tie', async () => {
+    seedTest();
+    const prompts: string[] = [];
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+      ['gemini', judge('gemini', UNARY, prompts)],
+    ]);
+    const judged: string[] = [];
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank2', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+      onJudgeDone: (j) => judged.push(`${j.judge} ${j.status}`),
+    });
+
+    expect(judged).toEqual(['gemini PASS']);
+    const [judgment] = record.ranking.judgments;
+    expect(judgment).toMatchObject({
+      status: 'PASS', candidates: ['claude', 'codex'], judge: 'gemini', crossFamily: true, rubricSha256: record.rubric.sha256,
+      totals: { claude: 32, codex: 72 }, notes: [],
+    });
+    expect(judgment.scores).toContainEqual({ candidateId: 'codex', criterion: 'fit', score: 9, reason: 'fit: see the diff' });
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.judgeTotal])).toEqual([[1, 'codex', 72], [2, 'claude', 32]]);
+    expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
+
+    // The judge ran read-only on the frozen rubric, the diffs and the evidence, and never learned who wrote what.
+    const [run] = drivers.get('gemini')!.runs;
+    expect(run.brief).toMatchObject({ mode: 'plan', allowedActions: ['read'] });
+    expect(prompts[0]).toContain(record.rubric.sha256);
+    expect(prompts[0]).toContain('+module.exports = (a, b) => +a + +b;');
+    expect(prompts[0]).toContain('- ok, gate: test: pass');
+    expect(prompts[0]).not.toMatch(/claude|codex|anthropic|openai/i);
+  });
+
+  it('should block the judge when the rubric no longer matches its frozen hash, and name no winner for the tie', async () => {
+    seedTest();
+    const prompts: string[] = [];
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+      ['gemini', judge('gemini', UNARY, prompts)],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank3', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+      // The rubric changes after it was frozen.
+      onFramed: (frame) => { frame.rubric.criteria[0].weight = 99; },
+    });
+
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'BLOCKED', judge: null, scores: [], totals: {} })]);
+    expect(record.ranking.judgments[0].reason).toMatch(/^the rubric does not match its frozen sha256 [0-9a-f]{12} \(its criteria hash to [0-9a-f]{12}\)$/);
+    expect(prompts).toEqual([]);
+    expect(record.ranking.order.map((e) => [e.rank, e.candidateId])).toEqual([[1, 'claude'], [1, 'codex']]);
+    expect(record.ranking.winner).toBeNull();
+    expect(record.ranking.reason).toContain('no winner: claude, codex tie on the evidence and the judge is BLOCKED: the rubric does not match');
+  });
+
+  it('should name no winner when every candidate is disqualified', async () => {
+    seedTest();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER, 'sum.test.js': null })],
+      ['codex', agent('codex', { 'sum.js': UNARY, 'sum.test.js': `const it = { skip: () => {} };\nit.skip('adds', () => {});\n${SUM_TEST}` })],
+      ['gemini', judge('gemini', UNARY, [])],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank4', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+
+    expect(record.candidates.map((c) => c.verification!.disqualified)).toEqual([true, true]);
+    expect(record.candidates.map((c) => c.report!.status)).toEqual(['ISSUES', 'ISSUES']);
+    expect(record.candidates[0].report!.reason).toMatch(/^disqualified; .*deleted the test file sum\.test\.js/);
+    expect(record.ranking).toMatchObject({ winner: null, reason: 'no winner: every candidate is blocked or disqualified', judgments: [] });
+    expect(drivers.get('gemini')!.runs).toEqual([]);
+  });
+});

@@ -54,10 +54,22 @@ const ADVERSARIAL_TESTS = {
  * validation and a test and succeeds; `codex` writes half a change, deletes `sum.test.js` and exits 1. Asked for the rubric (its cwd holds
  * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual. As an adversary (its
  * worktree is `adv-<family>`), each writes its test from ADVERSARIAL_TESTS and the manifest; `codex` then exits 1.
+ * Both answer detection as installed and signed in. Asked to judge, `claude` scores the candidate whose diff
+ * holds `TypeError` 9 on every criterion and the others 3.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
 const fs = require('node:fs');
+const args = process.argv.slice(2).join(' ');
+if (args === '--version') { console.log('1.0.0'); process.exit(0); }
+if (args === 'auth status') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max' })); process.exit(0); }
+if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
+const prompt = fs.existsSync('council-prompt.md') ? fs.readFileSync('council-prompt.md', 'utf8') : '';
+if (${JSON.stringify(cli)} === 'claude' && prompt.startsWith('You are judging')) {
+  const scores = prompt.split('## Candidate ').slice(1).flatMap((s) => ${JSON.stringify(RUBRIC.map((c) => c.name))}.map((criterion) => ({ candidate: s[0], criterion, score: s.includes('TypeError') ? 9 : 3, reason: 'read the diff' })));
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ scores }) }));
+  process.exit(0);
+}
 if (require('node:path').basename(process.cwd()).startsWith('adv-')) {
   fs.writeFileSync(${JSON.stringify(`${cli}-adv.test.js`)}, ${JSON.stringify(ADVERSARIAL_TESTS[cli])});
   fs.writeFileSync('concilium-adversarial.json', JSON.stringify({ tests: [{ files: [${JSON.stringify(`${cli}-adv.test.js`)}], specClause: 'reject non-numbers' }] }));
@@ -147,7 +159,22 @@ describe('concilium code', () => {
     const gc = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'gc', '--run', record.id, '--dry-run'], { cwd: repo, env, encoding: 'utf8' });
     // Two candidates, plus the base the gates ran on.
     expect(gc.stdout).toContain('would remove 3 worktrees, would delete 3 branches');
-  }, 30_000);
+
+    // No gate tells them apart, so a judge orders them. Only claude and codex are installed, the tied families: claude judges, with a note.
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({
+      status: 'PASS', judge: 'claude', crossFamily: false, candidates: ['claude', 'codex'], totals: { claude: 54, codex: 18 },
+      notes: ['no CLI outside the tied families (anthropic, openai) is usable, so claude judges'],
+    })]);
+    expect(record.ranking).toMatchObject({ winner: 'claude', reason: 'tied on the evidence, ordered by the judge' });
+    expect(claude.report).toMatchObject({ status: 'ISSUES', baseSha: head, headSha: claude.headSha, branch: claude.branch });
+    expect(claude.report!.reason).toBe('the final message does not list playbook step 1, 2, 3, 4 as done or skipped');
+
+    const unjudged = code('--json', '--no-judge', '--agents', 'claude,codex', 'add input validation to sum with a test');
+    expect(unjudged.status).toBe(0);
+    expect((JSON.parse(unjudged.stdout) as CodeRunRecord).ranking).toMatchObject({
+      winner: null, judgments: [], reason: 'no winner: claude, codex tie on the evidence and no judge ran',
+    });
+  }, 60_000);
 
   it('should print a summary with how to inspect and clean up', () => {
     const result = code('--agents', 'claude', '--type', 'bugfix', 'add input validation to sum');
@@ -164,6 +191,9 @@ describe('concilium code', () => {
     expect(result.stdout).toContain(`diff ${git(repo, 'rev-parse', 'HEAD').slice(0, 12)}..concilium/${runId}/claude`);
     expect(result.stdout).toContain(`concilium gc --run ${runId}`);
     expect(result.stderr).toContain('claude: ok');
+    expect(result.stdout).toMatch(/Rank\s+Candidate\s+Report\s+New failures\s+Survival\s+Penalties\s+Judge\n\s+1\s+claude\s+ISSUES\s+0\s+-\s+0\s+-\n/);
+    expect(result.stdout).toContain('Winner: claude (best on the evidence)');
+    expect(result.stdout).toMatch(/Reports:\n {4}claude: ISSUES at [0-9a-f]{12}, the final message does not list playbook step 1, 2, 3, 4, 5 as done or skipped\n/);
   }, 30_000);
 
   it('should refuse a dirty checkout and exit 1 when every candidate fails', () => {
@@ -210,6 +240,10 @@ describe('concilium code', () => {
     expect(result.stdout).toMatch(/test\s+pass\s+pass\s+fail \(new\)\n/);
     expect(result.stdout).toMatch(/lint\s+fail\s+fail \(baseline\)\s+fail \(baseline\)\n/);
     expect(result.stdout).toContain('Integrity:\n    codex: disqualified, deleted the test file sum.test.js');
+    expect(result.stdout).toMatch(/1\s+claude\s+ISSUES\s+0\s+1\/1\s+0\s+-\n\s+2\s+codex\s+ISSUES \(disqualified\)\s+1\s+0\/1\s+0\s+-\n/);
+    expect(result.stdout).toContain('codex: ISSUES at');
+    expect(result.stdout).toContain('disqualify: deleted the test file sum.test.js; survived 0/1 adversarial tests by other families, failed anthropic-1;');
+    expect(result.stdout).toContain('Winner: claude (best on the evidence)');
 
     const skipped = code('--json', '--no-verify', '--agents', 'claude', 'add input validation to sum');
     expect(skipped.status).toBe(0);

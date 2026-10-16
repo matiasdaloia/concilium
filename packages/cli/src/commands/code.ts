@@ -24,6 +24,7 @@ import {
   type CodeFrame,
   type CodeRunRecord,
   type GateVerdict,
+  type Judgment,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
 
@@ -35,6 +36,7 @@ interface CodeOptions {
   timeout?: string;
   verify: boolean;
   adversarial: boolean;
+  judge: boolean;
   json?: boolean;
 }
 
@@ -130,6 +132,39 @@ function printAdversarial(record: CodeRunRecord): void {
   }
 }
 
+function judgmentLine(j: Judgment): string {
+  const who = j.judge ? `${j.judge}${j.crossFamily ? ' (another family)' : ''}` : 'no judge';
+  return `Judge ${who} on ${j.candidates.join(', ')}: ${j.status}, ${j.reason}`;
+}
+
+function printRanking(record: CodeRunRecord): void {
+  const { ranking } = record;
+  console.log('\n  Ranking (disqualified last, then new gate failures, adversarial survival, integrity penalties; a judge orders exact ties):');
+  printTable([
+    ['Rank', 'Candidate', 'Report', 'New failures', 'Survival', 'Penalties', 'Judge'],
+    ...ranking.order.map((e) => [
+      String(e.rank),
+      e.candidateId,
+      e.key.disqualified ? `${e.status} (disqualified)` : e.status,
+      String(e.key.newFailures),
+      e.key.counted ? `${e.key.survived}/${e.key.counted}` : '-',
+      String(e.key.penalties),
+      e.judgeTotal === null ? '-' : String(e.judgeTotal),
+    ]),
+  ], '    ');
+  for (const j of ranking.judgments) {
+    console.log(`    ${judgmentLine(j)}`);
+    for (const note of j.notes) console.log(`      ${note}`);
+  }
+  console.log(ranking.winner ? `\n  Winner: ${ranking.winner} (${ranking.reason})` : `\n  No winner: ${ranking.reason.replace(/^no winner: /, '')}`);
+
+  console.log('\n  Reports:');
+  for (const c of record.candidates) {
+    if (!c.report) continue;
+    console.log(`    ${c.candidateId}: ${c.report.status} at ${c.report.headSha?.slice(0, 12) ?? 'no head'}, ${c.report.reason}`);
+  }
+}
+
 function summaryRows(candidates: CodeCandidate[]): string[][] {
   return [
     ['Candidate', 'Status', 'Verified', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
@@ -155,6 +190,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   printTable(summaryRows(record.candidates));
   printVerification(record);
   printAdversarial(record);
+  printRanking(record);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
   if (failed.length > 0) {
@@ -184,6 +220,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--timeout <minutes>', `Wall-clock limit per candidate and per adversary in minutes (default: ${CODE_TIMEOUT_MS / 60_000})`)
     .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish; also skips the adversarial tests`)
     .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
+    .option('--no-judge', 'Leave candidates tied on the evidence tied instead of asking a judge CLI from another model family to order them')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -232,6 +269,8 @@ export function registerCodeCommand(program: Command): void {
           adversarial: opts.adversarial,
           onAdversaryDone: (a) => progress(`  ${a.status === 'ok' ? '✓' : '✗'} ${a.lane}: ${a.status} in ${formatDuration(a.durationMs)}`),
           onTestDone: (testId, lane, cell) => progress(`  ${cell === 'pass' ? '✓' : '✗'} ${testId} on ${lane}: ${cell}`),
+          judge: opts.judge,
+          onJudgeDone: (j) => progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`),
         });
         savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

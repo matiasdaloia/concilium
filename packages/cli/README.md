@@ -212,7 +212,13 @@ Then comes the adversarial round (skip it with `--no-adversarial`; it needs the 
 
 A candidate's survival is how many of the counted tests by other families it passes; its own family's tests carry no weight for it. The test gate runs the tests only if its command picks up new test files (a runner such as `npm test` with vitest or jest does; `node sum.test.js` does not).
 
-It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, the adversaries, the survival matrix with each test's validity and clause, each candidate's survival, and the commands to inspect each branch and clean up. The run record is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is ranked or merged yet. It exits 1 when no candidate finished `ok`.
+Last, every candidate gets a report and the candidates are ranked on the evidence:
+
+- **Report.** `PASS`, `ISSUES` or `BLOCKED`, with the branch, the base SHA, the head SHA, the evidence (how the agent ended, each gate's verdict at its SHA, the integrity findings, the survival, the playbook steps) and a short reason. `BLOCKED` means there is nothing to judge: no branch head, or no change. `ISSUES` means some evidence is against it, including a final message that does not list every playbook step as done or skipped (a line starting with the step's number and saying `done` or `skipped`). Anything else is `PASS`. What the agent says about its own work is never evidence.
+- **Ranking.** Disqualified candidates go last (blocked ones after them), then fewer new gate failures, then a higher survival rate (no counted test counts as surviving all), then fewer integrity penalties. Only an exact tie between candidates that can win goes to a judge (skip it with `--no-judge`): one read-only run of an installed, signed-in CLI whose model family wrote none of the tied candidates, on its own default model. When every usable CLI is of a tied family, the first one judges and the run says so. Before it runs, the rubric must still match the sha256 it was frozen with; otherwise the judge is `BLOCKED`. The judge sees the task, the frozen rubric, and each tied candidate under a letter with its diff against the base and its evidence, never which agent wrote it. It answers JSON with a 0 to 10 score and a one-line reason per candidate and criterion; a missing, duplicate or out-of-range score blocks it. The weighted totals order the tie and nothing else: the judge never moves a candidate past one that is better on the evidence.
+- **Winner.** The candidate ranked first alone, unless it is blocked or disqualified. Otherwise there is no winner, with the reason (every candidate blocked or disqualified, or a tie at the top that no judge ordered).
+
+It prints one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, the adversaries, the survival matrix with each test's validity and clause, each candidate's survival, the ranking with the judge's totals, the winner, each candidate's report, and the commands to inspect each branch and clean up. The run record (with `report` on each candidate and `ranking` on the run) is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`. Nothing is merged yet. It exits 1 when no candidate finished `ok`.
 
 ```
 concilium code [options] [task...]
@@ -227,6 +233,7 @@ concilium code [options] [task...]
 | `--timeout <minutes>` | Wall-clock limit per candidate and per adversary (default: 30) |
 | `--no-verify` | Skip the gates and the integrity checks after the candidates finish, and with them the adversarial round |
 | `--no-adversarial` | Skip the adversarial round (one adversary per model family writes tests that run on the base and every candidate) |
+| `--no-judge` | Leave candidates tied on the evidence tied, instead of asking a judge CLI from another model family to order them |
 | `--json` | Print the run record as JSON to stdout (progress and errors go to stderr) |
 
 **Examples:**
@@ -250,6 +257,9 @@ concilium code "fix the flaky retry test" --json | jq '.candidates[] | {candidat
 
 # Each test's validity and survival, and how each candidate fared
 concilium code "sum() must reject non-numbers" --json | jq '{tests: [.adversarial.tests[] | {id, validity, specClause}], survival: .adversarial.survival}'
+
+# The winner, and each candidate's report
+concilium code "sum() must reject non-numbers" --json | jq '{winner: .ranking.winner, reason: .ranking.reason, reports: [.candidates[] | {candidateId, status: .report.status, headSha: .report.headSha, reason: .report.reason}]}'
 
 # Gates, no adversarial round
 concilium code "rename the parser module" --type refactor --no-adversarial

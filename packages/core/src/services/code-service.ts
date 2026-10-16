@@ -7,6 +7,8 @@
 import { randomBytes } from 'node:crypto';
 import { framedTask, type CodeFrame } from '../domain/code-council/framing.js';
 import { classifyTask, PLAYBOOKS, type TaskType, type TaskTypeChoice } from '../domain/code-council/playbooks.js';
+import type { Judgment } from '../domain/code-council/judging.js';
+import type { CandidateReport, Ranking } from '../domain/code-council/ranking.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
 import type { GateResult } from '../domain/verification/gates.js';
@@ -20,6 +22,7 @@ import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
 import { runAdversarialRound, type AdversarialInput, type AdversarialRound } from './adversarial-service.js';
+import { rankRun } from './ranking-service.js';
 import { runDriver } from './run-driver.js';
 import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
@@ -56,6 +59,8 @@ export type CodeCandidate = {
   finalText: string;
   /** Gates and integrity checks against the base. Absent when the run was not verified, null when there was no head to check. */
   verification?: CandidateVerification | null;
+  /** PASS, ISSUES or BLOCKED from the evidence, with the SHAs it is about. Set once the run is ranked. */
+  report?: CandidateReport;
 };
 
 export type CodeRunRecord = {
@@ -79,6 +84,8 @@ export type CodeRunRecord = {
   verification?: RunVerification;
   /** Tier 2 adversarial tests and their survival matrix. Absent when not asked for. */
   adversarial?: AdversarialRound;
+  /** Evidence first, a judge only for exact ties, and the winner if there is one. */
+  ranking: Ranking;
 };
 
 export type CodeRunInput = {
@@ -99,6 +106,8 @@ export type CodeRunInput = {
   verify?: boolean;
   /** After verifying, one adversary per candidate family writes tests, run on the base and every candidate. Needs `verify`. */
   adversarial?: boolean;
+  /** Send candidates tied on the evidence to one read-only judge CLI, from another model family when one is usable. */
+  judge?: boolean;
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
@@ -106,6 +115,7 @@ export type CodeRunInput = {
   onGateDone?: (lane: string, result: GateResult) => void;
   onAdversaryDone?: AdversarialInput['onAdversaryDone'];
   onTestDone?: AdversarialInput['onTestDone'];
+  onJudgeDone?: (judgment: Judgment) => void;
 };
 
 /** A run id that sorts by start time and is a safe directory and ref component: `20261016T141015-a1b2c3`. */
@@ -283,6 +293,12 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
         ? await attack(input, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
         : { skipped: 'the gates did not run', testCommand: null, adversaries: [], tests: [], matrix: {}, survival: {}, runs: [] };
     }
+
+    const ranking = await rankRun({
+      task: input.task, repoDir, baseSha: base.baseSha, type: taskType.type, rubric: frame.rubric, candidates, adversarial,
+      judge: input.judge ?? false, drivers: input.drivers, signal, onJudgeDone: input.onJudgeDone,
+    });
+    log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
     return {
       version: 1,
       kind: 'code',
@@ -299,6 +315,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       candidates,
       ...(verification ? { verification } : {}),
       ...(adversarial ? { adversarial } : {}),
+      ranking,
     };
   } finally {
     await input.workspace.finishRun({ repoDir, runId });
