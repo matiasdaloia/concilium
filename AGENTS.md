@@ -60,7 +60,7 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 
 Agent providers are listed once, in the `PROVIDERS` registry (`packages/core/src/domain/agent/providers.ts`), with a factory per id in `services/create-concilium.ts`.
 
-The `HeadlessCliDriver` port (`packages/core/src/ports/headless-cli-driver.ts`) is the replacement being built for `AgentProvider`: one driver per installed agent CLI (`adapters/cli/cli-drivers.ts`), a versioned `Brief` in and a versioned `Report` out (`domain/driver/`), processes spawned through `adapters/cli/subprocess.ts`, and `FakeCliDriver` for tests. Drivers only use the CLI's own login and never read credential files (see `docs/research/subscription-tos.md`). So far only `detect()` is implemented, used by `concilium doctor`.
+The `HeadlessCliDriver` port (`packages/core/src/ports/headless-cli-driver.ts`) is the replacement being built for `AgentProvider`: one driver per installed agent CLI (`adapters/cli/cli-drivers.ts`), a versioned `Brief` in and a versioned `Report` out (`domain/driver/`), processes spawned through `adapters/cli/subprocess.ts`, and `FakeCliDriver` for tests. Drivers only use the CLI's own login and never read credential files (see `docs/research/subscription-tos.md`). `detect()` works for every CLI and is used by `concilium doctor`. `run()` works for Claude Code (`adapters/cli/claude-code.ts`: `claude -p --output-format=stream-json`, plan briefs in plan mode, only the tools of the brief's allowed actions); it is not wired into the council yet (M1.6).
 
 When modifying deliberation logic, prompts, or ranking — work in `@concilium/core`. When modifying terminal output or CLI flags — work in `@concilium/cli`. When modifying the GUI — work in `desktop/`.
 
