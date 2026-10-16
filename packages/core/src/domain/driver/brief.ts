@@ -21,6 +21,12 @@ export type Brief = {
   allowedActions: AllowedAction[];
 };
 
+/** The prompt a CLI gets for a brief: the task, then its constraints as a list. */
+export function briefPrompt(brief: Brief): string {
+  if (brief.constraints.length === 0) return brief.task;
+  return `${brief.task}\n\nConstraints:\n${brief.constraints.map((c) => `- ${c}`).join('\n')}`;
+}
+
 export class BriefValidationError extends Error {
   constructor(readonly problems: string[]) {
     super(`Invalid brief: ${problems.join('; ')}`);
