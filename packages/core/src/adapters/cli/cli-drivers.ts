@@ -10,6 +10,7 @@ import type { CliAuth, CliDetection, DriverRunOptions, HeadlessCliDriver } from 
 import { runClaudeCode } from './claude-code.js';
 import { runCodex } from './codex.js';
 import { runGemini } from './gemini.js';
+import { runOpenCode } from './opencode.js';
 import { captureSubprocess } from './subprocess.js';
 
 export const HEADLESS_CLI_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
@@ -77,18 +78,18 @@ type CliDefinition = {
   command: string;
   /** A non-secret status command and its parser, or a check of the environment. */
   auth: { args: string[]; parse: (out: StatusOutput) => AuthStatus } | { fromEnv: (env: NodeJS.ProcessEnv) => AuthStatus };
-  /** The CLI's one-shot headless run. Missing until that CLI's driver lands. */
-  run?: typeof runClaudeCode;
+  /** The CLI's one-shot headless run. */
+  run: typeof runClaudeCode;
 };
 
 const DEFINITIONS: Record<HeadlessCliId, CliDefinition> = {
   claude: { id: 'claude', command: 'claude', auth: { args: ['auth', 'status'], parse: parseClaudeAuthStatus }, run: runClaudeCode },
   codex: { id: 'codex', command: 'codex', auth: { args: ['login', 'status'], parse: parseCodexLoginStatus }, run: runCodex },
   gemini: { id: 'gemini', command: 'gemini', auth: { fromEnv: geminiAuthFromEnv }, run: runGemini },
-  opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList } },
+  opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList }, run: runOpenCode },
 };
 
-/** Drives an installed agent CLI. `run` works for Claude Code, Codex and Gemini CLI so far; OpenCode arrives in M1.5. */
+/** Drives an installed agent CLI: `detect` and a one-shot headless `run`. */
 export class CliDriver implements HeadlessCliDriver {
   readonly id: HeadlessCliId;
 
@@ -117,7 +118,6 @@ export class CliDriver implements HeadlessCliDriver {
 
   async *run(brief: Brief, opts: DriverRunOptions): AsyncGenerator<NormalizedEvent> {
     const { command, run } = this.definition;
-    if (!run) throw new Error(`${this.id}: headless run is not implemented yet`);
     yield* run({ command, env: this.env, brief: parseBrief(brief), opts });
   }
 }
