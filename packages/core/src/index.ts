@@ -41,12 +41,13 @@ export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
 export type { SecretStore } from './ports/secret-store.js';
 export type { DeliberationEvents } from './ports/deliberation-events.js';
 export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from './ports/headless-cli-driver.js';
-export type { WorkspaceManager, Workspace, RunBase, GcOptions, GcRunResult } from './ports/workspace.js';
+export type { WorkspaceManager, Workspace, RunBase, GcOptions, GcRunResult, DiffStat } from './ports/workspace.js';
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
 export { JsonRunRepository } from './adapters/json-run-repository.js';
 export { JsonConfigStore } from './adapters/json-config-store.js';
+export { JsonCodeRunStore } from './adapters/json-code-run-store.js';
 export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
 export {
   GitWorktreeWorkspace,
@@ -69,6 +70,8 @@ export { DeliberationService } from './services/deliberation-service.js';
 export type { DeliberationInput, DeliberationDeps } from './services/deliberation-service.js';
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
+export { runCodeCandidates, codeBrief, newRunId, CODE_TIMEOUT_MS } from './services/code-service.js';
+export type { CodeAgent, CodeCandidate, CodeRunRecord, CodeRunInput } from './services/code-service.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
