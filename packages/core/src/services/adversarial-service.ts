@@ -25,7 +25,7 @@ import {
   type SurvivalCell,
   type SurvivalMatrix,
 } from '../domain/verification/adversarial.js';
-import type { GatePlan, StepResult } from '../domain/verification/gates.js';
+import type { Gate, GatePlan, StepResult } from '../domain/verification/gates.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { WorkspaceManager } from '../ports/workspace.js';
 import { GateRunner } from '../adapters/gate-runner.js';
@@ -126,6 +126,19 @@ function place(dir: string, rel: string, content: Buffer): () => void {
   };
 }
 
+/**
+ * Runs one adversarial test under the test gate in `dir`, which has `sha` checked out: its files, read from `from`
+ * (the adversary's worktree), are copied in for the run and removed after, so no branch changes.
+ */
+export async function runTestInLane(runner: GateRunner, gate: Gate, from: string, files: string[], dir: string, sha: string, signal?: AbortSignal): Promise<StepResult> {
+  const restore = files.map((file) => place(dir, file, readFileSync(join(from, file))));
+  try {
+    return await runner.runStep(gate.name, gate.command, dir, sha, gate.timeoutMs, signal);
+  } finally {
+    for (const undo of restore.reverse()) undo();
+  }
+}
+
 async function runAdversary(
   input: AdversarialInput, family: string, author: AdversarialCandidate, patches: { candidateId: string; path: string }[], testCommand: string, signal: AbortSignal,
 ): Promise<{ adversary: Adversary; specs: AdversarialTestSpec[] }> {
@@ -217,19 +230,13 @@ export async function runAdversarialRound(input: AdversarialInput): Promise<Adve
   for (const { adversary, specs } of results) {
     for (const [i, spec] of specs.entries()) {
       const id = `${adversary.family}-${i + 1}`;
-      const contents = spec.files.map((file) => readFileSync(join(adversary.worktree, file)));
       matrix[id] = {};
       for (const lane of lanes) {
         let cell: SurvivalCell = 'error';
         if (lane.ready) {
-          const restore = spec.files.map((file, f) => place(lane.dir, file, contents[f]));
-          try {
-            const run = await runner.runStep(gate.name, gate.command, lane.dir, lane.sha, gate.timeoutMs, signal);
-            runs.push({ ...run, testId: id, lane: lane.lane });
-            cell = run.outcome === 'pass' || run.outcome === 'fail' ? run.outcome : 'error';
-          } finally {
-            for (const undo of restore.reverse()) undo();
-          }
+          const run = await runTestInLane(runner, gate, adversary.worktree, spec.files, lane.dir, lane.sha, signal);
+          runs.push({ ...run, testId: id, lane: lane.lane });
+          cell = run.outcome === 'pass' || run.outcome === 'fail' ? run.outcome : 'error';
         }
         matrix[id][lane.lane] = cell;
         input.onTestDone?.(id, lane.lane, cell);

@@ -96,7 +96,7 @@ export { checkIntegrity, parseDiff, isTestFile } from './domain/verification/int
 export type { AdversarialTest, AdversarialTestSpec, Survival, SurvivalCell, SurvivalMatrix, TestValidity } from './domain/verification/adversarial.js';
 export { ADVERSARIAL_MANIFEST, MAX_TESTS_PER_ADVERSARY, adversaryBrief, classifyTest, parseAdversarialManifest, survival, testGate } from './domain/verification/adversarial.js';
 export { GateRunner, type LaneResult } from './adapters/gate-runner.js';
-export { runAdversarialRound } from './services/adversarial-service.js';
+export { runAdversarialRound, runTestInLane } from './services/adversarial-service.js';
 export type { Adversary, AdversarialCandidate, AdversarialInput, AdversarialRound, AdversarialRun } from './services/adversarial-service.js';
 export type { CandidateReport, DiffSize, EvidenceKey, RankEntry, RankInput, Ranking, ReportEvidence, WorkerStatus } from './domain/code-council/ranking.js';
 export { compareEvidence, contends, rankCandidates, tieGroups } from './domain/code-council/ranking.js';
@@ -106,7 +106,9 @@ export type { Graft, GraftEvidence, GraftIdea, GraftPack, Synthesis, SynthesisCh
 export {
   MAX_GRAFTS_PER_CANDIDATE, RESULT_PATCH, SYNTHESIS_REPORT, graftPrompt, integratorBrief, parseGraftAnswer, synthesisMarkdown,
 } from './domain/code-council/synthesis.js';
-export { JUDGE_DIFF_LIMIT, judgeTie, rankRun, reportCandidate } from './services/ranking-service.js';
+export { JUDGE_DIFF_LIMIT, judgeTie, rankRun, reportCandidate, usableClis } from './services/ranking-service.js';
+export { synthesize } from './services/synthesis-service.js';
+export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';

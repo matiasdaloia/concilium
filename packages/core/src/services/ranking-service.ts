@@ -74,7 +74,7 @@ export function reportCandidate(candidate: CodeCandidate, ctx: { baseSha: string
 }
 
 /** The registered CLIs, in registry order, that are installed and not signed out, with their model family. */
-async function usableClis(drivers: ReadonlyMap<string, HeadlessCliDriver>): Promise<{ provider: string; family: string | null }[]> {
+export async function usableClis(drivers: ReadonlyMap<string, HeadlessCliDriver>): Promise<{ provider: string; family: string | null }[]> {
   const found = await Promise.all(PROVIDER_IDS.map(async (provider) => {
     const d = await drivers.get(provider)?.detect().catch(() => undefined);
     return d?.installed && d.auth !== 'none' ? { provider, family: getProviderInfo(provider)?.family ?? null } : null;
