@@ -13,7 +13,6 @@ import {
   formatDuration,
   formatDate,
   type AnalyticsData,
-  type ModelStats,
   type CostEvaluationResult,
 } from '../utils/analytics';
 

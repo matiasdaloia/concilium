@@ -299,17 +299,10 @@ export default function HomeScreen({
     setIsStarting(true);
     try {
       const imageAttachments: ImageAttachmentData[] = await Promise.all(
-        images.map(async (file) => {
-          // @ts-expect-error - Electron File has path property
-          const path = file.path as string | undefined;
-          const attachment: ImageAttachmentData = { mimeType: file.type };
-          if (path) {
-            attachment.path = path;
-          } else {
-            attachment.base64 = await fileToBase64(file);
-          }
-          return attachment;
-        }),
+        images.map(async (file) => ({
+          mimeType: file.type,
+          base64: await fileToBase64(file),
+        })),
       );
 
       const result = await api.startRun({

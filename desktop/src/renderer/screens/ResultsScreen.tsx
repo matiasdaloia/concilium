@@ -7,7 +7,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Tooltip from '../components/Tooltip';
 import { api } from '../api';
-import type { RunRecord, TokenUsage, CouncilTokenUsage, ParsedEvent } from '../types';
+import type { RunRecord, TokenUsage, ParsedEvent } from '../types';
 
 type Tab = 'synthesis' | 'agents' | 'reviews' | 'compare' | 'report';
 
