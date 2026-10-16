@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentInstance, AgentProviderType } from '../domain/agent/agent-config.js';
 import type { AgentResult } from '../domain/agent/agent-result.js';
+import type { OpenRouterModelInfo } from '../domain/council/model-info.js';
 import type { RunRecord } from '../domain/run/run-record.js';
 import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
@@ -74,7 +75,10 @@ class FakeAgentProvider implements AgentProvider {
  * The chairman answers with SYNTHESIS.
  */
 class FakeLlmGateway implements LlmGateway {
-  constructor(private readonly preferred: string) {}
+  constructor(
+    private readonly preferred: string,
+    private readonly pricedModels: OpenRouterModelInfo[] = [],
+  ) {}
 
   private rank(prompt: string): string {
     const labels = [...prompt.matchAll(/^Response ([A-Z]):\n(.*)$/gm)].map(([, label, body]) => ({
@@ -116,7 +120,7 @@ class FakeLlmGateway implements LlmGateway {
   }
 
   getCachedOrFallbackModels() {
-    return [];
+    return this.pricedModels;
   }
 
   clearModelCache(): void {}
@@ -184,13 +188,14 @@ describe('DeliberationService (offline, fake providers)', () => {
   function createService(
     plans: Record<string, string | Error>,
     events: DeliberationEvents,
+    pricedModels: OpenRouterModelInfo[] = [],
   ): DeliberationService {
     const providers = new Map<string, AgentProvider>(
       Object.entries(plans).map(([id, plan]) => [id, new FakeAgentProvider(id as AgentProviderType, plan)]),
     );
     return new DeliberationService({
       providers,
-      llmGateway: new FakeLlmGateway(PLANS.codex),
+      llmGateway: new FakeLlmGateway(PLANS.codex, pricedModels),
       configStore,
       secretStore,
       runRepository,
@@ -262,5 +267,23 @@ describe('DeliberationService (offline, fake providers)', () => {
     expect(events.errors).toContain('All agents failed or were aborted. No responses to judge.');
     expect(events.completed).toEqual([]);
     expect(await runRepository.list()).toEqual([]);
+  });
+
+  it('should not price subscription CLI agents with API per-token prices', async () => {
+    const pricedModels: OpenRouterModelInfo[] = [
+      { id: 'openai/gpt-5.2-codex', name: 'GPT-5.2 Codex', context_length: 1, pricing: { prompt: 2, completion: 8 } },
+    ];
+    const agents = [agent('claude', ''), agent('codex', 'openai/gpt-5.2-codex')];
+    const record = await createService(PLANS, recordEvents(), pricedModels).run({
+      prompt: PROMPT,
+      agentInstances: agents,
+      cwd: tmp,
+    });
+
+    const snapshots = record.metadata.modelSnapshots ?? {};
+    expect(Object.keys(snapshots)).toEqual(['claude', 'codex · gpt-5.2-codex']);
+    for (const snapshot of Object.values(snapshots)) {
+      expect(snapshot.costPer1kTokens).toBeNull();
+    }
   });
 });
