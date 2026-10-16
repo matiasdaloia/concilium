@@ -225,6 +225,8 @@ Before synthesis, Concilium checks whether the candidates diverge, because diver
 
 Disagreement is kept as output. After synthesis (or the reframe), Concilium writes `dissent.json` next to `synthesis.md` and `reframe.md`, and puts a `## Dissent` section at the top of both. A record comes from: a judge whose top score goes to another candidate than the base (with both rationales; `overruled` by the evidence ranking); a valid or conflicting adversarial test the integration head still fails (`open`); a `quarantined` test, which fails everywhere and which no judge has classified as a real gap or an invalid test (`open`); a rejected graft (`overruled` by the gate, test or integrity check that failed after it, with its commit and revert, or `open` when the integrator never delivered it); a rubric criterion that judges of the same tie score more than 3 points apart (`open`); and a same-family judge or graft picker (`accepted-risk`, with its reason). Each record has an `id`, its `source`, a `summary`, `evidence` pointers (commits with SHAs, test ids, files, judges, the rubric's sha256), the `acceptanceClause` it is about (the test's `specClause`) when there is one, and a `resolution` with a `resolutionReason`. Open dissent on an acceptance line takes the "mergeable" label away: `result.patch` is still written and checked, but `mergeable` is `false` and `synthesis.mergeBlock` says which records block it. The summary lists open dissent right after the run line, and the JSON record carries `dissent` (`path` and `records`) right after `status`.
 
+Every run leaves a decision trail next to `run.json`, written by Concilium itself, never by an agent. `decisions.tsv` gets one row per decision as it is made: the task type, the rubric freeze (with its sha256; the rubric goes to `rubric.json`), the candidates and roles, the gate plan, each candidate's verdict, the adversarial tests by validity, each judgment, the ranking, the synthesis base, each graft applied or rejected, the divergence check, the dissent and the mergeable label. Its columns are `ts`, `event`, `step`, `decision`, `chosen`, `alternatives`, `evidence` and `reason`; `evidence` holds pointers that must resolve (`commit:<sha>` in your repo, `file:<path>` in the run directory). Rows are only appended. `events.jsonl` is the run's event log: the start, each candidate, gate, adversary, test, judge and graft as it finishes, and each decision, which the row names by its `event` number. [`concilium trail check`](#concilium-trail-check) checks one against the other. When the run has an integration branch, `decisions.tsv`, `dissent.json` and `synthesis.md` are its last commit, under `.concilium/runs/<run-id>/`, so the trail ships with the change; `result.patch` is cut before that commit and does not carry them. `--no-trail-commit` keeps them in the run directory only. The record carries `trail` (`decisionsPath`, `eventsPath`, `rows`, `commitSha`, `errors`).
+
 Each step is a role, and each role can be played by any agent CLI on any model (`cli[:model]`): the **planner** tailors the rubric and phrases the reframe questions (default: the first implementer); the **implementers** are the candidates (default: the installed, signed-in CLIs); the **adversaries** write the adversarial tests, at most one per model family (default `same-as-implementer`: the first candidate of each family; a configured adversary replaces its family's default, or attacks every candidate when no candidate is of its family); the **judge** orders ties and names the grafts (default `auto`: a usable CLI of another family, as above); the **integrator** folds in each graft (default `winner`: the base's CLI and model). A configured judge is used even when it is of a family it reads; its judgments and graft picks are then flagged same-family, with a warning, exactly like a picked one. Set roles with `--role`, in `.concilium/factory.yaml` or with `concilium config set <role>`, and see the result with [`concilium roles`](#concilium-roles). The resolved map is printed (on stderr) before the first candidate starts, shown in the summary, and recorded as `roles` on the run record.
 
 It prints the open dissent first, then one row per candidate (status, verification verdict, files changed, lines added and removed, commits, duration, tokens), a table of gate results per lane (`base`, then each candidate), the integrity findings, the adversaries, the survival matrix with each test's validity and clause, each candidate's survival, the ranking with the judge's totals, the winner, each candidate's report, the grafts, the integration branch, the patch path and whether it is mergeable (or, when the candidates diverge, the lines in conflict and the questions), and the commands to inspect each branch and clean up. The run record (with `report` on each candidate, and `status`, `dissent`, `ranking`, `synthesis` and `reframe` on the run) is saved to `$XDG_DATA_HOME/concilium/runs/<run-id>/run.json`. The worktrees stay until you run `concilium gc --run <run-id>`, which keeps the integration branch. Nothing is merged into your branch. It exits 1 when no candidate finished `ok`, and 2 when the run ends in `reframe-needed`.
@@ -245,6 +247,7 @@ concilium code [options] [task...]
 | `--no-adversarial` | Skip the adversarial round (one adversary per model family writes tests that run on the base and every candidate) |
 | `--no-judge` | Do not ask a judge CLI (from another model family when one is usable) to order candidates tied on the evidence; a tie at the top goes to the smallest diff |
 | `--no-synthesis` | Do not graft ideas from the other candidates into the winner on the integration branch, and write no `result.patch` or `synthesis.md`. Also skips the divergence check that ends a run in `reframe-needed` (exit 2) |
+| `--no-trail-commit` | Keep the decision trail (`decisions.tsv`, `dissent.json`, `synthesis.md`) in the run directory only, instead of committing it under `.concilium/runs/<run-id>/` as the last commit of the integration branch |
 | `--json` | Print the run record as JSON to stdout (progress and errors go to stderr) |
 
 **Examples:**
@@ -281,6 +284,10 @@ git apply ~/.local/share/concilium/runs/<run-id>/result.patch
 
 # Open dissent, and why the patch is not labelled mergeable
 concilium code "sum() must reject non-numbers" --json | jq '{open: [.dissent.records[] | select(.resolution == "open") | {id, source, summary, acceptanceClause}], mergeBlock: .synthesis.mergeBlock}'
+
+# The decision trail, and the commit that ships it on the integration branch
+concilium code "sum() must reject non-numbers" --json | jq '.trail'
+column -t -s $'\t' ~/.local/share/concilium/runs/<run-id>/decisions.tsv
 
 # When the candidates diverge (exit 2): the lines in conflict and the questions to answer before running again
 concilium code "add slugify()" --json | jq 'select(.status == "reframe-needed") | {divergence: [.reframe.divergence[] | {trigger, clauses: [.conflicts[].clause]}], questions: .reframe.questions}'
@@ -491,6 +498,26 @@ concilium gc --dry-run
 
 # Clean up one run
 concilium gc --run 2026-10-16-a1b2
+```
+
+### `concilium trail check`
+
+Check the decision trail of a code run, in `$XDG_DATA_HOME/concilium/runs/<run-id>/`. Every row of `decisions.tsv` must be the decision event of `events.jsonl` it names, field for field and in event order, with at least one evidence pointer; every `commit:` pointer must name a commit in the run's repo and every `file:` pointer a file in the run directory; and every decision event must have exactly one row. A row added or edited by hand fails the check. It prints each problem with its line in `decisions.tsv` and exits 1 when there is one.
+
+```
+concilium trail check --run <id> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--run <id>` | The code run to check (required) |
+| `--json` | Print `{runDir, rows, events, problems}` as JSON to stdout |
+
+**Examples:**
+
+```bash
+concilium trail check --run 20261016T141015-a1b2c3
+concilium trail check --run 20261016T141015-a1b2c3 --json | jq '.problems'
 ```
 
 ## Configuration

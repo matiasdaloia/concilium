@@ -49,6 +49,7 @@ interface CodeOptions {
   adversarial: boolean;
   judge: boolean;
   synthesis: boolean;
+  trailCommit: boolean;
   json?: boolean;
 }
 
@@ -274,6 +275,13 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
     console.log(`    git -C ${record.repoDir} diff ${record.baseSha.slice(0, 12)}..${c.branch}`);
     console.log(`      worktree: ${c.worktree}`);
   }
+  const trail = record.trail;
+  if (trail) {
+    const committed = trail.commitSha ? `; committed on ${record.synthesis?.branch} at ${trail.commitSha.slice(0, 12)}` : '';
+    console.log(`\n  Decision trail: ${trail.decisionsPath} (${trail.rows} decisions${committed})`);
+    for (const error of trail.errors) console.log(`    ${error}`);
+    console.log(`  Check it: concilium trail check --run ${record.id}`);
+  }
   console.log(`\n  Clean up: concilium gc --run ${record.id}`);
   if (savedTo) console.log(`  Run saved: ${savedTo}`);
   console.log();
@@ -294,6 +302,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
     .option('--no-judge', 'Do not ask a judge CLI (from another model family when one is usable) to order candidates tied on the evidence; a tie at the top goes to the smallest diff')
     .option('--no-synthesis', 'Do not graft ideas from the other candidates into the winner on the integration branch, and write no result.patch or synthesis.md; also skips the divergence check that ends a run in reframe-needed (exit 2)')
+    .option('--no-trail-commit', 'Keep the decision trail (decisions.tsv, dissent.json, synthesis.md) in the run directory only, instead of committing it under .concilium/runs/<run-id>/ as the last commit of the integration branch')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -360,6 +369,8 @@ export function registerCodeCommand(program: Command): void {
           // result.patch and synthesis.md go next to run.json.
           synthesis: opts.synthesis ? { runDir: store.runDir(runId) } : undefined,
           onGraftDone: (g) => progress(`  ${g.status === 'applied' ? '✓' : '✗'} ${graftLine(g)}`),
+          // decisions.tsv and events.jsonl go next to run.json too.
+          trail: { runDir: store.runDir(runId), commit: opts.trailCommit },
         });
         savedTo = await store.save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

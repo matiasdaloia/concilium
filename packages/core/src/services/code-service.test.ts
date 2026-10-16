@@ -19,7 +19,9 @@ import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { DirtyWorktreeError, GitWorktreeWorkspace } from '../adapters/git-worktree-workspace.js';
 import { JsonCodeRunStore } from '../adapters/json-code-run-store.js';
 import { setLogLevel } from '../shared/logger.js';
+import { formatDecisionRow, parseDecisions, parseEvents } from '../domain/code-council/trail.js';
 import { codeBrief, runCodeCandidates } from './code-service.js';
+import { checkTrail } from './trail-service.js';
 
 const sandbox = mkdtempSync(join(tmpdir(), 'concilium-code-test-'));
 const gitConfig = join(sandbox, 'gitconfig');
@@ -965,6 +967,75 @@ describe('runCodeCandidates synthesis', () => {
     expect(existsSync(join(runDir, 'reframe.md'))).toBe(false);
   }, 60_000);
 
+  it('should write the decision trail, check it against the event log, and commit it on the integration branch', async () => {
+    const baseSha = seedSuite();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': CLAUDE_SUM }, {
+        integrate: { 'graft-1': { 'strings.test.js': STRINGS_TEST }, 'graft-2': { 'sum.js': 'module.exports = () => 0;\n' } },
+      })],
+      ['codex', agent('codex', { 'sum.js': 'module.exports = (a, b) => +a + +b;\n', 'strings.test.js': STRINGS_TEST }, {
+        tests: { 'adds.test.js': "if (require('./sum.js')(2, 3) !== 5) throw new Error('2 + 3');\n" },
+      })],
+      ['gemini', picker('gemini', [
+        { candidate: 'A', files: ['strings.test.js'], instruction: 'Add the numeric strings test.', why: 'The base has no test for the task.' },
+        { candidate: 'A', files: ['sum.js'], instruction: 'Use unary plus.', why: 'Shorter.' },
+      ], [])],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'trail1', drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], synthesis: { runDir }, trail: { runDir },
+    });
+    const s = record.synthesis!;
+    const [, rejected] = s.grafts;
+    const decisionsPath = join(runDir, 'decisions.tsv');
+    const tsv = readFileSync(decisionsPath, 'utf8');
+    const { rows } = parseDecisions(tsv);
+    const { events } = parseEvents(readFileSync(join(runDir, 'events.jsonl'), 'utf8'));
+
+    expect(record.trail).toEqual({ decisionsPath, eventsPath: join(runDir, 'events.jsonl'), rows: rows.length, commitSha: expect.any(String), errors: [] });
+    expect(rows.map((r) => `${r.step} ${r.chosen}`)).toEqual([
+      'task-type feature', `rubric sha256:${record.rubric.sha256}`, 'candidates claude, codex', 'gate-plan test',
+      'verification PASS', 'verification PASS', 'adversarial regression-guard 1', 'ranking claude', 'base-pick claude',
+      'graft applied', 'graft rejected', 'divergence none', 'dissent 0 open of 1', 'mergeable mergeable',
+    ]);
+    // Each row is its decision event; the rubric was frozen before any candidate started.
+    for (const row of rows) expect(events.find((e) => e.seq === row.event)).toMatchObject({ type: 'decision', step: row.step, chosen: row.chosen, ts: row.ts });
+    const rubricRow = rows.find((r) => r.step === 'rubric')!;
+    expect(events.filter((e) => e.type === 'candidate-start').every((e) => e.seq > rubricRow.event)).toBe(true);
+    expect(rubricRow.evidence).toEqual(['file:rubric.json']);
+    expect(JSON.parse(readFileSync(join(runDir, 'rubric.json'), 'utf8')).sha256).toBe(record.rubric.sha256);
+    expect(rows.find((r) => r.chosen === 'rejected')!.evidence).toEqual(expect.arrayContaining([`commit:${rejected.commitSha}`, `commit:${rejected.revertSha}`]));
+    expect(rows.at(-1)!.evidence).toEqual(['file:result.patch', `commit:${s.headSha}`]);
+
+    // Every row's evidence resolves and matches its event.
+    expect(await checkTrail(runDir)).toEqual({ rows: rows.length, events: events.length, problems: [] });
+
+    // The trail is the last commit on the integration branch; result.patch was cut before it.
+    const committed = '.concilium/runs/trail1';
+    expect(git(repo, 'rev-parse', s.branch!)).toBe(record.trail!.commitSha);
+    expect(git(repo, 'rev-parse', `${s.branch!}~1`)).toBe(s.headSha);
+    expect(git(repo, 'show', '--name-only', '--format=%an|%s', s.branch!).split('\n').filter(Boolean)).toEqual([
+      'concilium|concilium: decision trail for run trail1', `${committed}/decisions.tsv`, `${committed}/dissent.json`, `${committed}/synthesis.md`,
+    ]);
+    expect(git(repo, 'show', `${s.branch}:${committed}/decisions.tsv`)).toBe(tsv.trimEnd());
+    expect(readFileSync(s.patchPath!, 'utf8')).toBe(`${git(repo, 'diff', '--binary', baseSha, s.headSha!)}\n`);
+    expect(readFileSync(s.patchPath!, 'utf8')).not.toContain('.concilium/runs');
+    expect(events.at(-1)).toMatchObject({ type: 'trail-committed', sha: record.trail!.commitSha });
+
+    // A row inserted by hand is flagged: it has no event, or it does not match the event it names.
+    const ranking = rows.find((r) => r.step === 'ranking')!;
+    const fake = formatDecisionRow({ ...ranking, event: 999, chosen: 'codex' });
+    const forged = formatDecisionRow({ ...ranking, chosen: 'codex' });
+    writeFileSync(decisionsPath, tsv + fake + forged);
+    const { problems } = await checkTrail(runDir);
+    expect(problems).toEqual([
+      { line: rows.length + 2, message: 'ranking: no event 999 in events.jsonl' },
+      { line: rows.length + 3, message: `ranking: does not match event ${ranking.event} (chosen)` },
+      { line: rows.length + 3, message: `ranking: a second row for event ${ranking.event}` },
+    ]);
+  }, 60_000);
+
   it('should let the configured judge name the grafts and the configured integrator fold them in', async () => {
     seedSuite();
     const prompts: string[] = [];
@@ -998,9 +1069,13 @@ describe('runCodeCandidates synthesis', () => {
     };
     const record = await runCodeCandidates({
       task: TASK, type: 'feature', repoDir: repo, runId: 'syn4', drivers, workspace, verify: true, judge: false,
-      agents: [{ provider: 'claude' }, { provider: 'codex' }], roles, synthesis: { runDir },
+      agents: [{ provider: 'claude' }, { provider: 'codex' }], roles, synthesis: { runDir }, trail: { runDir, commit: false },
     });
     const s = record.synthesis!;
+    // The trail commit is turned off: the branch ends at the last graft, and the trail stays in the run dir only.
+    expect(record.trail).toMatchObject({ commitSha: null, errors: [] });
+    expect(git(repo, 'rev-parse', s.branch!)).toBe(s.headSha);
+    expect((await checkTrail(runDir)).problems).toEqual([]);
 
     expect(s.base?.candidateId).toBe('claude');
     expect(s.picker).toEqual({

@@ -12,6 +12,7 @@ import { contends, type CandidateReport, type Ranking } from '../domain/code-cou
 import { detectDivergence, type Reframe } from '../domain/code-council/reframe.js';
 import type { Graft, Synthesis } from '../domain/code-council/synthesis.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
+import { RUBRIC_FILE } from '../domain/code-council/trail.js';
 import type { Brief } from '../domain/driver/brief.js';
 import type { GateResult } from '../domain/verification/gates.js';
 import type { DriverUsage } from '../domain/driver/normalized-event.js';
@@ -30,6 +31,7 @@ import { rankRun } from './ranking-service.js';
 import { reframeRun } from './reframe-service.js';
 import { runDriver } from './run-driver.js';
 import { skippedSynthesis, synthesize } from './synthesis-service.js';
+import { decisions, DecisionTrail, type RunTrail } from './trail-service.js';
 import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
 const log = createLogger('code');
@@ -107,6 +109,8 @@ export type CodeRunRecord = {
   synthesis?: Synthesis;
   /** Why the candidates diverged and the questions for the task's author. Present only when `status` is `reframe-needed`. */
   reframe?: Reframe;
+  /** M6.2: `decisions.tsv` and `events.jsonl` in the run directory, and the trail's commit on the integration branch. Absent when not asked for. */
+  trail?: RunTrail;
 };
 
 export type CodeRunInput = {
@@ -141,6 +145,12 @@ export type CodeRunInput = {
    * (for `disjoint-survival` alone, only when grafting does not make the integration head pass the conflicting tests).
    */
   synthesis?: { runDir: string };
+  /**
+   * Write `decisions.tsv` (one row per orchestrator decision) and `events.jsonl` to `runDir`, append-only. Unless
+   * `commit` is false, commit `decisions.tsv`, `dissent.json` and `synthesis.md` as the last commit of the integration
+   * branch, under `.concilium/runs/<run-id>/`; `result.patch` does not carry them.
+   */
+  trail?: { runDir: string; commit?: boolean };
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
@@ -222,6 +232,42 @@ async function frameRubric(input: CodeRunInput, framer: string, type: TaskType, 
   }
 }
 
+/** The input with every progress callback also logged to the trail's `events.jsonl`. */
+function traced(input: CodeRunInput, trail: DecisionTrail | null): CodeRunInput {
+  if (!trail) return input;
+  return {
+    ...input,
+    onCandidateStart: (c) => {
+      trail.event('candidate-start', c);
+      input.onCandidateStart?.(c);
+    },
+    onCandidateDone: (c) => {
+      trail.event('candidate-done', { candidateId: c.candidateId, status: c.status, headSha: c.headSha });
+      input.onCandidateDone?.(c);
+    },
+    onGateDone: (lane, r) => {
+      trail.event('gate-done', { lane, gate: r.name, outcome: r.outcome, sha: r.sha });
+      input.onGateDone?.(lane, r);
+    },
+    onAdversaryDone: (a) => {
+      trail.event('adversary-done', { lane: a.lane, status: a.status, headSha: a.headSha });
+      input.onAdversaryDone?.(a);
+    },
+    onTestDone: (testId, lane, cell) => {
+      trail.event('test-done', { testId, lane, cell });
+      input.onTestDone?.(testId, lane, cell);
+    },
+    onJudgeDone: (j) => {
+      trail.event('judge-done', { candidates: j.candidates, judge: j.judge, status: j.status });
+      input.onJudgeDone?.(j);
+    },
+    onGraftDone: (g) => {
+      trail.event('graft-done', { id: g.id, candidateId: g.candidateId, status: g.status, commitSha: g.commitSha, revertSha: g.revertSha });
+      input.onGraftDone?.(g);
+    },
+  };
+}
+
 /** Tier 2 on the candidates with a head, judged under the repo's test gate on the base and on each head. */
 function attack(
   input: CodeRunInput, roles: CodeRoleMap, repoDir: string, runId: string, baseSha: string, type: TaskType, verification: RunVerification, candidates: CodeCandidate[], timeoutMs: number, signal: AbortSignal,
@@ -262,6 +308,10 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   const integrator = roles.integrator.value === ROLE_KEYWORDS.integrator ? undefined : specAgent(roles.integrator.value);
   const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty });
   const repoDir = base.repoDir;
+  const trail = input.trail ? new DecisionTrail(input.trail.runDir, { runId, repoDir, baseSha: base.baseSha }) : null;
+  const io = traced(input, trail);
+  const decide = (d: Parameters<DecisionTrail['decide']>[0]) => trail?.decide(d);
+  const file = (path: string | null | undefined) => (trail && path ? trail.relative(path) : null);
 
   const runCandidate = async (agent: CodeAgent, candidateId: string, taskType: TaskTypeChoice): Promise<CodeCandidate> => {
     const candidate: CodeCandidate = {
@@ -284,7 +334,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     try {
       const workspace = await input.workspace.create({ repoDir, runId, candidateId });
       candidate.worktree = workspace.path;
-      input.onCandidateStart?.({ candidateId, provider: agent.provider, worktree: workspace.path });
+      io.onCandidateStart?.({ candidateId, provider: agent.provider, worktree: workspace.path });
       candidate.brief = codeBrief(input.task, taskType, workspace.path, workspace.branch);
 
       const driver = input.drivers.get(agent.provider);
@@ -313,7 +363,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       }
     }
     log.info(`code run ${runId}: ${candidateId} ${candidate.status}`);
-    input.onCandidateDone?.(candidate);
+    io.onCandidateDone?.(candidate);
     return candidate;
   };
 
@@ -323,32 +373,42 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
     const frame: CodeFrame = { taskType, rubric: await frameRubric(input, roles.planner.value, taskType.type, signal) };
     input.onFramed?.(frame);
     log.info(`code run ${runId}: ${taskType.type}, rubric ${frame.rubric.sha256.slice(0, 12)}, ${input.agents.length} candidates from ${base.baseSha}`);
-
     const ids = candidateIds(input.agents);
+    trail?.file(RUBRIC_FILE, `${JSON.stringify(frame.rubric, null, 2)}\n`);
+    decide(decisions.taskType(taskType, base.baseSha));
+    decide(decisions.rubric(frame.rubric));
+    decide(decisions.candidates(ids, roles, base.baseSha));
+
     const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i], taskType)));
+    const heads = Object.fromEntries(candidates.map((c) => [c.candidateId, c.headSha]));
 
     let verification: RunVerification | undefined;
     if (input.verify) {
       const checkable = candidates.flatMap((c) => (c.worktree && c.headSha ? [{ candidateId: c.candidateId, worktree: c.worktree, headSha: c.headSha }] : []));
       const result = await verifyCandidates({
-        repoDir, runId, baseSha: base.baseSha, candidates: checkable, workspace: input.workspace, signal, onGateDone: input.onGateDone,
+        repoDir, runId, baseSha: base.baseSha, candidates: checkable, workspace: input.workspace, signal, onGateDone: io.onGateDone,
       });
       verification = result.run;
       for (const c of candidates) c.verification = result.candidates.get(c.candidateId) ?? null;
+      decide(decisions.gatePlan(verification, base.baseSha));
+      for (const c of candidates) decide(decisions.verification(c.candidateId, c.verification ?? null, base.baseSha));
     }
 
     let adversarial: AdversarialRound | undefined;
     if (input.adversarial) {
       adversarial = verification
-        ? await attack(input, roles, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
+        ? await attack(io, roles, repoDir, runId, base.baseSha, taskType.type, verification, candidates, timeoutMs, signal)
         : { skipped: 'the gates did not run', testCommand: null, adversaries: [], tests: [], matrix: {}, survival: {}, runs: [] };
+      decide(decisions.adversarial(adversarial, base.baseSha));
     }
 
     const ranking = await rankRun({
       task: input.task, repoDir, baseSha: base.baseSha, type: taskType.type, rubric: frame.rubric, candidates, adversarial,
-      judge: input.judge ?? false, judgeSpec, drivers: input.drivers, signal, onJudgeDone: input.onJudgeDone,
+      judge: input.judge ?? false, judgeSpec, drivers: input.drivers, signal, onJudgeDone: io.onJudgeDone,
     });
     log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
+    for (const j of ranking.judgments) decide(decisions.judgment(j, heads, base.baseSha));
+    decide(decisions.ranking(ranking, heads, base.baseSha));
 
     // Divergence means the task may be underspecified. A prototype ends in a decision record anyway.
     const divergence = input.synthesis && taskType.type !== 'prototype'
@@ -376,7 +436,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       const conflicts = new Set(divergence.flatMap((d) => d.tests ?? []));
       synthesis = await synthesize({
         task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
-        verification, adversarial, drivers: input.drivers, workspace: input.workspace, pickerSpec: judgeSpec, integrator, timeoutMs, signal, onGraftDone: input.onGraftDone,
+        verification, adversarial, drivers: input.drivers, workspace: input.workspace, pickerSpec: judgeSpec, integrator, timeoutMs, signal, onGraftDone: io.onGraftDone,
         ...(graftFirst ? { conflictTests: [...conflicts].map((id) => adversarial!.tests.find((t) => t.id === id)!) } : {}),
       });
       if (graftFirst && !synthesis.divergence?.resolved) {
@@ -388,11 +448,25 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
         });
       }
     }
+    if (synthesis) {
+      decide(decisions.basePick(synthesis, ranking, base.baseSha, file(synthesis.synthesisPath)));
+      for (const g of synthesis.grafts) decide(decisions.graft(g, synthesis.base?.headSha ?? base.baseSha));
+    }
+    if (input.synthesis) decide(decisions.divergence(divergence, synthesis, reframe, base.baseSha, file(reframe?.reportPath ?? synthesis?.synthesisPath)));
     const recorded = await recordDissent({
-      run: { id: runId, task: input.task, baseSha: base.baseSha }, ranking, synthesis, reframe,
-      heads: Object.fromEntries(candidates.map((c) => [c.candidateId, c.headSha])), tests: adversarial?.tests ?? [],
+      run: { id: runId, task: input.task, baseSha: base.baseSha }, ranking, synthesis, reframe, heads, tests: adversarial?.tests ?? [],
     });
     synthesis = recorded.synthesis;
+    decide(decisions.dissent(recorded.dissent.records, base.baseSha, file(recorded.dissent.path)));
+    if (synthesis) decide(decisions.mergeable(synthesis, base.baseSha, file(synthesis.patchPath)));
+
+    let runTrail: RunTrail | undefined;
+    if (trail) {
+      // The trail ships with the change: its last commit on the integration branch, after result.patch was cut.
+      const commitSha = input.trail?.commit !== false && synthesis?.branch ? await trail.commit({ workspace: input.workspace, repoDir, runId }) : null;
+      await trail.flush();
+      runTrail = { decisionsPath: trail.decisionsPath, eventsPath: trail.eventsPath, rows: trail.rows, commitSha, errors: trail.errors };
+    }
     return {
       version: 1,
       kind: 'code',
@@ -415,8 +489,10 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       ranking,
       ...(synthesis ? { synthesis } : {}),
       ...(reframe ? { reframe } : {}),
+      ...(runTrail ? { trail: runTrail } : {}),
     };
   } finally {
+    await trail?.flush();
     await input.workspace.finishRun({ repoDir, runId });
   }
 }

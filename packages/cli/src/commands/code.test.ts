@@ -237,6 +237,8 @@ describe('concilium code', () => {
     expect(summary.stdout).toContain(`Integration branch: concilium/${summaryId}/integration\n`);
     expect(summary.stdout).toContain(`Patch: ${join(sandbox, 'data', 'concilium', 'runs', summaryId, 'result.patch')}\n`);
     expect(summary.stdout).toMatch(/Mergeable: yes, git apply --check against HEAD [0-9a-f]{12}\n/);
+    const summaryTrail = join(sandbox, 'data', 'concilium', 'runs', summaryId, 'decisions.tsv');
+    expect(summary.stdout).toMatch(new RegExp(`Decision trail: ${summaryTrail} \\(\\d+ decisions; committed on concilium/${summaryId}/integration at [0-9a-f]{12}\\)\n  Check it: concilium trail check --run ${summaryId}\n`));
 
     const unsynthesized = code('--json', '--no-synthesis', '--agents', 'claude,codex', 'add input validation to sum with a test');
     expect(unsynthesized.status).toBe(0);
@@ -244,6 +246,45 @@ describe('concilium code', () => {
     expect(plain.synthesis).toBeUndefined();
     expect(git(repo, 'branch', '--list', `concilium/${plain.id}/integration`)).toBe('');
     expect(existsSync(join(sandbox, 'data', 'concilium', 'runs', plain.id, 'result.patch'))).toBe(false);
+  }, 120_000);
+
+  it('should write the decision trail, commit it on the integration branch, and check it with concilium trail check', () => {
+    const trail = (...args: string[]) => spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'trail', 'check', ...args], { cwd: repo, env, encoding: 'utf8' });
+    const result = code('--json', '--agents', 'claude,codex', 'add input validation to sum with a test');
+    expect(result.status).toBe(0);
+    const record = JSON.parse(result.stdout) as CodeRunRecord;
+    const runDir = join(sandbox, 'data', 'concilium', 'runs', record.id);
+    const decisionsPath = join(runDir, 'decisions.tsv');
+    const branch = `concilium/${record.id}/integration`;
+
+    expect(record.trail).toMatchObject({ decisionsPath, eventsPath: join(runDir, 'events.jsonl'), commitSha: git(repo, 'rev-parse', branch), errors: [] });
+    const tsv = readFileSync(decisionsPath, 'utf8');
+    expect(tsv.split('\n')[0]).toBe('ts\tevent\tstep\tdecision\tchosen\talternatives\tevidence\treason');
+    expect(tsv).toContain('\tranking\trank on the evidence\tclaude\tcodex\t');
+    expect(git(repo, 'show', `${branch}:.concilium/runs/${record.id}/decisions.tsv`)).toBe(tsv.trimEnd());
+    expect(git(repo, 'show', '--name-only', '--format=', branch).split('\n')).toEqual(['dissent.json', 'decisions.tsv', 'synthesis.md'].sort().map((f) => `.concilium/runs/${record.id}/${f}`));
+    expect(readFileSync(join(runDir, 'result.patch'), 'utf8')).not.toContain('.concilium/runs');
+
+    const ok = trail('--run', record.id);
+    expect(ok.status).toBe(0);
+    expect(ok.stdout).toMatch(new RegExp(`^Trail of run ${record.id}: ${record.trail!.rows} decisions, \\d+ events, every row matches its event and its evidence resolves.\n$`));
+
+    // A row added by hand has no event behind it.
+    const lines = tsv.trimEnd().split('\n');
+    writeFileSync(decisionsPath, `${tsv}${lines.at(-1)!.replace(/^(\S+)\t\d+\t/, '$1\t999\t')}\n`);
+    const forged = trail('--run', record.id, '--json');
+    expect(forged.status).toBe(1);
+    expect(JSON.parse(forged.stdout)).toMatchObject({ runDir, problems: [{ line: lines.length + 1, message: 'mergeable: no event 999 in events.jsonl' }] });
+    expect(trail('--run', record.id).stdout).toContain(`decisions.tsv:${lines.length + 1}: mergeable: no event 999 in events.jsonl`);
+
+    expect(trail('--run', 'nope').stdout).toContain(`${join(sandbox, 'data', 'concilium', 'runs', 'nope', 'decisions.tsv')} does not exist`);
+    expect(trail('--run', '../x').status).toBe(1);
+
+    const uncommitted = code('--json', '--no-trail-commit', '--agents', 'claude,codex', 'add input validation to sum with a test');
+    const kept = JSON.parse(uncommitted.stdout) as CodeRunRecord;
+    expect(kept.trail).toMatchObject({ commitSha: null });
+    expect(git(repo, 'rev-parse', kept.synthesis!.branch!)).toBe(kept.synthesis!.headSha);
+    expect(trail('--run', kept.id).status).toBe(0);
   }, 120_000);
 
   it('should print a summary with how to inspect and clean up', () => {
@@ -394,7 +435,10 @@ describe('concilium code', () => {
       branch, headSha: record.synthesis!.headSha, applied: 0, rejected: 1, outcome: 'at the integration head openai-1 is fail', synthesisPath: join(runDir, 'synthesis.md'),
     });
     expect(existsSync(join(runDir, 'result.patch'))).toBe(false);
-    expect(git(repo, 'rev-parse', branch)).toBe(record.synthesis!.headSha);
+    // The branch is kept at the grafting head, with the decision trail committed on top.
+    expect(git(repo, 'rev-parse', `${branch}~1`)).toBe(record.synthesis!.headSha);
+    expect(git(repo, 'rev-parse', branch)).toBe(record.trail!.commitSha);
+    expect(readFileSync(join(runDir, 'decisions.tsv'), 'utf8')).toMatch(/\tdivergence\tcheck the candidates for divergence\tgrafted, then reframe\t-\tfile:reframe\.md\t/);
     expect(readFileSync(join(runDir, 'synthesis.md'), 'utf8')).toContain('Not resolved: at the integration head openai-1 is fail.');
     expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?`);
     expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`Grafting was tried first on \`${branch}\` (0 applied, 1 rejected)`);
