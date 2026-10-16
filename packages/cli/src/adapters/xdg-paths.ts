@@ -18,3 +18,8 @@ export function getCacheDir(): string {
     ? join(process.env.XDG_CACHE_HOME, 'concilium')
     : join(homedir(), '.cache', 'concilium');
 }
+
+/** Candidate worktrees: `<cache>/worktrees/<repo-hash>/<run-id>/<candidate-id>`. */
+export function getWorktreeRoot(): string {
+  return join(getCacheDir(), 'worktrees');
+}

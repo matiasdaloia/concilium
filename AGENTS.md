@@ -13,14 +13,14 @@ concilium/
 │   │   ├── src/
 │   │   │   ├── domain/   # Agent, council, deliberation, run types & logic
 │   │   │   ├── ports/    # Interfaces (HeadlessCliDriver, LlmGateway, etc.)
-│   │   │   ├── adapters/ # Agent CLI drivers, CLI council gateway, OpenRouter, JSON storage
+│   │   │   ├── adapters/ # Agent CLI drivers, CLI council gateway, git worktrees, OpenRouter, JSON storage
 │   │   │   ├── services/ # createConciliumRuntime, DeliberationService, ConfigService, ModelDiscoveryService
 │   │   │   └── shared/   # Logger
 │   │   └── package.json
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, doctor
+│       │   ├── commands/ # run, history, config, models, doctor, gc
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
@@ -64,6 +64,8 @@ Every stage runs through the `HeadlessCliDriver` port (`packages/core/src/ports/
 
 The plan council uses the drivers in all three stages. Stage 1 agents (`domain/agent/agent-executor.ts`) get a read-only plan brief (read and network actions) in the run's `cwd`. Without `--agents` (CLI), `agents` (`deliberate()`) or saved agents (desktop), `runtime.defaultAgentInstances()` picks one agent per CLI whose `detect()` says installed and signed in (`subscription` or `api-key`) with no `warning`, in registry order, and rejects with `NO_AGENT_CLI_MESSAGE` (pointing to `concilium doctor` and `docs/research/subscription-tos.md`) when none qualifies. Jurors and the chairman are council member specs (`domain/council/council-members.ts`): `cli[:model]` (`claude`, `codex:gpt-5.2`, `opencode:openai/gpt-5.2`) runs that CLI through `CliCouncilGateway` (`adapters/cli/cli-council-gateway.ts`) on a read-only plan brief in a fresh temp dir holding only the prompt file; any other id is an OpenRouter model, sent to `OpenRouterGateway` only when an API key is configured (otherwise it is skipped with a note). `resolveCouncil` fills missing jurors with every installed, signed-in CLI with a known family (OpenCode only as a last resort) and a missing chairman with the usable CLI whose family holds the fewest juror seats; `createConciliumRuntime` runs `detect()` only when it has to fill one in. Tests swap drivers for `FakeCliDriver`s (`runtime.drivers.set(...)`, or `respond(brief)` for fakes that read their prompt).
 
+Candidate worktrees (M2.1; only `concilium gc` uses them so far) go through the `WorkspaceManager` port (`packages/core/src/ports/workspace.ts`) and its adapter `GitWorktreeWorkspace` (`adapters/git-worktree-workspace.ts`). `startRun` pins `baseSha = HEAD` and refuses a dirty tree unless `includeDirty`, which commits the working tree through a temp index to the scratch ref `refs/concilium/<run-id>/snapshot` and leaves the user's index and checkout alone. `create` adds a worktree at `<root>/<repo-hash>/<run-id>/<candidate-id>` on branch `concilium/<run-id>/<candidate-id>` (`integrationBranch(runId)` is `concilium/<run-id>/integration`). The root is a constructor option; the CLI passes `$XDG_CACHE_HOME/concilium/worktrees` (`getWorktreeRoot()`), never a dir inside the target repo. A run manifest (`<run-id>/manifest.json`) is written before any worktree and records the base, the candidates and the owner process. Every operation is idempotent and repairs what a crash leaves (deleted dirs, stale manifest entries, half-added worktrees) from the manifest, `git worktree list --porcelain` and `git worktree prune`. `gc` collects runs that are finished or whose owner process is gone, deletes only `refs/heads/concilium/<run-id>/*` and `refs/concilium/<run-id>/*`, and keeps the integration branch unless `includeIntegration`. Tests run on real temp repos (`git-worktree-workspace.test.ts`, `packages/cli/src/commands/gc.test.ts`).
+
 When modifying deliberation logic, prompts, or ranking — work in `@concilium/core`. When modifying terminal output or CLI flags — work in `@concilium/cli`. When modifying the GUI — work in `desktop/`.
 
 ## Build Commands
@@ -96,6 +98,7 @@ npx concilium config show           # Show config
 npx concilium models                # Discover models
 npx concilium history               # List past runs
 npx concilium doctor                # Check installed agent CLIs and their auth
+npx concilium gc --dry-run          # Show what gc would remove (worktrees, concilium/ branches)
 ```
 
 ### Desktop App

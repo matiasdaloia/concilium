@@ -152,6 +152,7 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |
+| `concilium gc` | Remove worktrees and `concilium/` branches of finished runs |
 
 For detailed usage, flags, configuration, and the programmatic API, see the **[CLI documentation](packages/cli/README.md)**.
 
@@ -199,7 +200,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, doctor
+│       │   ├── commands/ # run, history, config, models, doctor, gc
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
