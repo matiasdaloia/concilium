@@ -56,7 +56,7 @@ export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
 export type { SecretStore } from './ports/secret-store.js';
 export type { DeliberationEvents } from './ports/deliberation-events.js';
 export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from './ports/headless-cli-driver.js';
-export type { WorkspaceManager, Workspace, RunBase, GcOptions, GcRunResult, DiffStat } from './ports/workspace.js';
+export type { WorkspaceManager, Workspace, RunBase, GcOptions, GcRunResult, DiffStat, PatchCheck } from './ports/workspace.js';
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
