@@ -118,6 +118,11 @@ export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
+export type { CodeRoleMap, CodeRoleName, ResolvedRole, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue } from './domain/roles/roles.js';
+export {
+  CODE_ROLES, FACTORY_CONFIG, ROLE_KEYWORDS, ROLE_NAMES, RolesValidationError, defaultCodeRoles, isListRole, parseFactoryRoles, parseRoleFlags,
+  pickRole, resolveCodeRoles, roleWarnings, specAgent, specFamily, validateRoles,
+} from './domain/roles/roles.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
