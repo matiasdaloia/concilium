@@ -110,9 +110,7 @@ describe('ConfigService.resolve precedence', () => {
     expect((await service().resolve()).chairmanModel).toBe(DEFAULT_CHAIRMAN_MODEL);
   });
 
-  // BUG (found by this test, not fixed): saveCouncilConfig/saveApiKey replace the whole saved
-  // council config, so `concilium config set chairman X` forgets the saved jurors and API key.
-  it.skip('should keep the other saved settings when one setting is saved', async () => {
+  it('should keep the other saved settings when one setting is saved', async () => {
     await service().saveApiKey('sk-saved');
     await service().saveCouncilConfig({ councilModels: ['saved/j1'] });
     await service().saveCouncilConfig({ chairmanModel: 'saved/chair' });

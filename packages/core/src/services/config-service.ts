@@ -63,12 +63,12 @@ export class ConfigService {
   }
 
   async saveApiKey(key: string): Promise<void> {
-    const encrypted = this.secretStore.encrypt(key);
-    await this.configStore.saveCouncilConfigPrefs({ apiKeyEncrypted: encrypted });
+    await this.saveCouncilConfig({ apiKey: key });
   }
 
+  /** Merge the given settings into the saved config; settings not given keep their saved value. */
   async saveCouncilConfig(prefs: { chairmanModel?: string; councilModels?: string[]; apiKey?: string }): Promise<void> {
-    const config: { chairmanModel?: string; councilModels?: string[]; apiKeyEncrypted?: string } = {};
+    const config = await this.configStore.getCouncilConfigPrefs();
     if (prefs.chairmanModel) config.chairmanModel = prefs.chairmanModel;
     if (prefs.councilModels) config.councilModels = prefs.councilModels;
     if (prefs.apiKey) config.apiKeyEncrypted = this.secretStore.encrypt(prefs.apiKey);
