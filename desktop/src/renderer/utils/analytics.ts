@@ -482,13 +482,18 @@ export function processCostEvaluations(runs: RunRecord[]): CostEvaluationResult 
 
     if (!userModel || !councilModel) continue;
 
+    // Subscription CLI agents have no per-token price to compare
+    const userCost = userModel.costPer1kTokens;
+    const councilCost = councilModel.costPer1kTokens;
+    const costsKnown = userCost !== null && councilCost !== null;
+
     // User picked a cheaper model
-    if (userModel.costPer1kTokens < councilModel.costPer1kTokens) {
-      const saving = councilModel.costPer1kTokens - userModel.costPer1kTokens;
+    if (costsKnown && userCost < councilCost) {
+      const saving = councilCost - userCost;
       potentialSavings += saving;
       insights.push({
         type: 'COST_SAVING',
-        message: `User preferred ${userModel.provider} ($${userModel.costPer1kTokens.toFixed(4)}/1k) over council pick ${councilModel.provider} ($${councilModel.costPer1kTokens.toFixed(4)}/1k)`,
+        message: `User preferred ${userModel.provider} ($${userCost.toFixed(4)}/1k) over council pick ${councilModel.provider} ($${councilCost.toFixed(4)}/1k)`,
         runId: run.id,
       });
     }
@@ -503,10 +508,10 @@ export function processCostEvaluations(runs: RunRecord[]): CostEvaluationResult 
     }
 
     // User picked a more expensive / slower model (quality preference)
-    if (userModel.costPer1kTokens > councilModel.costPer1kTokens) {
+    if (costsKnown && userCost > councilCost) {
       insights.push({
         type: 'QUALITY_PREF',
-        message: `User valued quality from ${userModel.provider} despite higher cost ($${userModel.costPer1kTokens.toFixed(4)} vs $${councilModel.costPer1kTokens.toFixed(4)}/1k)`,
+        message: `User valued quality from ${userModel.provider} despite higher cost ($${userCost.toFixed(4)} vs $${councilCost.toFixed(4)}/1k)`,
         runId: run.id,
       });
     }
@@ -532,6 +537,13 @@ export function formatCost(cost: number): string {
   if (cost === 0) return '$0.00';
   if (cost < 0.01) return `$${cost.toFixed(4)}`;
   return `$${cost.toFixed(2)}`;
+}
+
+/** Per-1k-token price of an agent snapshot; null means a subscription CLI agent. */
+export function formatCostPer1k(costPer1kTokens: number | null): string {
+  if (costPer1kTokens === null) return 'subscription';
+  if (costPer1kTokens > 0) return `$${costPer1kTokens.toFixed(4)}/1k tokens`;
+  return 'cost n/a';
 }
 
 export function formatDuration(seconds: number): string {

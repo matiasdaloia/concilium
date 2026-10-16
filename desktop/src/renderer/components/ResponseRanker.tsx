@@ -3,6 +3,7 @@ import Button from './Button';
 import Badge from './Badge';
 import { api } from '../api';
 import type { RunRecord } from '../types';
+import { formatCostPer1k } from '../utils/analytics';
 
 interface ResponseRankerProps {
   run: RunRecord;
@@ -105,9 +106,7 @@ export default function ResponseRanker({ run, onFeedbackSaved }: ResponseRankerP
               {snapshot?.[item.model] && (
                 <div className="flex items-center gap-3 mt-1">
                   <span className="text-[10px] text-text-muted">
-                    {snapshot[item.model].costPer1kTokens > 0
-                      ? `$${snapshot[item.model].costPer1kTokens.toFixed(4)}/1k tokens`
-                      : 'cost n/a'}
+                    {formatCostPer1k(snapshot[item.model].costPer1kTokens)}
                   </span>
                   <Badge
                     variant={

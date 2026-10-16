@@ -142,30 +142,17 @@ export class DeliberationService {
 
       // Build model performance snapshots
       const modelSnapshots: Record<string, ModelPerformanceSnapshot> = {};
-      const cachedModels = this.deps.llmGateway.getCachedOrFallbackModels();
-      const agentKeyToModel = new Map<string, string>();
-      for (const cfg of agentConfigs) {
-        const key = cfg.instanceId ?? cfg.id;
-        if (cfg.model) agentKeyToModel.set(key, cfg.model);
-      }
       for (const agent of agentResults) {
         if (agent.status !== 'success') continue;
         const latencyMs =
           agent.startedAt && agent.endedAt
             ? new Date(agent.endedAt).getTime() - new Date(agent.startedAt).getTime()
             : 0;
-        const agentKey = agent.agentKey ?? agent.id;
-        const fullModelId = agentKeyToModel.get(agentKey) ?? '';
-        const modelInfo = cachedModels.find(
-          (m) => m.id === fullModelId || fullModelId.endsWith(m.id) || m.id.endsWith(fullModelId),
-        );
-        const costPer1k = modelInfo
-          ? (modelInfo.pricing.prompt + modelInfo.pricing.completion) / 2 / 1000
-          : 0;
         modelSnapshots[agent.name] = {
           modelId: agent.name,
           provider: agent.id,
-          costPer1kTokens: costPer1k,
+          // Agents run through local CLIs on the user's subscription, so API per-token prices don't apply.
+          costPer1kTokens: null,
           latencyMs,
           speedTier: latencyMs < 15000 ? 'fast' : latencyMs < 60000 ? 'balanced' : 'slow',
         };

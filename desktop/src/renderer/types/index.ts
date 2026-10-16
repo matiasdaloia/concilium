@@ -85,7 +85,8 @@ export interface UserRanking {
 export interface ModelPerformanceSnapshot {
   modelId: string;
   provider: string;
-  costPer1kTokens: number;
+  /** null when the agent runs on a subscription CLI and has no per-token price. */
+  costPer1kTokens: number | null;
   latencyMs: number;
   speedTier: 'fast' | 'balanced' | 'slow';
 }
