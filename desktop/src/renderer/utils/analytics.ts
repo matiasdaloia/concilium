@@ -1,5 +1,12 @@
 import type { RunRecord, TokenUsage, ParsedEvent } from '../types';
 
+/**
+ * Label for costs reported by an agent CLI (Claude Code `total_cost_usd`, OpenCode `cost`):
+ * what the run would cost at API prices, not what a subscription bills.
+ */
+export const AGENT_COST_LABEL = 'estimated API-equivalent';
+export const AGENT_COST_LABEL_SHORT = 'est. API-equivalent';
+
 // ─── Aggregated Types ────────────────────────────────────────────────────────
 
 export interface ModelStats {

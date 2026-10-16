@@ -7,6 +7,7 @@ import Button from '../components/Button';
 import Badge from '../components/Badge';
 import Tooltip from '../components/Tooltip';
 import { api } from '../api';
+import { AGENT_COST_LABEL_SHORT } from '../utils/analytics';
 import type { RunRecord, TokenUsage, ParsedEvent } from '../types';
 
 type Tab = 'synthesis' | 'agents' | 'reviews' | 'compare' | 'report';
@@ -303,6 +304,7 @@ function RunReport({ record }: { record: RunRecord }) {
           <div className="text-2xl font-bold font-mono text-green-primary">{fmtCost(report.grandTotalCost)}</div>
           <div className="text-[10px] text-text-tertiary mt-1">
             {fmtTokens(report.grandTotalTokens)} tokens
+            {report.totalAgentCost > 0 && ` · agents ${AGENT_COST_LABEL_SHORT}`}
           </div>
         </div>
         <div className="bg-bg-surface border border-border-primary rounded-lg p-4">
@@ -310,6 +312,7 @@ function RunReport({ record }: { record: RunRecord }) {
           <div className="text-2xl font-bold font-mono text-blue-info">{fmtCost(report.totalAgentCost)}</div>
           <div className="text-[10px] text-text-tertiary mt-1">
             {fmtTokens(report.totalAgentInput + report.totalAgentOutput)} tokens
+            {report.totalAgentCost > 0 && ` · ${AGENT_COST_LABEL_SHORT}`}
           </div>
         </div>
         <div className="bg-bg-surface border border-border-primary rounded-lg p-4">
@@ -349,7 +352,7 @@ function RunReport({ record }: { record: RunRecord }) {
                 <th className="text-center px-3 py-2.5 font-medium">Status</th>
                 <th className="text-right px-3 py-2.5 font-medium">Input</th>
                 <th className="text-right px-3 py-2.5 font-medium">Output</th>
-                <th className="text-right px-3 py-2.5 font-medium">Cost</th>
+                <th className="text-right px-3 py-2.5 font-medium">Cost ({AGENT_COST_LABEL_SHORT})</th>
                 <th className="text-right px-3 py-2.5 font-medium">Duration</th>
                 <th className="px-5 py-2.5 font-medium w-32">Usage</th>
               </tr>

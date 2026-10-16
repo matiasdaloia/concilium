@@ -8,6 +8,8 @@ import type { RunRecord } from '../types';
 import {
   processAnalytics,
   processCostEvaluations,
+  AGENT_COST_LABEL,
+  AGENT_COST_LABEL_SHORT,
   formatTokenCount,
   formatCost,
   formatDuration,
@@ -339,7 +341,7 @@ function OverviewTab({ analytics }: { analytics: AnalyticsData }) {
           label="Total Cost"
           value={formatCost(analytics.costBreakdown.totalCost)}
           sub={analytics.totalRuns > 0
-            ? `${formatCost(analytics.costBreakdown.totalCost / analytics.totalRuns)} avg/run (all stages)`
+            ? `${formatCost(analytics.costBreakdown.totalCost / analytics.totalRuns)} avg/run (all stages, agents ${AGENT_COST_LABEL_SHORT})`
             : undefined}
           color="text-amber-warning"
         />
@@ -409,7 +411,7 @@ function ModelsTab({ analytics }: { analytics: AnalyticsData }) {
                 <th className="text-right px-3 py-2.5 font-medium">Runs</th>
                 <th className="text-right px-3 py-2.5 font-medium">Input Tokens</th>
                 <th className="text-right px-3 py-2.5 font-medium">Output Tokens</th>
-                <th className="text-right px-3 py-2.5 font-medium">Total Cost</th>
+                <th className="text-right px-3 py-2.5 font-medium">Total Cost ({AGENT_COST_LABEL_SHORT})</th>
                 <th className="text-right px-3 py-2.5 font-medium">Avg Time</th>
                 <th className="text-right px-5 py-2.5 font-medium">Avg Rank</th>
               </tr>
@@ -577,12 +579,13 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
         <StatCard
           label="Total Spend (All Stages)"
           value={formatCost(analytics.costBreakdown.totalCost)}
-          sub={analytics.totalRuns > 0 ? `${formatCost(analytics.costBreakdown.totalCost / analytics.totalRuns)} avg/run` : undefined}
+          sub={analytics.totalRuns > 0 ? `${formatCost(analytics.costBreakdown.totalCost / analytics.totalRuns)} avg/run · agents ${AGENT_COST_LABEL_SHORT}` : undefined}
           color="text-amber-warning"
         />
         <StatCard
           label="Agent Cost (Stage 1)"
           value={formatCost(analytics.costBreakdown.agentCost)}
+          sub={AGENT_COST_LABEL}
           color="text-blue-info"
         />
         <StatCard
@@ -600,7 +603,7 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
         <StatCard
           label="Avg Cost / Run"
           value={analytics.totalRuns > 0 ? formatCost(analytics.costBreakdown.totalCost / analytics.totalRuns) : '$0.00'}
-          sub="all stages combined"
+          sub={`all stages, agents ${AGENT_COST_LABEL_SHORT}`}
         />
       </div>
 
@@ -644,7 +647,7 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
               <div className="flex items-center gap-6 text-[10px] font-mono text-text-muted">
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-sm bg-blue-info/50" />
-                  Agents: {formatCost(agentCost)} ({agentPct.toFixed(1)}%)
+                  Agents: {formatCost(agentCost)} {AGENT_COST_LABEL_SHORT} ({agentPct.toFixed(1)}%)
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-sm bg-amber-warning/50" />
@@ -663,7 +666,7 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
       {/* Cost per Model */}
       <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
         <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Cost per Model</h3>
-        <p className="text-[10px] text-text-muted mb-3">Total accumulated cost</p>
+        <p className="text-[10px] text-text-muted mb-3">Total accumulated cost ({AGENT_COST_LABEL})</p>
         <div className="space-y-0.5">
           {analytics.modelStats
             .filter(s => s.totalCost > 0)
@@ -688,7 +691,7 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
       {costEfficiency.length > 0 && (
         <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
           <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Cost Efficiency</h3>
-          <p className="text-[10px] text-text-muted mb-3">Cost per 1,000 tokens — lower is better</p>
+          <p className="text-[10px] text-text-muted mb-3">Cost per 1,000 tokens ({AGENT_COST_LABEL}) — lower is better</p>
           <div className="space-y-0.5">
             {costEfficiency.map((c) => (
               <HBar
@@ -708,7 +711,7 @@ function CostsTab({ analytics }: { analytics: AnalyticsData }) {
       {analytics.costByDate.length > 1 && (
         <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
           <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Spend Over Time</h3>
-          <p className="text-[10px] text-text-muted mb-3">Daily cost breakdown</p>
+          <p className="text-[10px] text-text-muted mb-3">Daily agent cost ({AGENT_COST_LABEL})</p>
           <div className="space-y-0.5">
             {analytics.costByDate.map((d) => (
               <HBar
@@ -868,7 +871,7 @@ function PerformanceTab({ analytics }: { analytics: AnalyticsData }) {
         <div className="bg-bg-surface border border-border-primary rounded-lg p-5">
           <h3 className="text-xs font-medium text-text-secondary mb-1 tracking-wide">Quality/Cost Efficiency</h3>
           <p className="text-[10px] text-text-muted mb-3">
-            Higher is better — models that rank well while costing less score higher
+            Higher is better — models that rank well while costing less score higher (cost: {AGENT_COST_LABEL})
           </p>
           <div className="space-y-0.5">
             {efficiencyScores.map((e) => (
@@ -1086,7 +1089,7 @@ function HistoryTab({ analytics, sortField, sortAsc, onSort }: {
                 <th className="text-left px-3 py-2.5 font-medium">Prompt</th>
                 <th className="text-center px-3 py-2.5 font-medium">Models</th>
                 <SortHeader field="tokens">Tokens</SortHeader>
-                <SortHeader field="cost">Cost</SortHeader>
+                <SortHeader field="cost">Cost ({AGENT_COST_LABEL_SHORT})</SortHeader>
                 <SortHeader field="duration">Duration</SortHeader>
               </tr>
             </thead>
