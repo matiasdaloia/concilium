@@ -14,5 +14,9 @@
     "publish:core": "npm publish --workspace=@concilium/core --access public",
     "publish:cli": "npm publish --workspace=@concilium/cli --access public",
     "publish:all": "npm run publish:core && npm run publish:cli"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "~6.0.3"
   }
 }
