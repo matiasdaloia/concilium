@@ -393,6 +393,10 @@ describe('concilium code', () => {
     expect(result.stdout).toMatch(/anthropic-1\s+own-family-only\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
     expect(result.stdout).toMatch(/openai-1\s+quarantined\s+fail\s+fail\s+fail\s+reject non-numbers\n/);
     expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/0\n');
+    // The quarantined test is a warning right after the run line, and it leaves the mergeable label alone.
+    expect(result.stdout).toMatch(/\n {4}Warning: dissent-\d+ quarantined-test: quarantined: fails on base and every candidate; not classified by a judge \(acceptance line "reject non-numbers"\)\n/);
+    expect(result.stdout).not.toContain('Not mergeable');
+    expect(result.stdout).toMatch(/Mergeable: yes, git apply --check against HEAD/);
     const runId = /Run (\S+) in /.exec(result.stdout)![1];
     expect(git(repo, 'show', `concilium/${runId}/adv-anthropic:claude-adv.test.js`)).toContain('TypeError');
     // The candidates' branches never get the adversarial tests.

@@ -115,7 +115,7 @@ export {
 export { reframeRun } from './services/reframe-service.js';
 export type { ReframeInput } from './services/reframe-service.js';
 export type { Dissent, DissentEvidence, DissentInput, DissentResolution, DissentSource } from './domain/code-council/dissent.js';
-export { DISSENT_FILE, RUBRIC_SCORE_SPREAD, blockingDissent, collectDissent, dissentMarkdown, withDissent } from './domain/code-council/dissent.js';
+export { DISSENT_FILE, QUARANTINED_REASON, RUBRIC_SCORE_SPREAD, blockingDissent, collectDissent, dissentMarkdown, warningDissent, withDissent } from './domain/code-council/dissent.js';
 export { recordDissent } from './services/dissent-service.js';
 export type { Decision, DecisionRow, TrailEvent, TrailProblem } from './domain/code-council/trail.js';
 export {

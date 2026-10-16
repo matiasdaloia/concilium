@@ -1091,7 +1091,7 @@ describe('runCodeCandidates synthesis', () => {
     expect(record.roles).toEqual(roles);
   }, 60_000);
 
-  it('should keep the patch but not label it mergeable while dissent on an acceptance line is open', async () => {
+  it('should label the patch mergeable with a quarantined test recorded as a warning', async () => {
     seedSuite();
     const drivers = new Map([
       ['claude', agent('claude', { 'sum.js': CLAUDE_SUM })],
@@ -1111,15 +1111,19 @@ describe('runCodeCandidates synthesis', () => {
     expect(record.adversarial!.tests).toEqual([expect.objectContaining({ id: 'openai-1', validity: 'quarantined', specClause: 'sum adds' })]);
     expect(record.status).toBe('done');
     expect(record.dissent.records).toEqual([expect.objectContaining({
-      id: 'dissent-1', source: 'quarantined-test', acceptanceClause: 'sum adds', resolution: 'open', resolutionReason: null,
+      id: 'dissent-1', source: 'quarantined-test', acceptanceClause: 'sum adds', resolution: 'warning',
+      resolutionReason: 'quarantined: fails on base and every candidate; not classified by a judge',
       evidence: [{ kind: 'test', ref: 'openai-1' }, { kind: 'file', ref: 'never.test.js' }],
     })]);
-    // The patch is written and applies, but open dissent on "sum adds" takes the label away.
+    // The patch is written, applies and keeps its label: a quarantined test is a warning, not a block.
     expect(s.mergeCheck).toMatchObject({ applies: true });
-    expect(s).toMatchObject({ mergeable: false, mergeBlock: 'open dissent on acceptance lines: dissent-1 ("sum adds")', patchPath: join(runDir, 'result.patch') });
+    expect(s).toMatchObject({ mergeable: true, patchPath: join(runDir, 'result.patch') });
+    expect(s.mergeBlock).toBeUndefined();
     const md = readFileSync(join(runDir, 'synthesis.md'), 'utf8');
-    expect(md).toContain('1 open of 1, also in `dissent.json`. Open dissent on an acceptance line (dissent-1) keeps the patch from being labelled mergeable.');
-    expect(md).toContain('- Mergeable: no, open dissent on acceptance lines: dissent-1 ("sum adds"); `git apply --check`');
+    expect(md).toContain('0 open of 1, also in `dissent.json`. 1 warning (dissent-1) does not keep the patch from being labelled mergeable.');
+    expect(md).toContain('- **dissent-1** warning, quarantined-test: ');
+    expect(md).toContain('  Warning: quarantined: fails on base and every candidate; not classified by a judge.');
+    expect(md).toContain('- Mergeable: yes, `git apply --check`');
     expect(JSON.parse(readFileSync(join(runDir, 'dissent.json'), 'utf8')).records).toEqual(record.dissent.records);
   }, 60_000);
 

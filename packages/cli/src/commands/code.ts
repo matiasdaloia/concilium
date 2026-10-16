@@ -22,6 +22,7 @@ import {
   specAgent,
   TASK_TYPES,
   VERIFY_CONFIG,
+  warningDissent,
   type CandidateVerification,
   type CodeCandidate,
   type CodeFrame,
@@ -237,17 +238,21 @@ function summaryRows(candidates: CodeCandidate[]): string[][] {
   ];
 }
 
-/** Open dissent first: it is what the run leaves undecided, and on an acceptance line it blocks the mergeable label. */
+/**
+ * Open dissent first: it is what the run leaves undecided, and on an acceptance line it blocks the mergeable label.
+ * Warnings follow; they never block it.
+ */
 function printDissent(record: CodeRunRecord): void {
   const { records, path } = record.dissent;
   const open = records.filter((d) => d.resolution === 'open');
   if (open.length === 0) {
     if (records.length > 0) console.log(`  Dissent: none open, ${records.length} recorded${path ? ` in ${path}` : ''}`);
-    return;
+  } else {
+    console.log(`  Open dissent (${open.length} of ${records.length}${path ? `, in ${path}` : ''}):`);
+    for (const d of open) console.log(`    ${d.id} ${d.source}: ${d.summary}${d.acceptanceClause ? ` (acceptance line "${d.acceptanceClause}")` : ''}`);
+    if (record.synthesis?.mergeBlock) console.log(`    Not mergeable: ${record.synthesis.mergeBlock}`);
   }
-  console.log(`  Open dissent (${open.length} of ${records.length}${path ? `, in ${path}` : ''}):`);
-  for (const d of open) console.log(`    ${d.id} ${d.source}: ${d.summary}${d.acceptanceClause ? ` (acceptance line "${d.acceptanceClause}")` : ''}`);
-  if (record.synthesis?.mergeBlock) console.log(`    Not mergeable: ${record.synthesis.mergeBlock}`);
+  for (const d of warningDissent(records)) console.log(`    Warning: ${d.id} ${d.source}: ${d.resolutionReason} (acceptance line "${d.acceptanceClause}")`);
 }
 
 function printSummary(record: CodeRunRecord, savedTo: string | null): void {
