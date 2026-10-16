@@ -28,6 +28,12 @@ export type { CouncilProgressCallbacks } from './domain/deliberation/pipeline.js
 export type { RunRecord } from './domain/run/run-record.js';
 export type { RunMetadata, AggregateRanking, UserRanking, ModelPerformanceSnapshot } from './domain/run/run-metadata.js';
 
+export type { Brief, BriefMode, AllowedAction } from './domain/driver/brief.js';
+export { parseBrief, BriefValidationError, BRIEF_MODES, ALLOWED_ACTIONS } from './domain/driver/brief.js';
+export type { Report, ReportStatus, EventCounts } from './domain/driver/report.js';
+export { buildReport, parseReport, ReportValidationError, REPORT_STATUSES } from './domain/driver/report.js';
+export type { NormalizedEvent, RunEvent, DriverUsage } from './domain/driver/normalized-event.js';
+
 // Port interfaces
 export type { AgentProvider, AgentExecutionConfig } from './ports/agent-provider.js';
 export type { LlmGateway, LlmResponse } from './ports/llm-gateway.js';
@@ -35,6 +41,7 @@ export type { RunRepository } from './ports/run-repository.js';
 export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
 export type { SecretStore } from './ports/secret-store.js';
 export type { DeliberationEvents } from './ports/deliberation-events.js';
+export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from './ports/headless-cli-driver.js';
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
@@ -45,6 +52,10 @@ export type { OpenCodeServerHandle, OpenCodeSdkConfig } from './adapters/opencod
 export { JsonRunRepository } from './adapters/json-run-repository.js';
 export { JsonConfigStore } from './adapters/json-config-store.js';
 export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
+export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
+export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
+export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
+export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
 // Application services
 export { DeliberationService } from './services/deliberation-service.js';
