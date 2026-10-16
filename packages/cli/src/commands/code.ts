@@ -133,7 +133,7 @@ function printAdversarial(record: CodeRunRecord): void {
 }
 
 function judgmentLine(j: Judgment): string {
-  const who = j.judge ? `${j.judge}${j.crossFamily ? ' (another family)' : ''}` : 'no judge';
+  const who = j.judge ? `${j.judge}${j.sameFamily ? '' : ' (another family)'}` : 'no judge';
   return `Judge ${who} on ${j.candidates.join(', ')}: ${j.status}, ${j.reason}`;
 }
 
@@ -154,7 +154,7 @@ function printRanking(record: CodeRunRecord): void {
   ], '    ');
   for (const j of ranking.judgments) {
     console.log(`    ${judgmentLine(j)}`);
-    for (const note of j.notes) console.log(`      ${note}`);
+    if (j.sameFamily) console.log(`    Warning: same-family judge: ${j.sameFamilyReason}`);
   }
   console.log(ranking.winner ? `\n  Winner: ${ranking.winner} (${ranking.reason})` : `\n  No winner: ${ranking.reason.replace(/^no winner: /, '')}`);
 
@@ -270,7 +270,10 @@ export function registerCodeCommand(program: Command): void {
           onAdversaryDone: (a) => progress(`  ${a.status === 'ok' ? '✓' : '✗'} ${a.lane}: ${a.status} in ${formatDuration(a.durationMs)}`),
           onTestDone: (testId, lane, cell) => progress(`  ${cell === 'pass' ? '✓' : '✗'} ${testId} on ${lane}: ${cell}`),
           judge: opts.judge,
-          onJudgeDone: (j) => progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`),
+          onJudgeDone: (j) => {
+            progress(`  ${j.status === 'PASS' ? '✓' : '✗'} ${judgmentLine(j)}`);
+            if (j.sameFamily) progress(`  Warning: same-family judge: ${j.sameFamilyReason}`);
+          },
         });
         savedTo = await new JsonCodeRunStore(getDataDir()).save(record).catch((err: Error) => {
           console.error(`Warning: could not save the run record: ${err.message}`);

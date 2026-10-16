@@ -22,29 +22,30 @@ export type Judgment = {
   candidates: string[];
   /** The CLI that judged, on its own default model. */
   judge: string | null;
-  /** Whether its model family wrote none of the tied candidates. */
-  crossFamily: boolean;
+  /** The judge is not known to be of another family than the tied candidates: allowed only when no such CLI is usable. */
+  sameFamily: boolean;
+  /** Why a same-family judge was picked; null otherwise. */
+  sameFamilyReason: string | null;
   /** The frozen rubric's hash, checked before the judge ran. */
   rubricSha256: string;
   scores: JudgeScore[];
   /** Per candidate, the sum of weight × score over the criteria. */
   totals: Record<string, number>;
   reason: string;
-  notes: string[];
 };
 
-export type JudgeChoice = { provider: string; crossFamily: boolean; note?: string };
+export type JudgeChoice = { provider: string; sameFamily: boolean; sameFamilyReason: string | null };
 
 /**
- * The first usable CLI whose family wrote none of the tied candidates. Without one, the first usable CLI, with a
- * note; a CLI of unknown family (OpenCode) never counts as another family. Null when no CLI is usable.
+ * The first usable CLI whose family wrote none of the tied candidates. Without one, the first usable CLI, flagged
+ * `sameFamily` with the reason; a CLI of unknown family (OpenCode) never counts as another family. Null when no CLI is usable.
  */
 export function pickJudge(tiedFamilies: string[], usable: { provider: string; family: string | null }[]): JudgeChoice | null {
   const other = usable.find((u) => u.family !== null && !tiedFamilies.includes(u.family));
-  if (other) return { provider: other.provider, crossFamily: true };
+  if (other) return { provider: other.provider, sameFamily: false, sameFamilyReason: null };
   const first = usable[0];
   if (!first) return null;
-  return { provider: first.provider, crossFamily: false, note: `no CLI outside the tied families (${tiedFamilies.join(', ')}) is usable, so ${first.provider} judges` };
+  return { provider: first.provider, sameFamily: true, sameFamilyReason: `no CLI outside the tied families (${tiedFamilies.join(', ')}) is usable, so ${first.provider} judges` };
 }
 
 /** What a judge sees of one candidate: a letter, its diff against the base and its evidence, never who wrote it. */

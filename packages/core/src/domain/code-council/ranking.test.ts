@@ -15,7 +15,7 @@ function entry(candidateId: string, key: Partial<EvidenceKey> = {}, status: Work
 }
 
 function judgment(candidates: string[], totals: Record<string, number>, status: Judgment['status'] = 'PASS'): Judgment {
-  return { status, candidates, judge: 'gemini', crossFamily: true, rubricSha256: 'x', scores: [], totals, reason: status === 'PASS' ? 'scored' : 'rubric changed', notes: [] };
+  return { status, candidates, judge: 'gemini', sameFamily: false, sameFamilyReason: null, rubricSha256: 'x', scores: [], totals, reason: status === 'PASS' ? 'scored' : 'rubric changed' };
 }
 
 const ids = (r: ReturnType<typeof rankCandidates>) => r.order.map((e) => `${e.rank} ${e.candidateId}`);

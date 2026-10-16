@@ -12,9 +12,12 @@ import type { Judgment } from './judging.js';
  */
 export type WorkerStatus = 'PASS' | 'ISSUES' | 'BLOCKED';
 
-/** One fact a report rests on. `ok: false` is what makes a report `ISSUES`. */
+/**
+ * One fact a report rests on. `ok: false` is what makes a report `ISSUES`. A `judge` fact is added after the judge
+ * ran, to flag a same-family judge; it is about the ordering, not the work, so it is `ok: true`.
+ */
 export type ReportEvidence = {
-  kind: 'agent' | 'gate' | 'integrity' | 'survival' | 'playbook';
+  kind: 'agent' | 'gate' | 'integrity' | 'survival' | 'playbook' | 'judge';
   ok: boolean;
   detail: string;
   /** The commit the fact is about, when it ran at one. */

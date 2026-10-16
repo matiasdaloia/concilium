@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { PLAYBOOKS, TASK_TYPES } from '../domain/code-council/playbooks.js';
 import { rubricHash, type RubricCriterion } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
+import type { RunEvent } from '../domain/driver/normalized-event.js';
 import { COUNCIL_PROMPT_FILE } from '../adapters/cli/cli-council-gateway.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { DirtyWorktreeError, GitWorktreeWorkspace } from '../adapters/git-worktree-workspace.js';
@@ -533,11 +534,17 @@ describe('runCodeCandidates ranking', () => {
     return git(repo, 'rev-parse', 'HEAD');
   }
 
-  /** A candidate that fails the framing run (so the rubric is the playbook's), changes files (null deletes) and ends with `finalText`. */
-  function agent(id: string, files: Record<string, string | null>, finalText = STEPS): FakeCliDriver {
+  /**
+   * A candidate that fails the framing run (so the rubric is the playbook's), changes files (null deletes) and ends
+   * with `finalText`. With `judging`, it also answers a judge prompt as `judge` does.
+   */
+  function agent(id: string, files: Record<string, string | null>, finalText = STEPS, judging?: { prefer: string; prompts: string[] }): FakeCliDriver {
     return new FakeCliDriver({
       id,
       respond: (brief: Brief) => {
+        if (judging && brief.mode === 'plan' && readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8').startsWith('You are judging')) {
+          return score(brief, judging.prefer, judging.prompts);
+        }
         if (brief.mode === 'plan') return [{ type: 'error', message: 'no framing' }];
         for (const [name, content] of Object.entries(files)) {
           if (content === null) rmSync(join(brief.cwd, name));
@@ -550,17 +557,16 @@ describe('runCodeCandidates ranking', () => {
 
   /** A judge that scores every criterion 9 for the candidate whose section of the prompt holds `prefer`, 4 for the others. */
   function judge(id: string, prefer: string, prompts: string[]): FakeCliDriver {
-    return new FakeCliDriver({
-      id,
-      respond: (brief: Brief) => {
-        const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
-        prompts.push(prompt);
-        const scores = prompt.split('## Candidate ').slice(1).flatMap((section) => PLAYBOOKS.feature.rubric.map((c) => ({
-          candidate: section[0], criterion: c.name, score: section.includes(prefer) ? 9 : 4, reason: `${c.name}: see the diff`,
-        })));
-        return [{ type: 'text', text: JSON.stringify({ scores }) }];
-      },
-    });
+    return new FakeCliDriver({ id, respond: (brief: Brief) => score(brief, prefer, prompts) });
+  }
+
+  function score(brief: Brief, prefer: string, prompts: string[]): RunEvent[] {
+    const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+    prompts.push(prompt);
+    const scores = prompt.split('## Candidate ').slice(1).flatMap((section) => PLAYBOOKS.feature.rubric.map((c) => ({
+      candidate: section[0], criterion: c.name, score: section.includes(prefer) ? 9 : 4, reason: `${c.name}: see the diff`,
+    })));
+    return [{ type: 'text', text: JSON.stringify({ scores }) }];
   }
 
   const NUMBER = 'module.exports = (a, b) => Number(a) + Number(b);\n';
@@ -619,9 +625,10 @@ describe('runCodeCandidates ranking', () => {
     expect(judged).toEqual(['gemini PASS']);
     const [judgment] = record.ranking.judgments;
     expect(judgment).toMatchObject({
-      status: 'PASS', candidates: ['claude', 'codex'], judge: 'gemini', crossFamily: true, rubricSha256: record.rubric.sha256,
-      totals: { claude: 32, codex: 72 }, notes: [],
+      status: 'PASS', candidates: ['claude', 'codex'], judge: 'gemini', sameFamily: false, sameFamilyReason: null, rubricSha256: record.rubric.sha256,
+      totals: { claude: 32, codex: 72 },
     });
+    expect(record.candidates.flatMap((c) => c.report!.evidence).filter((e) => e.kind === 'judge')).toEqual([]);
     expect(judgment.scores).toContainEqual({ candidateId: 'codex', criterion: 'fit', score: 9, reason: 'fit: see the diff' });
     expect(record.ranking.order.map((e) => [e.rank, e.candidateId, e.judgeTotal])).toEqual([[1, 'codex', 72], [2, 'claude', 32]]);
     expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
@@ -633,6 +640,28 @@ describe('runCodeCandidates ranking', () => {
     expect(prompts[0]).toContain('+module.exports = (a, b) => +a + +b;');
     expect(prompts[0]).toContain('- ok, gate: test: pass');
     expect(prompts[0]).not.toMatch(/claude|codex|anthropic|openai/i);
+  });
+
+  it('should let a tied family judge only when no other family is usable, and flag it on the judgment and every tied report', async () => {
+    seedTest();
+    const prompts: string[] = [];
+    // claude is a candidate and, as the only usable CLI besides codex, the judge.
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': NUMBER }, STEPS, { prefer: UNARY, prompts })],
+      ['codex', agent('codex', { 'sum.js': UNARY })],
+    ]);
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'rank5', drivers, workspace, verify: true, judge: true,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }],
+    });
+
+    const reason = 'no CLI outside the tied families (anthropic, openai) is usable, so claude judges';
+    expect(record.ranking.judgments).toEqual([expect.objectContaining({ status: 'PASS', judge: 'claude', sameFamily: true, sameFamilyReason: reason })]);
+    expect(prompts).toHaveLength(1);
+    for (const c of record.candidates) {
+      expect(c.report!.evidence).toContainEqual({ kind: 'judge', ok: true, detail: `same-family judge: ${reason}` });
+    }
+    expect(record.ranking).toMatchObject({ winner: 'codex', reason: 'tied on the evidence, ordered by the judge' });
   });
 
   it('should block the judge when the rubric no longer matches its frozen hash, and name no winner for the tie', async () => {
