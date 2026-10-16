@@ -124,7 +124,8 @@ export {
   pickRole, resolveCodeRoles, roleWarnings, specAgent, specFamily, validateRoles,
 } from './domain/roles/roles.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
-export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
+export type { ConciliumAdapters, ConciliumRuntime, RepoOptions } from './services/create-concilium.js';
+export { readRepoRoles } from './services/role-service.js';
 
 // Shared
 export { createLogger, setLogLevel, getLogLevel } from './shared/logger.js';

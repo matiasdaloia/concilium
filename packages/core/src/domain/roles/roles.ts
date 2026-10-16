@@ -49,7 +49,7 @@ export type CodeRoleMap = {
 export type RoleMap = CodeRoleMap & { juror: ResolvedRole<string[]>; chairman: ResolvedRole<string> };
 
 export class RolesValidationError extends Error {
-  constructor(where: string, readonly problems: string[]) {
+  constructor(readonly where: string, readonly problems: string[]) {
     super(`${where}: ${problems.join('; ')}`);
     this.name = 'RolesValidationError';
   }
