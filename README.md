@@ -142,6 +142,7 @@ concilium run --output solution.md "Migrate the database schema"
 | Command | Description |
 |---------|-------------|
 | `concilium run <prompt>` | Run a deliberation pipeline |
+| `concilium code <task>` | Have agent CLIs write code, each in its own worktree and `concilium/` branch |
 | `concilium history` | List past runs |
 | `concilium history <id>` | View a specific run |
 | `concilium history --last --synthesis` | Print the last synthesis |
@@ -200,7 +201,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, doctor, gc
+│       │   ├── commands/ # run, code, history, config, models, doctor, gc
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/

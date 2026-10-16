@@ -190,6 +190,36 @@ describe('GitWorktreeWorkspace', () => {
       await expect(manager.startRun({ repoDir: repo, runId })).rejects.toThrow(/Invalid run id/);
     }
   });
+
+  it('should commit what a candidate left in its worktree as concilium, skipping ignored files, and count it against the base', async () => {
+    const base = await manager.startRun({ repoDir: repo, runId: 'r1' });
+    const ws = await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+    writeFileSync(join(ws.path, 'a.txt'), 'one\ntwo\n');
+    writeFileSync(join(ws.path, 'new.txt'), 'x\ny\n');
+    writeFileSync(join(ws.path, 'ignored.log'), 'noise\n');
+
+    const result = await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'candidate a' });
+
+    expect(result.committed).toBe(true);
+    expect(result.headSha).toBe(git(repo, 'rev-parse', ws.branch));
+    expect(git(repo, 'log', '-1', '--format=%an <%ae>|%s', ws.branch)).toBe('concilium <concilium@localhost>|candidate a');
+    expect(git(repo, 'show', `${ws.branch}:new.txt`)).toBe('x\ny');
+    expect(git(repo, 'ls-tree', '--name-only', ws.branch)).not.toContain('ignored.log');
+    expect(await manager.diffStat({ repoDir: repo, runId: 'r1', candidateId: 'a' })).toEqual({ commits: 1, filesChanged: 2, insertions: 3, deletions: 0 });
+    expect(git(repo, 'rev-parse', 'HEAD')).toBe(base.headSha);
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+
+    const again = await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'candidate a' });
+    expect(again).toEqual({ headSha: result.headSha, committed: false });
+  });
+
+  it('should report an untouched candidate as no change', async () => {
+    const base = await manager.startRun({ repoDir: repo, runId: 'r1' });
+    await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+
+    expect(await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'm' })).toEqual({ headSha: base.baseSha, committed: false });
+    expect(await manager.diffStat({ repoDir: repo, runId: 'r1', candidateId: 'a' })).toEqual({ commits: 0, filesChanged: 0, insertions: 0, deletions: 0 });
+  });
 });
 
 describe('GitWorktreeWorkspace gc', () => {

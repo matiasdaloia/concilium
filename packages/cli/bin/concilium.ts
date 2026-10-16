@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { registerCodeCommand } from "../src/commands/code.js";
 import { registerConfigCommand } from "../src/commands/config.js";
 import { registerDoctorCommand } from "../src/commands/doctor.js";
 import { registerGcCommand } from "../src/commands/gc.js";
@@ -33,6 +34,7 @@ program
   .version(version);
 
 registerRunCommand(program);
+registerCodeCommand(program);
 registerHistoryCommand(program);
 registerConfigCommand(program);
 registerModelsCommand(program);
