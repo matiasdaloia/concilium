@@ -4,9 +4,10 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { Brief } from '../../domain/driver/brief.js';
+import { parseBrief, type Brief } from '../../domain/driver/brief.js';
 import type { NormalizedEvent } from '../../domain/driver/normalized-event.js';
 import type { CliAuth, CliDetection, DriverRunOptions, HeadlessCliDriver } from '../../ports/headless-cli-driver.js';
+import { runClaudeCode } from './claude-code.js';
 import { captureSubprocess } from './subprocess.js';
 
 export const HEADLESS_CLI_IDS = ['claude', 'codex', 'gemini', 'opencode'] as const;
@@ -74,16 +75,18 @@ type CliDefinition = {
   command: string;
   /** A non-secret status command and its parser, or a check of the environment. */
   auth: { args: string[]; parse: (out: StatusOutput) => AuthStatus } | { fromEnv: (env: NodeJS.ProcessEnv) => AuthStatus };
+  /** The CLI's one-shot headless run. Missing until that CLI's driver lands. */
+  run?: typeof runClaudeCode;
 };
 
 const DEFINITIONS: Record<HeadlessCliId, CliDefinition> = {
-  claude: { id: 'claude', command: 'claude', auth: { args: ['auth', 'status'], parse: parseClaudeAuthStatus } },
+  claude: { id: 'claude', command: 'claude', auth: { args: ['auth', 'status'], parse: parseClaudeAuthStatus }, run: runClaudeCode },
   codex: { id: 'codex', command: 'codex', auth: { args: ['login', 'status'], parse: parseCodexLoginStatus } },
   gemini: { id: 'gemini', command: 'gemini', auth: { fromEnv: geminiAuthFromEnv } },
   opencode: { id: 'opencode', command: 'opencode', auth: { args: ['auth', 'list'], parse: parseOpenCodeAuthList } },
 };
 
-/** Drives an installed agent CLI. Only `detect` works so far; `run` arrives per CLI in M1.2 to M1.5. */
+/** Drives an installed agent CLI. `run` works for Claude Code so far; the others arrive in M1.3 to M1.5. */
 export class CliDriver implements HeadlessCliDriver {
   readonly id: HeadlessCliId;
 
@@ -110,8 +113,10 @@ export class CliDriver implements HeadlessCliDriver {
     return { installed: true, version, ...auth.parse(statusOut) };
   }
 
-  async *run(_brief: Brief, _opts: DriverRunOptions): AsyncGenerator<NormalizedEvent> {
-    throw new Error(`${this.id}: headless run is not implemented yet`);
+  async *run(brief: Brief, opts: DriverRunOptions): AsyncGenerator<NormalizedEvent> {
+    const { command, run } = this.definition;
+    if (!run) throw new Error(`${this.id}: headless run is not implemented yet`);
+    yield* run({ command, env: this.env, brief: parseBrief(brief), opts });
   }
 }
 

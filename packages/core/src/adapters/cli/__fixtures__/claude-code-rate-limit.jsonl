@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","cwd":"/repo","session_id":"session-1","tools":["Read","Grep","Glob"],"model":"claude-sonnet-4-5","permissionMode":"plan","apiKeySource":"none","uuid":"uuid-1"}
+{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":4102444800,"rateLimitType":"five_hour"},"session_id":"session-1","uuid":"uuid-2"}
+{"type":"assistant","message":{"id":"msg-1","type":"message","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Claude AI usage limit reached|4102444800"}],"stop_reason":"stop_sequence","usage":{"input_tokens":0,"output_tokens":0}},"parent_tool_use_id":null,"session_id":"session-1","uuid":"uuid-3","error":"rate_limit"}
+{"type":"result","subtype":"success","is_error":true,"duration_ms":300,"num_turns":1,"result":"Claude AI usage limit reached|4102444800","session_id":"session-1","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"uuid":"uuid-4"}
