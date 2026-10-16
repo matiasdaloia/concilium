@@ -47,7 +47,7 @@ export function reportCandidate(candidate: CodeCandidate, ctx: { baseSha: string
 
   const survival: Survival | undefined = ctx.adversarial?.survival[candidate.candidateId];
   if (survival) {
-    const failed = survival.failed.length ? `; failed ${survival.failed.join(', ')}` : '';
+    const failed = survival.failed.length ? `, failed ${survival.failed.join(', ')}` : '';
     evidence.push({ kind: 'survival', ok: survival.failed.length === 0, detail: `survived ${survival.survived}/${survival.counted} adversarial tests by other families${failed}` });
   }
 
