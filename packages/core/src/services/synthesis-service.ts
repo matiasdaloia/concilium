@@ -8,7 +8,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getProviderInfo } from '../domain/agent/providers.js';
-import { pickJudge } from '../domain/code-council/judging.js';
+import { configuredJudge, pickJudge } from '../domain/code-council/judging.js';
 import type { TaskType } from '../domain/code-council/playbooks.js';
 import type { Ranking } from '../domain/code-council/ranking.js';
 import {
@@ -34,7 +34,7 @@ import { GateRunner } from '../adapters/gate-runner.js';
 import { INTEGRATION_CANDIDATE } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
 import { runTestInLane, type AdversarialRound } from './adversarial-service.js';
-import type { CodeCandidate } from './code-service.js';
+import type { CodeAgent, CodeCandidate } from './code-service.js';
 import { JUDGE_DIFF_LIMIT, usableClis } from './ranking-service.js';
 import { runDriver } from './run-driver.js';
 import type { RunVerification } from './verification-service.js';
@@ -55,6 +55,10 @@ export type SynthesisInput = {
   adversarial?: AdversarialRound;
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
   workspace: WorkspaceManager;
+  /** The judge role's `cli[:model]`, which names the grafts. Without it, `pickJudge` takes a usable CLI of another family. */
+  pickerSpec?: string;
+  /** The integrator role. Without it, the base's CLI and model fold in the grafts. */
+  integrator?: CodeAgent;
   /** Wall-clock limit per integrator run. */
   timeoutMs: number;
   runner?: GateRunner;
@@ -94,12 +98,12 @@ export function skippedSynthesis(skipped: string): Synthesis {
 /** One read-only CLI run, from another family than the base and the donors when one is usable, names the grafts. */
 async function pickGrafts(ctx: Context, donors: CodeCandidate[], synthesis: Synthesis): Promise<GraftIdea[]> {
   const families = [...new Set([ctx.base, ...donors].map(familyOf))];
-  const choice = pickJudge(families, await usableClis(ctx.drivers));
+  const choice = ctx.pickerSpec ? configuredJudge(ctx.pickerSpec, families) : pickJudge(families, await usableClis(ctx.drivers));
   if (!choice) {
     synthesis.notes.push('no agent CLI is installed and signed in to name grafts');
     return [];
   }
-  synthesis.picker = choice.sameFamily
+  synthesis.picker = choice.sameFamily && !ctx.pickerSpec
     ? { ...choice, sameFamilyReason: `no CLI outside the candidates' families (${families.join(', ')}) is usable, so ${choice.provider} names the grafts` }
     : choice;
 
@@ -152,12 +156,13 @@ async function check(ctx: Context, sha: string): Promise<{ checks: SynthesisChec
 }
 
 /**
- * A fresh integrator run (the base's CLI and model, write mode) folds one graft into the integration worktree, and
- * Concilium commits it. The graft stays only when no gate or valid adversarial test that passed before it fails
- * after it, and it weakens no test; otherwise its commit is reverted and the evidence recorded.
+ * A fresh integrator run (the integrator role, else the base's CLI and model, write mode) folds one graft into the
+ * integration worktree, and Concilium commits it. The graft stays only when no gate or valid adversarial test that
+ * passed before it fails after it, and it weakens no test; otherwise its commit is reverted and the evidence recorded.
  */
 async function applyGraft(ctx: Context, idea: GraftIdea, id: string, head: string, before: SynthesisChecks): Promise<{ graft: Graft; head: string; checks: SynthesisChecks }> {
-  const integrator: Graft['integrator'] = { provider: ctx.base.provider, model: ctx.base.model, status: 'error', durationMs: 0, errors: [], finalText: '', brief: null };
+  const who = ctx.integrator ?? { provider: ctx.base.provider, model: ctx.base.model ?? undefined };
+  const integrator: Graft['integrator'] = { provider: who.provider, model: who.model ?? null, status: 'error', durationMs: 0, errors: [], finalText: '', brief: null };
   const graft: Graft = { id, ...idea, status: 'rejected', commitSha: null, revertSha: null, reason: '', evidence: [], integrator };
 
   const patchDir = await mkdtemp(join(tmpdir(), 'concilium-graft-'));
@@ -167,9 +172,9 @@ async function applyGraft(ctx: Context, idea: GraftIdea, id: string, head: strin
     const sourcePatch = join(patchDir, 'source.patch');
     await writeFile(sourcePatch, await ctx.runner.diff(ctx.repoDir, ctx.baseSha, source.headSha!));
     integrator.brief = integratorBrief({ task: ctx.task, graft: { ...idea, id }, worktree: ctx.integration.path, branch: ctx.integration.branch, sourcePatch });
-    const driver = ctx.drivers.get(ctx.base.provider);
-    if (!driver) throw new Error(`No agent CLI driver for "${ctx.base.provider}"`);
-    const report = await runDriver(driver, integrator.brief, ctx.base.model ?? undefined, ctx.timeoutMs, ctx.signal);
+    const driver = ctx.drivers.get(who.provider);
+    if (!driver) throw new Error(`No agent CLI driver for "${who.provider}"`);
+    const report = await runDriver(driver, integrator.brief, who.model, ctx.timeoutMs, ctx.signal);
     integrator.status = report.status;
     integrator.errors.push(...report.errors);
     integrator.finalText = report.finalText;

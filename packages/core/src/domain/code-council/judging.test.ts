@@ -5,9 +5,21 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { JudgeValidationError, judgePrompt, parseJudgeAnswer, pickJudge } from './judging.js';
+import { configuredJudge, JudgeValidationError, judgePrompt, parseJudgeAnswer, pickJudge } from './judging.js';
 import { freezeRubric } from './rubric.js';
 import { PLAYBOOKS } from './playbooks.js';
+
+describe('configuredJudge', () => {
+  it('should keep the configured judge and flag it only when its family is one it reads or is unknown', () => {
+    expect(configuredJudge('gemini:gemini-3-pro', ['anthropic', 'openai'])).toEqual({ provider: 'gemini:gemini-3-pro', sameFamily: false, sameFamilyReason: null });
+    expect(configuredJudge('codex:gpt-5.2', ['anthropic', 'openai'])).toEqual({
+      provider: 'codex:gpt-5.2', sameFamily: true, sameFamilyReason: 'the configured judge codex:gpt-5.2 is of one of the families it reads (anthropic, openai)',
+    });
+    expect(configuredJudge('opencode:openai/gpt-5.2', ['anthropic'])).toEqual({
+      provider: 'opencode:openai/gpt-5.2', sameFamily: true, sameFamilyReason: 'the configured judge opencode:openai/gpt-5.2 is of an unknown family',
+    });
+  });
+});
 
 describe('pickJudge', () => {
   const usable = [
