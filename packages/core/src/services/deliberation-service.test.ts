@@ -4,17 +4,17 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentInstance, AgentProviderType } from '../domain/agent/agent-config.js';
-import type { AgentResult } from '../domain/agent/agent-result.js';
 import type { OpenRouterModelInfo } from '../domain/council/model-info.js';
 import type { RunRecord } from '../domain/run/run-record.js';
-import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
 import type { LlmGateway, LlmResponse } from '../ports/llm-gateway.js';
+import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
 import { JsonRunRepository } from '../adapters/json-run-repository.js';
 import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
@@ -31,44 +31,12 @@ const JURORS = ['fake/juror-1', 'fake/juror-2'];
 const CHAIRMAN = 'fake/chairman';
 const SYNTHESIS = 'Final plan: sliding window in Redis, with middleware fallback';
 
-/** Agent that answers with a fixed plan, or fails, without spawning anything. */
-class FakeAgentProvider implements AgentProvider {
-  readonly name: string;
-
-  constructor(
-    readonly id: AgentProviderType,
-    private readonly plan: string | Error,
-  ) {
-    this.name = id;
-  }
-
-  async discoverModels(): Promise<string[]> {
-    return [];
-  }
-
-  async execute({ agent, callbacks }: AgentExecutionConfig): Promise<AgentResult> {
-    const agentKey = agent.instanceId ?? agent.id;
-    const startedAt = new Date().toISOString();
-    callbacks.onStatus?.(agentKey, 'running');
-    const failed = this.plan instanceof Error;
-    const text = failed ? `Error: ${(this.plan as Error).message}` : (this.plan as string);
-    if (!failed) {
-      callbacks.onEvent?.(agentKey, { eventType: 'text', text, rawLine: text });
-    }
-    callbacks.onStatus?.(agentKey, failed ? 'error' : 'success');
-    return {
-      id: agent.id,
-      agentKey,
-      name: agent.name,
-      status: failed ? 'error' : 'success',
-      startedAt,
-      endedAt: new Date().toISOString(),
-      normalizedPlan: text,
-      errors: failed ? [text] : [],
-      command: [],
-      events: [],
-    };
-  }
+/** A driver that streams a fixed plan, or fails, without spawning anything. */
+function planDriver(id: string, plan: string | Error): FakeCliDriver {
+  return new FakeCliDriver({
+    id,
+    events: plan instanceof Error ? [{ type: 'error', message: plan.message }] : [{ type: 'text', text: plan }],
+  });
 }
 
 /**
@@ -157,10 +125,11 @@ function agent(provider: AgentProviderType, model: string): AgentInstance {
 
 const AGENTS = [agent('claude', 'sonnet'), agent('codex', 'gpt-5.2-codex')];
 
-describe('DeliberationService (offline, fake providers)', () => {
+describe('DeliberationService (offline, fake CLI drivers)', () => {
   let tmp: string;
   let configStore: JsonConfigStore;
   let runRepository: JsonRunRepository;
+  let drivers: Map<string, FakeCliDriver>;
   const secretStore = new PlaintextSecretStore();
 
   beforeAll(() => setLogLevel('error'));
@@ -191,11 +160,9 @@ describe('DeliberationService (offline, fake providers)', () => {
     events: DeliberationEvents,
     pricedModels: OpenRouterModelInfo[] = [],
   ): Promise<DeliberationService> {
-    const providers = new Map<string, AgentProvider>(
-      Object.entries(plans).map(([id, plan]) => [id, new FakeAgentProvider(id as AgentProviderType, plan)]),
-    );
+    drivers = new Map(Object.entries(plans).map(([id, plan]) => [id, planDriver(id, plan)]));
     return new DeliberationService({
-      providers,
+      drivers,
       llmGateway: new FakeLlmGateway(PLANS.codex, pricedModels),
       config: await new ConfigService(configStore, secretStore).resolve(),
       runRepository,
@@ -231,6 +198,31 @@ describe('DeliberationService (offline, fake providers)', () => {
     ]);
   });
 
+  it('should give each agent a read-only plan brief for the prompt in the run directory, with its model', async () => {
+    await (await createService(PLANS, recordEvents())).run({ prompt: PROMPT, agentInstances: AGENTS, cwd: tmp });
+
+    const [run] = drivers.get('claude')!.runs;
+    expect(run.brief).toMatchObject({ mode: 'plan', cwd: tmp });
+    expect(run.brief.allowedActions).not.toContain('write');
+    expect(run.brief.allowedActions).not.toContain('shell');
+    expect(run.brief.task).toContain(PROMPT);
+    expect(run.opts).toMatchObject({ cwd: tmp, model: 'sonnet' });
+    expect(drivers.get('codex')!.runs[0].opts.model).toBe('gpt-5.2-codex');
+  });
+
+  it('should hand inline images to agents as files and remove them after the run', async () => {
+    await (await createService(PLANS, recordEvents())).run({
+      prompt: PROMPT,
+      images: [{ mimeType: 'image/png', base64: Buffer.from('png bytes').toString('base64') }],
+      agentInstances: AGENTS,
+      cwd: tmp,
+    });
+
+    const imagePath = drivers.get('claude')!.runs[0].brief.task.match(/^- (\/.*image-1\.png)$/m)?.[1];
+    expect(imagePath).toBeDefined();
+    expect(existsSync(imagePath!)).toBe(false);
+  });
+
   it('should fall back to the surviving plan when only one agent succeeds', async () => {
     const events = recordEvents();
     const service = await createService({ claude: PLANS.claude, codex: new Error('codex crashed') }, events);
@@ -241,6 +233,7 @@ describe('DeliberationService (offline, fake providers)', () => {
     });
 
     expect(record.stage1).toEqual([{ model: 'claude · sonnet', response: PLANS.claude }]);
+    expect(record.agents.find((a) => a.id === 'codex')).toMatchObject({ status: 'error', errors: ['codex crashed'] });
     expect(record.stage2).toEqual([]);
     expect(record.stage3).toMatchObject({ model: CHAIRMAN, response: PLANS.claude });
     expect(record.metadata.notes).toContain('Fewer than 2 successful Stage 1 plans; Stage 2 ranking skipped.');

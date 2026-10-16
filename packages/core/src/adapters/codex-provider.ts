@@ -12,7 +12,7 @@ import type { AgentResult } from '../domain/agent/agent-result.js';
 import type { ParsedEvent, TokenUsage } from '../domain/agent/parsed-event.js';
 import { wrapPromptForResearch } from '../domain/deliberation/prompts.js';
 import { createLogger } from '../shared/logger.js';
-import { CODEX_MODELS, DEFAULT_AGENT_MODELS } from '../domain/agent/agent-executor.js';
+import { getProviderInfo } from '../domain/agent/providers.js';
 
 const log = createLogger('codex-provider');
 
@@ -134,7 +134,7 @@ export class CodexProvider implements AgentProvider {
   readonly name = 'Codex';
 
   async discoverModels(): Promise<string[]> {
-    return CODEX_MODELS;
+    return [...(getProviderInfo('codex')?.models ?? [])];
   }
 
   async execute(config: AgentExecutionConfig): Promise<AgentResult> {

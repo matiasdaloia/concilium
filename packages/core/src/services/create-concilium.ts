@@ -5,34 +5,20 @@
  */
 
 import type { CouncilConfig } from '../domain/council/council-config.js';
-import { PROVIDER_IDS, type AgentProviderType } from '../domain/agent/providers.js';
-import type { AgentProvider } from '../ports/agent-provider.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
+import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { RunRepository } from '../ports/run-repository.js';
 import type { SecretStore } from '../ports/secret-store.js';
-import { ClaudeProvider } from '../adapters/claude-provider.js';
-import { CodexProvider } from '../adapters/codex-provider.js';
-import { OpenCodeProvider } from '../adapters/opencode-provider.js';
+import { createHeadlessCliDrivers } from '../adapters/cli/cli-drivers.js';
 import { OpenRouterGateway } from '../adapters/openrouter-gateway.js';
 import { ConfigService } from './config-service.js';
 import { DeliberationService } from './deliberation-service.js';
 import { ModelDiscoveryService } from './model-discovery-service.js';
 
-/** One factory per registry id. Adding a provider to `PROVIDERS` without a factory fails to compile. */
-const PROVIDER_FACTORIES: Record<AgentProviderType, () => AgentProvider> = {
-  claude: () => new ClaudeProvider(),
-  codex: () => new CodexProvider(),
-  opencode: () => new OpenCodeProvider(),
-};
-
-/** Build providers for the given ids (all registered providers by default), in registry order. */
-export function createProviders(ids: readonly string[] = PROVIDER_IDS): Map<string, AgentProvider> {
-  const providers = new Map<string, AgentProvider>();
-  for (const id of PROVIDER_IDS) {
-    if (ids.includes(id)) providers.set(id, PROVIDER_FACTORIES[id]());
-  }
-  return providers;
+/** One driver per registered provider, keyed by provider id, in registry order. */
+export function createDrivers(env: NodeJS.ProcessEnv = process.env): Map<string, HeadlessCliDriver> {
+  return new Map(createHeadlessCliDrivers(env).map((driver) => [driver.id, driver]));
 }
 
 /** The shell-specific adapters each entry point supplies. */
@@ -43,7 +29,8 @@ export interface ConciliumAdapters {
 }
 
 export interface ConciliumRuntime extends ConciliumAdapters {
-  providers: Map<string, AgentProvider>;
+  /** The agent CLI drivers, keyed by provider id. Tests replace entries with `FakeCliDriver`s. */
+  drivers: Map<string, HeadlessCliDriver>;
   configService: ConfigService;
   modelDiscovery: ModelDiscoveryService;
   /**
@@ -59,18 +46,18 @@ export interface ConciliumRuntime extends ConciliumAdapters {
 
 /** The composition root shared by the CLI command, the CLI library entry point and the desktop app. */
 export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRuntime {
-  const providers = createProviders();
+  const drivers = createDrivers();
   const configService = new ConfigService(adapters.configStore, adapters.secretStore);
 
   return {
     ...adapters,
-    providers,
+    drivers,
     configService,
-    modelDiscovery: new ModelDiscoveryService(providers),
+    modelDiscovery: new ModelDiscoveryService(drivers),
     async createDeliberationService(events, overrides = {}) {
       const config = await configService.resolve(overrides);
       const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-      return new DeliberationService({ runRepository: adapters.runRepository, providers, llmGateway, config, events });
+      return new DeliberationService({ runRepository: adapters.runRepository, drivers, llmGateway, config, events });
     },
   };
 }

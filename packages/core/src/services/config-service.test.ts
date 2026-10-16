@@ -8,8 +8,6 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentResult } from '../domain/agent/agent-result.js';
-import type { AgentExecutionConfig, AgentProvider } from '../ports/agent-provider.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
 import type { CouncilConfig } from '../domain/council/council-config.js';
 import {
@@ -17,6 +15,7 @@ import {
   DEFAULT_COUNCIL_MODELS,
   OPENROUTER_API_URL,
 } from '../domain/council/council-config.js';
+import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
 import { JsonRunRepository } from '../adapters/json-run-repository.js';
 import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
@@ -160,8 +159,9 @@ describe('ConfigService.resolve precedence', () => {
       secretStore,
       runRepository: new JsonRunRepository(join(dir, 'data')),
     });
-    runtime.providers.set('claude', new FixedPlanProvider('claude'));
-    runtime.providers.set('codex', new FixedPlanProvider('codex'));
+    for (const id of ['claude', 'codex']) {
+      runtime.drivers.set(id, new FakeCliDriver({ id, events: [{ type: 'text', text: `Plan from ${id}` }] }));
+    }
 
     const deliberation = await runtime.createDeliberationService(silentEvents(), overrides);
     await deliberation.run({
@@ -193,31 +193,6 @@ function stubOpenRouter(): OpenRouterRequests {
     return Response.json({ choices: [{ message: { content: 'Synthesis' } }] });
   });
   return requested;
-}
-
-class FixedPlanProvider implements AgentProvider {
-  readonly name: string;
-
-  constructor(readonly id: string) {
-    this.name = id;
-  }
-
-  async discoverModels(): Promise<string[]> {
-    return [];
-  }
-
-  async execute({ agent }: AgentExecutionConfig): Promise<AgentResult> {
-    return {
-      id: agent.id,
-      agentKey: agent.instanceId,
-      name: agent.name,
-      status: 'success',
-      normalizedPlan: `Plan from ${this.id}`,
-      errors: [],
-      command: [],
-      events: [],
-    };
-  }
 }
 
 function silentEvents(): DeliberationEvents {

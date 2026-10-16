@@ -1,98 +1,120 @@
-import type { ChildProcess } from 'node:child_process';
-import type { AgentConfig } from './agent-config.js';
+/**
+ * @license MIT
+ * Copyright (c) 2025 Matias Daloia
+ * SPDX-License-Identifier: MIT
+ */
+
+import type { AgentConfig, AgentStatus } from './agent-config.js';
 import type { AgentResult } from './agent-result.js';
-import { PROVIDERS } from './providers.js';
-import type { ImageAttachment } from '../deliberation/deliberation.js';
-import type { AgentProvider, RunnerCallbacks } from '../../ports/agent-provider.js';
+import type { ParsedEvent } from './parsed-event.js';
+import type { Brief } from '../driver/brief.js';
+import type { RunEvent } from '../driver/normalized-event.js';
+import type { Report } from '../driver/report.js';
+import { wrapPromptForResearch } from '../deliberation/prompts.js';
+import type { HeadlessCliDriver } from '../../ports/headless-cli-driver.js';
 import { createLogger } from '../../shared/logger.js';
 
 const log = createLogger('agent-executor');
 
+/** Wall-clock limit for one Stage 1 agent. */
+export const AGENT_TIMEOUT_MS = 30 * 60_000;
+
+export interface RunnerCallbacks {
+  onStatus?: (agentKey: string, status: AgentStatus) => void;
+  onEvent?: (agentKey: string, event: ParsedEvent) => void;
+}
+
+/** Cancels a whole run, or one agent of it, through abort signals. */
 export class RunController {
-  private cancelled = false;
-  private agentProcesses = new Map<string, ChildProcess>();
+  private readonly run = new AbortController();
+  private readonly agents = new Map<string, AbortController>();
 
-  register(agentKey: string, child: ChildProcess) {
-    this.agentProcesses.set(agentKey, child);
+  /** Aborted when the whole run is cancelled. */
+  get signal(): AbortSignal {
+    return this.run.signal;
   }
 
-  unregister(agentKey: string) {
-    this.agentProcesses.delete(agentKey);
+  get isCancelled(): boolean {
+    return this.run.signal.aborted;
   }
 
-  cancel() {
-    this.cancelled = true;
-    for (const [, child] of this.agentProcesses) {
-      const pid = child.pid;
-      if (!pid) {
-        try { child.kill(); } catch { /* ignore */ }
-        continue;
-      }
-      try {
-        process.kill(-pid, 'SIGTERM');
-      } catch {
-        try { child.kill('SIGTERM'); } catch { /* ignore */ }
-      }
-      setTimeout(() => {
-        try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
-        try { child.kill('SIGKILL'); } catch { /* already exited */ }
-      }, 3000);
-    }
+  /** The signal one agent runs under; it aborts when the agent or the run is cancelled. */
+  register(agentKey: string): AbortSignal {
+    const agent = new AbortController();
+    this.agents.set(agentKey, agent);
+    return AbortSignal.any([this.run.signal, agent.signal]);
+  }
+
+  unregister(agentKey: string): void {
+    this.agents.delete(agentKey);
+  }
+
+  cancel(): void {
+    this.run.abort();
   }
 
   cancelAgent(agentKey: string): boolean {
-    const child = this.agentProcesses.get(agentKey);
-    if (!child) return false;
-
-    const pid = child.pid;
-    if (!pid) {
-      try { child.kill(); } catch { /* ignore */ }
-      this.agentProcesses.delete(agentKey);
-      return true;
-    }
-
-    try {
-      process.kill(-pid, 'SIGTERM');
-    } catch {
-      try { child.kill('SIGTERM'); } catch { /* ignore */ }
-    }
-    setTimeout(() => {
-      try { process.kill(-pid, 'SIGKILL'); } catch { /* already exited */ }
-      try { child.kill('SIGKILL'); } catch { /* already exited */ }
-    }, 3000);
-
+    const agent = this.agents.get(agentKey);
+    if (!agent) return false;
+    agent.abort();
     return true;
   }
+}
 
-  get isCancelled() {
-    return this.cancelled;
+/** The read-only plan brief every Stage 1 agent gets. Image files are listed for the agent to read. */
+export function agentBrief(prompt: string, cwd: string, imagePaths: string[] = []): Brief {
+  const images = imagePaths.length > 0 ? `\n\nAttached images (read these files):\n${imagePaths.map((p) => `- ${p}`).join('\n')}` : '';
+  return {
+    version: 1,
+    task: wrapPromptForResearch(`${prompt}${images}`),
+    mode: 'plan',
+    cwd,
+    constraints: [],
+    allowedActions: ['read', 'network'],
+  };
+}
+
+/** The event shape the CLI and desktop UIs and stored runs use. */
+export function toParsedEvent(event: RunEvent): ParsedEvent {
+  const rawLine = JSON.stringify(event);
+  switch (event.type) {
+    case 'text':
+      return { eventType: 'text', text: event.text, rawLine };
+    case 'tool':
+      return { eventType: 'tool_call', text: event.detail ? `${event.name}: ${event.detail}` : event.name, rawLine };
+    case 'usage':
+      return {
+        eventType: 'status',
+        text: 'Usage',
+        tokenUsage: { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens, totalCost: event.usage.costUsd ?? null },
+        rawLine,
+      };
+    case 'rate_limit':
+      return { eventType: 'status', text: `Rate limited: ${event.message}`, rawLine };
+    case 'error':
+      return { eventType: 'raw', text: `Error: ${event.message}`, rawLine };
   }
+}
+
+function agentStatus(report: Report | undefined): AgentStatus {
+  if (report?.status === 'ok') return report.finalText.trim() ? 'success' : 'error';
+  if (report?.status === 'aborted') return 'cancelled';
+  return 'error';
 }
 
 export async function runAgentsParallel(options: {
   agents: AgentConfig[];
   prompt: string;
-  images?: ImageAttachment[];
+  imagePaths?: string[];
   callbacks: RunnerCallbacks;
   controller?: RunController;
-  providers: Map<string, AgentProvider>;
+  drivers: ReadonlyMap<string, HeadlessCliDriver>;
 }): Promise<AgentResult[]> {
   log.info(`runAgentsParallel: starting ${options.agents.length} agents`);
   log.debug(`runAgentsParallel: agents:`, options.agents.map((a) => a.name));
 
   const controller = options.controller ?? new RunController();
-  const tasks = options.agents.map((agent) =>
-    runSingleAgent({
-      agent,
-      prompt: options.prompt,
-      images: options.images,
-      callbacks: options.callbacks,
-      controller,
-      providers: options.providers,
-    }),
-  );
-
-  const results = await Promise.all(tasks);
+  const results = await Promise.all(options.agents.map((agent) => runSingleAgent({ ...options, agent, controller })));
 
   const successCount = results.filter((r) => r.status === 'success').length;
   log.info(`runAgentsParallel: completed - ${successCount}/${results.length} succeeded`);
@@ -103,84 +125,79 @@ export async function runAgentsParallel(options: {
 async function runSingleAgent(options: {
   agent: AgentConfig;
   prompt: string;
-  images?: ImageAttachment[];
+  imagePaths?: string[];
   callbacks: RunnerCallbacks;
   controller: RunController;
-  providers: Map<string, AgentProvider>;
+  drivers: ReadonlyMap<string, HeadlessCliDriver>;
 }): Promise<AgentResult> {
-  const { agent, providers, controller } = options;
-  const provider = providers.get(agent.id);
+  const { agent, callbacks, controller } = options;
+  const agentKey = agent.instanceId ?? agent.id;
+  const driver = options.drivers.get(agent.id);
+  const startedAt = new Date().toISOString();
 
-  if (!provider) {
-    const agentKey = agent.instanceId ?? agent.id;
-    options.callbacks.onStatus?.(agentKey, 'error');
+  if (!driver) {
+    const error = `No provider found for agent type "${agent.id}"`;
+    callbacks.onStatus?.(agentKey, 'error');
     return {
       id: agent.id,
       agentKey,
       name: agent.name,
       status: 'error',
-      startedAt: new Date().toISOString(),
-      endedAt: new Date().toISOString(),
+      startedAt,
+      endedAt: startedAt,
       rawOutput: [],
-      normalizedPlan: `Error: No provider found for agent type "${agent.id}"`,
-      errors: [`No provider found for agent type "${agent.id}"`],
+      normalizedPlan: `Error: ${error}`,
+      errors: [error],
       command: [],
       events: [],
     };
   }
 
-  const abortController = new AbortController();
-  const agentKey = agent.instanceId ?? agent.id;
-
-  // Register an abort mechanism so the RunController can cancel SDK runs
-  const pseudoChild = {
-    pid: undefined,
-    kill: () => abortController.abort(),
-  } as unknown as ChildProcess;
-  controller.register(agentKey, pseudoChild);
+  const signal = controller.register(agentKey);
+  const events: ParsedEvent[] = [];
+  let report: Report | undefined;
+  let thrown: string | undefined;
+  callbacks.onStatus?.(agentKey, 'running');
 
   try {
-    const result = await provider.execute({
-      agent,
-      prompt: options.prompt,
-      images: options.images,
-      callbacks: options.callbacks,
-      abortSignal: abortController.signal,
-    });
-    if (controller.isCancelled) {
-      result.status = 'cancelled';
+    const brief = agentBrief(options.prompt, agent.cwd, options.imagePaths);
+    const runOptions = { cwd: agent.cwd, model: agent.model || undefined, timeoutMs: AGENT_TIMEOUT_MS, signal };
+    for await (const event of driver.run(brief, runOptions)) {
+      if (event.type === 'done') {
+        report = event.report;
+        continue;
+      }
+      const parsed = toParsedEvent(event);
+      events.push(parsed);
+      callbacks.onEvent?.(agentKey, parsed);
     }
-    return result;
+  } catch (err) {
+    thrown = err instanceof Error ? err.message : String(err);
+    log.error(`runSingleAgent: ${agent.name} failed:`, thrown);
   } finally {
     controller.unregister(agentKey);
   }
+
+  const status = controller.isCancelled ? 'cancelled' : agentStatus(report);
+  callbacks.onStatus?.(agentKey, status);
+
+  const errors = thrown ? [thrown] : (report?.errors ?? []);
+  if (status === 'error' && errors.length === 0) errors.push(`${agent.name} returned no plan`);
+
+  return {
+    id: agent.id,
+    agentKey,
+    name: agent.name,
+    status,
+    startedAt,
+    endedAt: new Date().toISOString(),
+    rawOutput: [],
+    normalizedPlan: status === 'success' ? (report?.finalText.trim() ?? '') : `Error: ${errors.join('; ') || status}`,
+    errors,
+    command: [driver.id],
+    events,
+  };
 }
-
-/** Known Claude Code models */
-export const CLAUDE_MODELS = [
-  'sonnet',
-  'opus',
-  'haiku',
-  'claude-sonnet-4-5-20250929',
-  'claude-opus-4-6',
-  'claude-haiku-4-5-20251001',
-];
-
-/** Known Codex models */
-export const CODEX_MODELS = [
-  'gpt-5.2-codex',
-  'gpt-5.3-codex',
-  'gpt-5.1-codex-max',
-  'gpt-5.1-codex',
-  'gpt-5-codex',
-  'gpt-5-codex-mini',
-  'o3-codex',
-];
-
-/** Default models shown when agent is enabled but user hasn't picked one */
-export const DEFAULT_AGENT_MODELS: Record<string, string> = Object.fromEntries(
-  PROVIDERS.map((p) => [p.id, p.defaultModel]),
-);
 
 export interface AgentModelInfo {
   id: string;

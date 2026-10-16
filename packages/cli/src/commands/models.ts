@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import {
-  createProviders,
+  createDrivers,
   PROVIDER_IDS,
   ModelDiscoveryService,
   OpenRouterGateway,
@@ -47,8 +47,11 @@ export function registerModelsCommand(program: Command): void {
         return;
       }
 
-      const providers = createProviders(opts.agent ? [opts.agent] : undefined);
-      const discovery = new ModelDiscoveryService(providers);
+      const drivers = createDrivers();
+      if (opts.agent) {
+        for (const id of drivers.keys()) if (id !== opts.agent) drivers.delete(id);
+      }
+      const discovery = new ModelDiscoveryService(drivers);
       const results = await discovery.discoverAll();
 
       if (opts.json) {

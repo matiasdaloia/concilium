@@ -8,7 +8,7 @@ import type { CommandSpec } from '../domain/council/council-config.js';
 import { wrapPromptForResearch } from '../domain/deliberation/prompts.js';
 import { parseClaudeEventLine } from './parsers/claude-parser.js';
 import { createLogger } from '../shared/logger.js';
-import { CLAUDE_MODELS, DEFAULT_AGENT_MODELS } from '../domain/agent/agent-executor.js';
+import { getProviderInfo } from '../domain/agent/providers.js';
 
 const log = createLogger('claude-provider');
 
@@ -52,7 +52,7 @@ export class ClaudeProvider implements AgentProvider {
   readonly name = 'Claude';
 
   async discoverModels(): Promise<string[]> {
-    return CLAUDE_MODELS;
+    return [...(getProviderInfo('claude')?.models ?? [])];
   }
 
   execute(config: AgentExecutionConfig): Promise<AgentResult> {

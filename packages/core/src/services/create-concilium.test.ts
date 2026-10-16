@@ -7,13 +7,19 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PROVIDER_IDS } from '../domain/agent/providers.js';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { PROVIDER_IDS, PROVIDERS } from '../domain/agent/providers.js';
+import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
+import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
-import { createProviders } from './create-concilium.js';
+import { setLogLevel } from '../shared/logger.js';
+import { createDrivers } from './create-concilium.js';
+import { ModelDiscoveryService } from './model-discovery-service.js';
 
 describe('provider registry', () => {
   let dir: string;
+
+  beforeAll(() => setLogLevel('error'));
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'concilium-registry-'));
@@ -35,16 +41,16 @@ describe('provider registry', () => {
     return loaded.map((inst) => inst.instanceId);
   }
 
-  it('should build one provider per registry entry, in registry order', () => {
-    const providers = createProviders();
-    expect([...providers.keys()]).toEqual(PROVIDER_IDS);
-    for (const [id, provider] of providers) {
-      expect(provider.id).toBe(id);
-    }
+  it('should register claude, codex, gemini and opencode', () => {
+    expect(PROVIDER_IDS).toEqual(['claude', 'codex', 'gemini', 'opencode']);
   });
 
-  it('should build only the requested providers and ignore unknown ids', () => {
-    expect([...createProviders(['codex', 'not-a-provider']).keys()]).toEqual(['codex']);
+  it('should build one CLI driver per registry entry, in registry order', () => {
+    const drivers = createDrivers({ PATH: '' });
+    expect([...drivers.keys()]).toEqual(PROVIDER_IDS);
+    for (const [id, driver] of drivers) {
+      expect(driver.id).toBe(id);
+    }
   });
 
   it('should accept every registered provider in saved agent instances', async () => {
@@ -55,5 +61,35 @@ describe('provider registry', () => {
   it('should drop saved agent instances whose provider is not registered', async () => {
     const ids = await storedInstances([...PROVIDER_IDS, 'not-a-provider']);
     expect(ids).not.toContain(`id-${PROVIDER_IDS.length}`);
+  });
+
+  it('should offer the registry models, and the models OpenCode lists itself', async () => {
+    const opencode = Object.assign(new FakeCliDriver({ id: 'opencode' }), { listModels: async () => ['openai/gpt-5.2'] });
+    const drivers = new Map<string, HeadlessCliDriver>([
+      ['claude', new FakeCliDriver({ id: 'claude' })],
+      ['gemini', new FakeCliDriver({ id: 'gemini' })],
+      ['opencode', opencode],
+    ]);
+
+    const models = await new ModelDiscoveryService(drivers).discoverAll();
+
+    const registry = (id: string) => PROVIDERS.find((p) => p.id === id)!;
+    expect(models).toEqual([
+      { id: 'claude', models: [...registry('claude').models], defaultModel: 'claude-opus-4-6', supportsDiscovery: false },
+      { id: 'gemini', models: [...registry('gemini').models], defaultModel: '', supportsDiscovery: false },
+      { id: 'opencode', models: ['openai/gpt-5.2'], defaultModel: '', supportsDiscovery: true },
+    ]);
+  });
+
+  it('should offer no OpenCode models when listing them fails', async () => {
+    const opencode = Object.assign(new FakeCliDriver({ id: 'opencode' }), {
+      listModels: async (): Promise<string[]> => {
+        throw new Error('opencode not installed');
+      },
+    });
+
+    const [info] = await new ModelDiscoveryService(new Map([['opencode', opencode]])).discoverAll();
+
+    expect(info).toMatchObject({ id: 'opencode', models: [] });
   });
 });

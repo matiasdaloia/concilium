@@ -15,6 +15,7 @@ import type { AgentProvider } from "./types";
 const PROVIDER_COLORS = {
   claude: "var(--color-provider-claude)",
   codex: "var(--color-provider-codex)",
+  gemini: "var(--color-provider-gemini)",
   opencode: "var(--color-provider-opencode)",
 } satisfies Record<AgentProvider, string>;
 

@@ -22,7 +22,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
  * Tracked .ts/.tsx files under packages/ and desktop/ without the MIT header.
  * Ratchet: this may only go down. Lower it when you add headers; never raise it.
  */
-const MISSING_HEADER_BASELINE = 86;
+const MISSING_HEADER_BASELINE = 83;
 
 const HEADER = 'SPDX-License-Identifier: MIT';
 const DOCS = ['AGENTS.md', 'README.md', 'packages/cli/README.md'];

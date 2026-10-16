@@ -11,8 +11,8 @@ export {
 export type { ProviderInfo } from './domain/agent/providers.js';
 export type { AgentResult } from './domain/agent/agent-result.js';
 export type { EventType, TokenUsage, ParsedEvent } from './domain/agent/parsed-event.js';
-export { RunController, runAgentsParallel, DEFAULT_AGENT_MODELS } from './domain/agent/agent-executor.js';
-export type { AgentModelInfo } from './domain/agent/agent-executor.js';
+export { RunController, runAgentsParallel, agentBrief, toParsedEvent, AGENT_TIMEOUT_MS } from './domain/agent/agent-executor.js';
+export type { AgentModelInfo, RunnerCallbacks } from './domain/agent/agent-executor.js';
 
 export type { CouncilConfig } from './domain/council/council-config.js';
 export { DEFAULT_COUNCIL_MODELS, DEFAULT_CHAIRMAN_MODEL, OPENROUTER_API_URL } from './domain/council/council-config.js';
@@ -55,7 +55,7 @@ export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
 export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
 export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
 export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
-export { CliDriver, createHeadlessCliDrivers, HEADLESS_CLI_IDS } from './adapters/cli/cli-drivers.js';
+export { CliDriver, createHeadlessCliDrivers, parseOpenCodeModels } from './adapters/cli/cli-drivers.js';
 export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
@@ -64,7 +64,7 @@ export { DeliberationService } from './services/deliberation-service.js';
 export type { DeliberationInput, DeliberationDeps } from './services/deliberation-service.js';
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
-export { createConciliumRuntime, createProviders } from './services/create-concilium.js';
+export { createConciliumRuntime, createDrivers } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
 // Shared
