@@ -40,16 +40,17 @@ export interface Logger {
   error: (...args: unknown[]) => void;
 }
 
+/** Every level writes to stderr: stdout belongs to command output such as `run --json`. */
 export function createLogger(prefix: string): Logger {
   return {
     debug: (...args: unknown[]) => {
       if (shouldLog('debug')) {
-        console.log(formatMessage('debug', prefix, args), ...args);
+        console.error(formatMessage('debug', prefix, args), ...args);
       }
     },
     info: (...args: unknown[]) => {
       if (shouldLog('info')) {
-        console.log(formatMessage('info', prefix, args), ...args);
+        console.error(formatMessage('info', prefix, args), ...args);
       }
     },
     warn: (...args: unknown[]) => {

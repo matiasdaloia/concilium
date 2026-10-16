@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -63,5 +63,18 @@ describe('concilium bin (from source)', () => {
 
   it('should print stable run --help output', () => {
     expect(runCli('run', '--help')).toMatchSnapshot();
+  });
+
+  it('should keep log lines out of run --json stdout', () => {
+    // Empty PATH: no agent binary can start, so the run fails offline after logging.
+    const result = spawnSync(process.execPath, ['--import', tsxLoader, binPath, 'run', '--json', '--no-save', '--agents', 'claude,claude', 'task'], {
+      cwd: sandbox,
+      encoding: 'utf8',
+      env: { ...sandboxEnv, PATH: '' },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('{"error":"All agents failed');
+    expect(result.stdout).toBe('');
   });
 });
