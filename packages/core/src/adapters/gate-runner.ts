@@ -100,7 +100,7 @@ export class GateRunner {
     const startedAt = Date.now();
     let output = '';
     let truncated = false;
-    for await (const item of streamSubprocess({ command: 'sh', args: ['-c', command], cwd, env: this.env, timeoutMs, signal, detectRateLimit: () => null })) {
+    for await (const item of streamSubprocess({ command: '/bin/sh', args: ['-c', command], cwd, env: this.env, timeoutMs, signal, detectRateLimit: () => null })) {
       if (item.kind === 'line') {
         output += `${item.text}\n`;
         if (output.length > OUTPUT_LIMIT) {

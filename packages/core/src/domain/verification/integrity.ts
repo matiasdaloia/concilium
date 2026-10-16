@@ -99,6 +99,8 @@ export function isTestFile(path: string): boolean {
   return TEST_FILE.some((pattern) => pattern.test(path));
 }
 
+const RENAME = /^rename (from|to) (.+)$/;
+
 function unquote(path: string): string {
   return path.startsWith('"') && path.endsWith('"') ? JSON.parse(path) as string : path;
 }
@@ -132,11 +134,12 @@ export function parseDiff(text: string): FileDiff[] {
         closeHunk();
       }
     }
+    const rename = RENAME.exec(line);
     if (line.startsWith('@@')) hunk = [line];
     else if (line.startsWith('new file mode')) file.status = 'added';
     else if (line.startsWith('deleted file mode')) file.status = 'deleted';
-    else if (line.startsWith('rename from ')) [file.status, file.oldPath] = ['renamed', unquote(line.slice('rename from '.length))];
-    else if (line.startsWith('rename to ')) file.path = unquote(line.slice('rename to '.length));
+    else if (rename?.[1] === 'to') file.path = unquote(rename[2]);
+    else if (rename) [file.status, file.oldPath] = ['renamed', unquote(rename[2])];
     else if (line.startsWith('--- a/')) file.oldPath = unquote(line.slice('--- a/'.length));
     else if (line.startsWith('+++ b/')) file.path = unquote(line.slice('+++ b/'.length));
   }
