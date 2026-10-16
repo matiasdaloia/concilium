@@ -41,6 +41,7 @@ Options:
 
 Commands:
   run [options] [prompt...]   Run a deliberation pipeline
+  code [options] [task...]    Have agent CLIs write code, one git worktree each
   history [options] [run-id]  List or view past deliberation runs
   config                      Manage configuration
   models [options]            List available models
