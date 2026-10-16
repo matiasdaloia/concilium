@@ -234,7 +234,7 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
   if (run.error) {
     return (
       <div className="flex flex-col h-screen bg-bg-page">
-        <TitleBar subtitle="error" />
+        <TitleBar />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center max-w-md">
             <svg className="w-10 h-10 text-red-error mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -255,7 +255,7 @@ export default function RunningScreen({ runId, initialAgents, onComplete, onCanc
 
   return (
     <div className="flex flex-col h-screen bg-bg-page">
-      <TitleBar subtitle={`running · ${elapsed}`} />
+      <TitleBar />
       <StageProgress 
         currentStage={run.stage} 
         viewStage={viewStage}
