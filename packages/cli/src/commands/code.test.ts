@@ -43,14 +43,28 @@ const RUBRIC = [
   { name: 'small', description: 'Only sum.js and its test change.', weight: 1, evidence: 'judgment' },
 ];
 
+/** The adversaries' tests: claude's checks the task (it fails on the base), codex's asks for the impossible. */
+const ADVERSARIAL_TESTS = {
+  claude: "let threw = false; try { require('./sum.js')('x', 1); } catch (e) { threw = e instanceof TypeError; } if (!threw) throw new Error('no TypeError');\n",
+  codex: "if (require('./sum.js')(2, 2) !== 5) throw new Error('2 + 2 is not 5');\n",
+};
+
 /**
  * A fake agent CLI that edits files in its cwd, as the real one would in its worktree. `claude` adds input
  * validation and a test and succeeds; `codex` writes half a change, deletes `sum.test.js` and exits 1. Asked for the rubric (its cwd holds
- * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual.
+ * only council-prompt.md), `claude` logs its argv and answers RUBRIC; `codex` fails as usual. As an adversary (its
+ * worktree is `adv-<family>`), each writes its test from ADVERSARIAL_TESTS and the manifest; `codex` then exits 1.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
 const fs = require('node:fs');
+if (require('node:path').basename(process.cwd()).startsWith('adv-')) {
+  fs.writeFileSync(${JSON.stringify(`${cli}-adv.test.js`)}, ${JSON.stringify(ADVERSARIAL_TESTS[cli])});
+  fs.writeFileSync('concilium-adversarial.json', JSON.stringify({ tests: [{ files: [${JSON.stringify(`${cli}-adv.test.js`)}], specClause: 'reject non-numbers' }] }));
+  if (${JSON.stringify(cli)} === 'codex') process.exit(1);
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'Wrote a test' }));
+  process.exit(0);
+}
 if (${JSON.stringify(cli)} === 'claude' && fs.existsSync('council-prompt.md')) {
   fs.appendFileSync(${JSON.stringify(framerLog)}, process.argv.slice(2).join(' ') + '\\n');
   console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ criteria: ${JSON.stringify(RUBRIC)} }) }));
@@ -203,5 +217,45 @@ describe('concilium code', () => {
     expect(record.verification).toBeUndefined();
     expect(skipped.stderr).not.toContain('gate test');
     expect(git(repo, 'branch', '--list', `concilium/${record.id}/base`)).toBe('');
+    expect(record.adversarial).toMatchObject({ skipped: 'the gates did not run' });
   }, 30_000);
+
+  it('should run each adversary\'s tests on the base and every candidate and print the survival matrix', () => {
+    // The test gate now runs every *.test.js, so an adversarial test copied into a worktree runs with the suite.
+    writeFileSync(join(repo, 'run-tests.js'), [
+      "const fs = require('node:fs');",
+      'let failed = 0;',
+      "for (const f of fs.readdirSync('.').filter((f) => f.endsWith('.test.js'))) { try { require('./' + f); } catch (e) { failed++; console.error(f + ': ' + e.message); } }",
+      'process.exit(failed ? 1 : 0);',
+      '',
+    ].join('\n'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), `gates:\n  test: '${JSON.stringify(process.execPath)} run-tests.js'\n`);
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'run every test');
+
+    const result = code('--agents', 'claude,codex', 'sum must reject non-numbers');
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('✓ anthropic-1 on claude: pass');
+    expect(result.stderr).toContain('✗ adv-openai: error');
+    expect(result.stdout).toContain('Adversarial tests (one adversary per family, run with');
+    expect(result.stdout).toMatch(/adv-anthropic \(claude\): ok, 1 tests\n/);
+    expect(result.stdout).toMatch(/adv-openai \(codex\): error, 1 tests; codex exited with code 1/);
+    expect(result.stdout).toMatch(/Test\s+Validity\s+base\s+claude\s+codex\s+Clause\n/);
+    expect(result.stdout).toMatch(/anthropic-1\s+evidence\s+fail\s+pass\s+fail\s+reject non-numbers\n/);
+    expect(result.stdout).toMatch(/openai-1\s+quarantined\s+fail\s+fail\s+fail\s+reject non-numbers\n/);
+    expect(result.stdout).toContain('Survival (valid tests by other families):\n    claude: 0/0\n    codex: 0/1, failed anthropic-1');
+    const runId = /Run (\S+) in /.exec(result.stdout)![1];
+    expect(git(repo, 'show', `concilium/${runId}/adv-anthropic:claude-adv.test.js`)).toContain('TypeError');
+    // The candidates' branches never get the adversarial tests.
+    expect(git(repo, 'ls-tree', '--name-only', `concilium/${runId}/claude`)).not.toContain('adv.test.js');
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+
+    const skipped = code('--json', '--no-adversarial', '--agents', 'claude,codex', 'sum must reject non-numbers');
+    expect(skipped.status).toBe(0);
+    const record = JSON.parse(skipped.stdout) as CodeRunRecord;
+    expect(record.verification).toBeDefined();
+    expect(record.adversarial).toBeUndefined();
+    expect(git(repo, 'branch', '--list', `concilium/${record.id}/adv-*`)).toBe('');
+  }, 60_000);
 });

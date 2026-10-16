@@ -76,10 +76,14 @@ export class GateRunner {
     return { lane, sha, install, gates };
   }
 
+  /** The patch from `baseSha` to `headSha`, in the repo at `repoDir`. */
+  async diff(repoDir: string, baseSha: string, headSha: string): Promise<string> {
+    return git(repoDir, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M', baseSha, headSha]);
+  }
+
   /** Tier 0 checks on `baseSha..headSha`, in the repo at `repoDir`. */
   async integrity(repoDir: string, baseSha: string, headSha: string): Promise<IntegrityFinding[]> {
-    const diff = await git(repoDir, ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M', baseSha, headSha]);
-    const files = parseDiff(diff);
+    const files = parseDiff(await this.diff(repoDir, baseSha, headSha));
     const manifests: ManifestChange[] = [];
     for (const file of files.filter((f) => DEPENDENCY_MANIFEST.test(f.path) && f.status !== 'deleted')) {
       manifests.push({ path: file.path, base: await this.show(repoDir, baseSha, file.oldPath), head: await this.show(repoDir, headSha, file.path) });
@@ -96,7 +100,8 @@ export class GateRunner {
     return this.runStep('install', step.command, dir, sha, step.timeoutMs, signal);
   }
 
-  private async runStep(name: string, command: string, cwd: string, sha: string, timeoutMs: number, signal?: AbortSignal): Promise<StepResult> {
+  /** Runs one shell command in `cwd`, which has `sha` checked out. */
+  async runStep(name: string, command: string, cwd: string, sha: string, timeoutMs: number, signal?: AbortSignal): Promise<StepResult> {
     const startedAt = Date.now();
     let output = '';
     let truncated = false;
