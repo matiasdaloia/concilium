@@ -46,7 +46,7 @@ Enhancement suggestions are tracked as GitHub issues. When creating an enhanceme
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 22+
 - npm or yarn
 - Git
 

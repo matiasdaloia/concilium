@@ -47,7 +47,7 @@ Concilium automates the entire process:
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - macOS 12+ (Apple Silicon or Intel) or Linux
 - An [OpenRouter](https://openrouter.ai/) API key (for jurors and synthesis)
 - At least one coding agent installed:
