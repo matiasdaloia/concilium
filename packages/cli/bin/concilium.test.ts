@@ -22,8 +22,6 @@ const sandboxEnv: NodeJS.ProcessEnv = {
   XDG_CONFIG_HOME: join(sandbox, 'config'),
   XDG_DATA_HOME: join(sandbox, 'data'),
   XDG_CACHE_HOME: join(sandbox, 'cache'),
-  // Module-load info logs (timestamped) would otherwise land in stdout.
-  LOG_LEVEL: 'error',
 };
 
 afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
@@ -50,7 +48,7 @@ describe('concilium bin (from source)', () => {
 
   it('should print the package.json version for --version', () => {
     const pkg = JSON.parse(readFileSync(`${cliRoot}package.json`, 'utf8')) as { version: string };
-    expect(runCli('--version').trim().split('\n').at(-1)).toBe(pkg.version);
+    expect(runCli('--version').trim()).toBe(pkg.version);
   });
 
   it('should print stable top-level --help output', () => {

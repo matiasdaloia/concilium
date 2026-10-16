@@ -56,8 +56,6 @@ function resolveCodexBinaryPath(): string | undefined {
   }
 }
 
-const codexBinaryPath = resolveCodexBinaryPath();
-
 function truncateLabel(text: string, maxLen: number): string {
   const oneLine = text.split('\n').join(' ').trim();
   if (oneLine.length > maxLen) return oneLine.slice(0, maxLen - 3) + '...';
@@ -151,6 +149,7 @@ export class CodexProvider implements AgentProvider {
     log.info(`execute: starting ${agent.name} (${agentKey})`);
 
     try {
+      const codexBinaryPath = resolveCodexBinaryPath();
       const codex = new Codex({
         ...(codexBinaryPath ? { codexPathOverride: codexBinaryPath } : {}),
       });
