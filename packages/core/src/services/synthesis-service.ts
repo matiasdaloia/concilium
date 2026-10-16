@@ -267,7 +267,7 @@ export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
       tests: Object.fromEntries(validTests.map((t) => [t.id, input.adversarial!.matrix[t.id]?.[base.candidateId] ?? 'error'])),
     };
     const ideas = donors.length > 0 ? await pickGrafts(ctx, donors, synthesis) : [];
-    if (donors.length === 0) synthesis.notes.push('no other candidate to graft from');
+    if (donors.length === 0) synthesis.notes.push('no other candidate can give a graft');
     for (const [i, idea] of ideas.entries()) {
       const result = await applyGraft(ctx, idea, `graft-${i + 1}`, synthesis.headSha, checks);
       synthesis.grafts.push(result.graft);
