@@ -1,12 +1,7 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import type { AgentProvider } from '../types';
-
-const PROVIDERS: { id: AgentProvider; name: string; color: string }[] = [
-  { id: 'opencode', name: 'opencode', color: 'var(--color-provider-opencode)' },
-  { id: 'codex', name: 'codex', color: 'var(--color-provider-codex)' },
-  { id: 'claude', name: 'claude', color: 'var(--color-provider-claude)' },
-];
+import { PROVIDER_OPTIONS } from '../providers';
 
 interface AddAgentButtonProps {
   onAdd: (provider: AgentProvider) => void;
@@ -44,7 +39,7 @@ export default function AddAgentButton({ onAdd }: AddAgentButtonProps) {
           <div className="px-3 py-2 text-[10px] text-text-muted tracking-wide border-b border-white/5 mb-1 font-mono">
             Select provider
           </div>
-          {PROVIDERS.map((provider) => (
+          {PROVIDER_OPTIONS.map((provider) => (
             <button
               key={provider.id}
               onClick={() => handleSelect(provider.id)}

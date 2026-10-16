@@ -11,13 +11,9 @@ import type {
   AgentModelInfo,
   AgentProvider,
   CouncilConfig,
+  ImageAttachment,
 } from "../types";
-
-interface ImageAttachmentData {
-  path?: string;
-  base64?: string;
-  mimeType: string;
-}
+import { emptyModelOptions } from "../providers";
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -51,11 +47,8 @@ export default function HomeScreen({
   const [projectCwd, setProjectCwd] = useState("");
   const [isStarting, setIsStarting] = useState(false);
   const [agentInstances, setAgentInstances] = useState<AgentInstance[]>([]);
-  const [modelOptions, setModelOptions] = useState<Record<string, string[]>>({
-    opencode: [],
-    codex: [],
-    claude: [],
-  });
+  const [modelOptions, setModelOptions] =
+    useState<Record<string, string[]>>(emptyModelOptions);
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>(
     {},
   );
@@ -93,11 +86,7 @@ export default function HomeScreen({
         setProjectCwd(cwd);
 
         // Build model options and defaults from discovery
-        const opts: Record<string, string[]> = {
-          opencode: [],
-          codex: [],
-          claude: [],
-        };
+        const opts = emptyModelOptions();
         const defaults: Record<string, string> = {};
 
         for (const info of modelInfos) {
@@ -298,7 +287,7 @@ export default function HomeScreen({
 
     setIsStarting(true);
     try {
-      const imageAttachments: ImageAttachmentData[] = await Promise.all(
+      const imageAttachments: ImageAttachment[] =await Promise.all(
         images.map(async (file) => ({
           mimeType: file.type,
           base64: await fileToBase64(file),

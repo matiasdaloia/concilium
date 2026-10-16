@@ -5,25 +5,15 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  AgentInstance,
+  AgentModelInfo,
+  ImageAttachment,
+  OpenRouterModelInfo,
+  UserRanking,
+} from '@concilium/core';
 
-export interface AgentModelInfo {
-  id: string;
-  models: string[];
-  defaultModel: string;
-  supportsDiscovery: boolean;
-}
-
-export interface OpenRouterModelInfo {
-  id: string;
-  name: string;
-  description?: string;
-  context_length: number;
-  pricing: {
-    prompt: number;
-    completion: number;
-  };
-}
-
+/** Council settings as the main process reports them over IPC (`config:get`). */
 export interface CouncilConfig {
   councilModels: string[];
   chairmanModel: string;
@@ -31,33 +21,13 @@ export interface CouncilConfig {
   apiKeySetInEnv: boolean;
 }
 
-export type AgentProvider = 'opencode' | 'codex' | 'claude';
-
-export interface AgentInstance {
-  instanceId: string;
-  provider: AgentProvider;
-  model: string;
-  enabled: boolean;
-}
-
 export interface StartRunResult {
   runId: string;
   initialAgents: Array<{ key: string; name: string }>;
 }
 
-export interface UserRanking {
-  rankedModelIds: string[];
-  timestamp: string;
-}
-
-export interface ImageAttachmentData {
-  path?: string;
-  base64?: string;
-  mimeType: string;
-}
-
 export interface ElectronAPI {
-  startRun(config: { prompt: string; images?: ImageAttachmentData[]; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
+  startRun(config: { prompt: string; images?: ImageAttachment[]; agents: string[]; mode?: string; agentModels?: Record<string, string>; agentInstances?: AgentInstance[] }): Promise<StartRunResult>;
   cancelRun(runId: string): Promise<void>;
   abortAgent(runId: string, agentKey: string): Promise<{ success: boolean; error?: string }>;
   listRuns(): Promise<Array<{ id: string; createdAt: string; promptPreview: string; status: string }>>;

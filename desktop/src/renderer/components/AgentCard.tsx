@@ -2,19 +2,8 @@ import * as Popover from "@radix-ui/react-popover";
 import { Command } from "cmdk";
 import { useState } from "react";
 import type { AgentInstance, AgentProvider } from "../types";
+import { getProviderColor, PROVIDER_OPTIONS } from "../providers";
 import ModelCombobox from "./ModelCombobox";
-
-const PROVIDERS: { id: AgentProvider; name: string; color: string }[] = [
-  { id: "opencode", name: "opencode", color: "var(--color-provider-opencode)" },
-  { id: "codex", name: "codex", color: "var(--color-provider-codex)" },
-  { id: "claude", name: "claude", color: "var(--color-provider-claude)" },
-];
-
-function getProviderColor(provider: AgentProvider): string {
-  return (
-    PROVIDERS.find((p) => p.id === provider)?.color ?? "var(--color-text-muted)"
-  );
-}
 
 interface AgentCardProps {
   instance: AgentInstance;
@@ -133,7 +122,7 @@ export default function AgentCard({
                   <Command.Empty className="px-3 py-2 text-[10px] text-text-muted font-mono">
                     NO PROVIDERS FOUND.
                   </Command.Empty>
-                  {PROVIDERS.map((provider) => (
+                  {PROVIDER_OPTIONS.map((provider) => (
                     <Command.Item
                       key={provider.id}
                       value={provider.name}
