@@ -55,17 +55,22 @@ export class DeliberationService {
       const config = await this.configService.resolve();
       const workingDir = input.cwd;
 
-      // Build agent configs from instances
+      // Build agent configs from instances. The name keys rankings and stats,
+      // so repeated provider + model pairs get a "#n" suffix to stay distinct.
+      const nameCounts = new Map<string, number>();
       const agentConfigs: AgentConfig[] = input.agentInstances
         .filter((inst) => inst.enabled)
         .map((inst) => {
           const modelParts = inst.model?.split('/') ?? [];
           const shortModel =
             modelParts.length > 1 ? modelParts.slice(1).join('/') : (inst.model ?? '');
+          const baseName = shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider;
+          const count = (nameCounts.get(baseName) ?? 0) + 1;
+          nameCounts.set(baseName, count);
           return {
             id: inst.provider,
             instanceId: inst.instanceId,
-            name: shortModel ? `${inst.provider} \u00B7 ${shortModel}` : inst.provider,
+            name: count > 1 ? `${baseName} #${count}` : baseName,
             enabled: true,
             model: inst.model || null,
             cwd: workingDir,
