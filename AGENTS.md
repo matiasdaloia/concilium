@@ -278,7 +278,7 @@ import { getConfigDir, getDataDir, getCacheDir } from '../adapters/xdg-paths.js'
 | `SUPABASE_ANON_KEY` | website | Supabase anon key (server-side only) |
 
 ## Pre-Submission Checklist
-- [ ] Verified offline per `docs/skills/verify-concilium/SKILL.md` (commands, feature map, when to add tests)
+- [ ] Verified offline per `.claude/skills/verify-concilium/SKILL.md` (commands, feature map, when to add tests)
 - [ ] Code follows TypeScript strict mode
 - [ ] ESLint passes (`npm run lint -w concilium`)
 - [ ] Tests pass (`npm run test -w @concilium/core`)
