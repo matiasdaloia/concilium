@@ -9,11 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PROVIDER_IDS, PROVIDERS } from '../domain/agent/providers.js';
-import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
+import type { CliDetection, HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
+import { JsonRunRepository } from '../adapters/json-run-repository.js';
+import { PlaintextSecretStore } from '../adapters/plaintext-secret-store.js';
 import { setLogLevel } from '../shared/logger.js';
-import { createDrivers } from './create-concilium.js';
+import { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE } from './create-concilium.js';
 import { ModelDiscoveryService } from './model-discovery-service.js';
 
 describe('provider registry', () => {
@@ -61,6 +63,68 @@ describe('provider registry', () => {
   it('should drop saved agent instances whose provider is not registered', async () => {
     const ids = await storedInstances([...PROVIDER_IDS, 'not-a-provider']);
     expect(ids).not.toContain(`id-${PROVIDER_IDS.length}`);
+  });
+
+  it('should load no agent instances when fewer than two valid ones are saved', async () => {
+    expect(await new JsonConfigStore(dir).getAgentInstances()).toEqual([]);
+    expect(await storedInstances(['claude'])).toEqual([]);
+  });
+
+  /** A runtime whose drivers are fakes with the given detections; CLIs left out are not installed. */
+  function runtimeWith(detections: Partial<Record<string, CliDetection>>) {
+    const runtime = createConciliumRuntime({
+      configStore: new JsonConfigStore(dir),
+      secretStore: new PlaintextSecretStore(),
+      runRepository: new JsonRunRepository(dir),
+    });
+    for (const id of PROVIDER_IDS) {
+      runtime.drivers.set(id, new FakeCliDriver({ id, detection: detections[id] ?? { installed: false } }));
+    }
+    return runtime;
+  }
+
+  it('should default to one agent per installed, signed-in CLI, in registry order', async () => {
+    const runtime = runtimeWith({
+      opencode: { installed: true, auth: 'api-key' },
+      gemini: { installed: true, auth: 'api-key' },
+      codex: { installed: true, auth: 'none' },
+      claude: { installed: true, auth: 'subscription' },
+    });
+
+    const agents = await runtime.defaultAgentInstances();
+
+    expect(agents.map((a) => a.provider)).toEqual(['claude', 'gemini', 'opencode']);
+    for (const agent of agents) expect(agent).toMatchObject({ model: '', enabled: true });
+    expect(new Set(agents.map((a) => a.instanceId)).size).toBe(agents.length);
+  });
+
+  it('should leave out CLIs with an unknown login and CLIs doctor warns about', async () => {
+    const runtime = runtimeWith({
+      claude: { installed: true, auth: 'subscription' },
+      gemini: { installed: true, auth: 'unknown' },
+      opencode: { installed: true, auth: 'subscription', warning: 'Anthropic terms do not cover Claude subscription login in OpenCode' },
+    });
+
+    expect((await runtime.defaultAgentInstances()).map((a) => a.provider)).toEqual(['claude']);
+  });
+
+  it('should leave out a CLI whose detection fails', async () => {
+    const runtime = runtimeWith({ codex: { installed: true, auth: 'subscription' } });
+    runtime.drivers.set('claude', Object.assign(new FakeCliDriver({ id: 'claude' }), {
+      detect: async (): Promise<CliDetection> => {
+        throw new Error('probe failed');
+      },
+    }));
+
+    expect((await runtime.defaultAgentInstances()).map((a) => a.provider)).toEqual(['codex']);
+  });
+
+  it('should reject with a pointer to doctor and the terms doc when no CLI is signed in', async () => {
+    const runtime = runtimeWith({ codex: { installed: true, auth: 'none' }, gemini: { installed: true, auth: 'unknown' } });
+
+    await expect(runtime.defaultAgentInstances()).rejects.toThrow(NO_AGENT_CLI_MESSAGE);
+    expect(NO_AGENT_CLI_MESSAGE).toContain('concilium doctor');
+    expect(NO_AGENT_CLI_MESSAGE).toContain('docs/research/subscription-tos.md');
   });
 
   it('should offer the registry models, and the models OpenCode lists itself', async () => {

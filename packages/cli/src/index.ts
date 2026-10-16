@@ -1,6 +1,5 @@
 import {
   createConciliumRuntime,
-  createDefaultAgentInstances,
   JsonRunRepository,
   JsonConfigStore,
   PlaintextSecretStore,
@@ -31,16 +30,6 @@ export interface ConciliumOptions {
 export async function deliberate(options: ConciliumOptions): Promise<RunRecord> {
   const cwd = options.cwd ?? process.cwd();
 
-  // Build agent instances from options
-  const agentInstances: AgentInstance[] = options.agents
-    ? options.agents.map((a) => ({
-        instanceId: crypto.randomUUID(),
-        provider: a.provider as AgentProviderType,
-        model: a.model ?? '',
-        enabled: true,
-      }))
-    : createDefaultAgentInstances();
-
   // Override with provided options
   const overrides: Partial<CouncilConfig> = {};
   if (options.apiKey) {
@@ -60,6 +49,16 @@ export async function deliberate(options: ConciliumOptions): Promise<RunRecord> 
       ? new JsonRunRepository(getDataDir())
       : { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] },
   });
+
+  // Build agent instances from options, else one per installed, signed-in agent CLI
+  const agentInstances: AgentInstance[] = options.agents
+    ? options.agents.map((a) => ({
+        instanceId: crypto.randomUUID(),
+        provider: a.provider as AgentProviderType,
+        model: a.model ?? '',
+        enabled: true,
+      }))
+    : await runtime.defaultAgentInstances();
 
   // Event bridge
   const noopEvents: DeliberationEvents = {

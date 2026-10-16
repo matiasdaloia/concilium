@@ -3,10 +3,8 @@ export type { AgentId, AgentProviderType, AgentInstance, AgentStatus, AgentConfi
 export {
   PROVIDERS,
   PROVIDER_IDS,
-  DEFAULT_PROVIDER,
   isProviderId,
   getProviderInfo,
-  createDefaultAgentInstances,
 } from './domain/agent/providers.js';
 export type { ProviderInfo } from './domain/agent/providers.js';
 export type { AgentResult } from './domain/agent/agent-result.js';
@@ -62,7 +60,7 @@ export { DeliberationService } from './services/deliberation-service.js';
 export type { DeliberationInput, DeliberationDeps } from './services/deliberation-service.js';
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
-export { createConciliumRuntime, createDrivers } from './services/create-concilium.js';
+export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
 // Shared

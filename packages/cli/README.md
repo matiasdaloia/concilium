@@ -60,7 +60,7 @@ concilium run [prompt...] [options]
 | Flag | Description | Default |
 |------|-------------|---------|
 | `-f, --file <path>` | Read prompt from a file (`-` for stdin) | — |
-| `--agents <list>` | Agents to use, comma-separated | `opencode,opencode` |
+| `--agents <list>` | Agents to use, comma-separated | The installed, signed-in agent CLIs (see below) |
 | `--juror-models <list>` | Jurors, comma-separated council members (see below) | config, else every installed agent CLI |
 | `--chairman <model>` | Chairman, one council member (see below) | config, else an installed CLI from another family than most jurors |
 | `--cwd <path>` | Project working directory | current directory |
@@ -75,7 +75,7 @@ concilium run [prompt...] [options]
 The `--agents` flag accepts a comma-separated list. Each entry is either a provider name or `provider:model`:
 
 ```bash
-# Two default opencode agents
+# Default: one agent per installed, signed-in agent CLI
 concilium run "fix the bug"
 
 # Claude + Codex
@@ -86,6 +86,8 @@ concilium run --agents claude:opus,codex:gpt-5.2-codex,opencode "fix the bug"
 ```
 
 Available providers: `claude`, `codex`, `gemini`, `opencode`
+
+Without `--agents`, the run uses one agent per CLI that [`concilium doctor`](#concilium-doctor) reports as installed and signed in with `subscription` or `api-key`, in the order above, each on the CLI's own default model. A CLI with an `unknown` login is left out (Gemini CLI signed in with a Google account shows as `unknown`; name it with `--agents gemini`), and so is a CLI that doctor warns about, such as OpenCode holding a Claude subscription login. When no CLI qualifies, the run exits 1 with an error that points to `concilium doctor` and the [terms-of-use notes](../../docs/research/subscription-tos.md).
 
 Stage 1 agents get a read-only plan brief: they can read the project and search the web, never write files or run shell commands.
 
@@ -275,7 +277,7 @@ concilium models --council --json | jq '.[].id'
 
 ### `concilium doctor`
 
-Check which agent CLIs (Claude Code, Codex, Gemini CLI, OpenCode) are installed, their versions, and how each is signed in: `subscription`, `api-key`, `none` or `unknown`. It runs each CLI's `--version` and its non-secret status command (`claude auth status`, `codex login status`, `opencode auth list`). For Gemini CLI, which has no status command, it only checks whether `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set. It never reads credential files. It exits 0 even when some CLIs are missing, and prints a link to the [terms-of-use notes](../../docs/research/subscription-tos.md).
+Check which agent CLIs (Claude Code, Codex, Gemini CLI, OpenCode) are installed, their versions, and how each is signed in: `subscription`, `api-key`, `none` or `unknown`. It runs each CLI's `--version` and its non-secret status command (`claude auth status`, `codex login status`, `opencode auth list`). For Gemini CLI, which has no status command, it only checks whether `GEMINI_API_KEY` or `GOOGLE_API_KEY` is set. It never reads credential files. A `warning` (shown in the Notes column) flags a login to avoid, such as a Claude subscription inside OpenCode; such a CLI is never a default `run` agent. It exits 0 even when some CLIs are missing, and prints a link to the [terms-of-use notes](../../docs/research/subscription-tos.md).
 
 ```
 concilium doctor [options]
@@ -347,7 +349,7 @@ console.log(result.stage3?.response);
 |--------|------|----------|-------------|
 | `prompt` | `string` | Yes | The deliberation prompt |
 | `cwd` | `string` | No | Working directory (defaults to `process.cwd()`) |
-| `agents` | `Array<{ provider, model? }>` | No | Agent list (defaults to 2x opencode) |
+| `agents` | `Array<{ provider, model? }>` | No | Agent list (defaults to the installed, signed-in agent CLIs, as for `run`; rejects when there are none) |
 | `apiKey` | `string` | No | OpenRouter API key, only for OpenRouter members (overrides env and saved config) |
 | `councilModels` | `string[]` | No | Jurors as council members (overrides env and saved config) |
 | `chairmanModel` | `string` | No | Chairman as a council member (overrides env and saved config) |

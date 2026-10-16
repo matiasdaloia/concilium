@@ -5,7 +5,6 @@ import { render as inkRender } from 'ink';
 import type { Command } from 'commander';
 import {
   createConciliumRuntime,
-  createDefaultAgentInstances,
   JsonRunRepository,
   JsonConfigStore,
   PlaintextSecretStore,
@@ -38,9 +37,7 @@ interface RunOptions {
   quiet?: boolean;
 }
 
-function parseAgentsFlag(agents?: string): AgentInstance[] {
-  if (!agents) return createDefaultAgentInstances();
-
+function parseAgentsFlag(agents: string): AgentInstance[] {
   return agents.split(',').map((spec) => {
     const [provider, model] = spec.includes(':') ? spec.split(':', 2) : [spec, ''];
     return {
@@ -58,7 +55,7 @@ export function registerRunCommand(program: Command): void {
     .description('Run a deliberation pipeline')
     .argument('[prompt...]', 'The prompt to deliberate on')
     .option('-f, --file <path>', 'Read prompt from file (- for stdin)')
-    .option('--agents <list>', 'Agents to use (e.g. "claude,codex,gemini" or "claude:opus,codex:gpt-5.2-codex")')
+    .option('--agents <list>', 'Agents to use (e.g. "claude,codex,gemini" or "claude:opus,codex:gpt-5.2-codex"); default: the installed, signed-in agent CLIs (see `concilium doctor`)')
     .option('--juror-models <list>', 'Jurors, comma-separated: agent CLIs (e.g. "claude,codex:gpt-5.2,gemini") or OpenRouter model IDs (need an API key); default: the installed agent CLIs')
     .option('--chairman <model>', 'Chairman: an agent CLI (e.g. "gemini", "claude:opus") or an OpenRouter model ID; default: an installed CLI from another family than most jurors')
     .option('--cwd <path>', 'Project working directory', process.cwd())
@@ -87,7 +84,6 @@ export function registerRunCommand(program: Command): void {
       }
 
       const cwd = resolve(opts.cwd ?? process.cwd());
-      const agentInstances = parseAgentsFlag(opts.agents);
       const isJson = opts.json || !process.stdout.isTTY;
       const isQuiet = opts.quiet ?? false;
 
@@ -108,6 +104,15 @@ export function registerRunCommand(program: Command): void {
           ? { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] }
           : new JsonRunRepository(getDataDir()),
       });
+
+      let agentInstances: AgentInstance[];
+      try {
+        agentInstances = opts.agents ? parseAgentsFlag(opts.agents) : await runtime.defaultAgentInstances();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(isJson ? JSON.stringify({ error: message }) : `Error: ${message}`);
+        process.exit(1);
+      }
 
       const isInteractive = process.stdout.isTTY && !isJson && !isQuiet;
 

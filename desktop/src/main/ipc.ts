@@ -108,7 +108,15 @@ export function registerIpcHandlers(
   ipcMain.handle("models:lastOpencode", () => configStore.getLastOpencodeModel());
 
   // Agent management
-  ipcMain.handle("agents:get", () => configStore.getAgentInstances());
+  // Saved agents, else one per installed, signed-in agent CLI (none when no CLI qualifies)
+  ipcMain.handle("agents:get", async () => {
+    const saved = await configStore.getAgentInstances();
+    if (saved.length > 0) return saved;
+    return runtime.defaultAgentInstances().catch((err: unknown): AgentInstance[] => {
+      log.warn(err instanceof Error ? err.message : String(err));
+      return [];
+    });
+  });
   ipcMain.handle("agents:save", (_, instances: AgentInstance[]) =>
     configStore.saveAgentInstances(instances),
   );

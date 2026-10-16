@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { AgentInstance } from '../domain/agent/agent-config.js';
-import { createDefaultAgentInstances, isProviderId } from '../domain/agent/providers.js';
+import { isProviderId } from '../domain/agent/providers.js';
 import type { ConfigStore, CouncilConfigPrefs } from '../ports/config-store.js';
 
 interface Preferences {
@@ -61,7 +61,7 @@ export class JsonConfigStore implements ConfigStore {
       const validInstances = prefs.agentInstances.filter(isValidAgentInstance);
       if (validInstances.length >= 2) return validInstances;
     }
-    return createDefaultAgentInstances();
+    return [];
   }
 
   async saveAgentInstances(instances: AgentInstance[]): Promise<void> {

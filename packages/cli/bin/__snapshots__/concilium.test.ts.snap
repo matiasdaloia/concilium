@@ -11,7 +11,9 @@ Arguments:
 Options:
   -f, --file <path>      Read prompt from file (- for stdin)
   --agents <list>        Agents to use (e.g. "claude,codex,gemini" or
-                         "claude:opus,codex:gpt-5.2-codex")
+                         "claude:opus,codex:gpt-5.2-codex"); default: the
+                         installed, signed-in agent CLIs (see \`concilium
+                         doctor\`)
   --juror-models <list>  Jurors, comma-separated: agent CLIs (e.g.
                          "claude,codex:gpt-5.2,gemini") or OpenRouter model IDs
                          (need an API key); default: the installed agent CLIs

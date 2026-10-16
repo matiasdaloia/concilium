@@ -116,7 +116,7 @@ Concilium ships a full-featured terminal interface alongside the desktop app. Ru
 ### Quick examples
 
 ```bash
-# Basic deliberation
+# Basic deliberation (agents: the installed, signed-in agent CLIs)
 concilium run "Add input validation to the user registration endpoint"
 
 # Read prompt from a file
