@@ -1,0 +1,111 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`codeBrief > should hold the bugfix playbook steps and verification verbatim, and the frozen rubric 1`] = `
+"do the task
+
+## Playbook: bugfix
+Follow these steps in order. In your final message, list every step as done, or as skipped with the reason.
+1. Reproduce the bug first: write a test that fails because of it, run it, and watch it fail before you change any code.
+2. Find the cause with runtime evidence (output, logs, narrowing the inputs), not by guessing.
+3. Make the smallest change the evidence justifies.
+4. Commit the failing test on its own before the fix, so it lands first in history.
+5. Run the repro test and the existing tests again: the repro now passes and nothing else broke.
+
+## Verification expected
+- A test that fails on the base and passes with the fix.
+- The existing tests still pass.
+
+## Rubric
+Your work will be judged on these criteria, fixed before you started (sha256 63cb2cc04a0c5110380c824445fecf30aea879698e9c32178c61916bf6f0d76f):
+- reproduced (weight 3, evidence: gate): A test reproduces the bug: it fails on the base and passes on the branch.
+- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
+- root-cause (weight 2, evidence: adversarial): The change fixes the cause, not a symptom, and holds against tests written by other candidates.
+- minimal (weight 1, evidence: judgment): The diff is the smallest change the evidence justifies."
+`;
+
+exports[`codeBrief > should hold the feature playbook steps and verification verbatim, and the frozen rubric 1`] = `
+"do the task
+
+## Playbook: feature
+Follow these steps in order. In your final message, list every step as done, or as skipped with the reason.
+1. Name the data shape first: the types and the data the feature reads and writes.
+2. Find the blocking steps, the independent pieces and the shared state, and pick the smallest decomposition.
+3. Build it in small, ordered commits, each with its tests.
+4. Verify it through the surface a user touches (the command, endpoint or screen), not only through unit tests.
+
+## Verification expected
+- Tests for the new behavior.
+- The existing tests still pass.
+- The feature exercised through its real entry point.
+
+## Rubric
+Your work will be judged on these criteria, fixed before you started (sha256 8dbece0a7c3c17ae9376b5b4a02586112b2a96255f0ef49884d13c0603932046):
+- works (weight 3, evidence: gate): The feature does what the task asks, shown by tests through its real entry point.
+- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
+- edge-cases (weight 2, evidence: adversarial): It holds against edge-case tests written by other candidates.
+- fit (weight 1, evidence: judgment): It follows the codebase's existing patterns and keeps its boundaries clear."
+`;
+
+exports[`codeBrief > should hold the perf playbook steps and verification verbatim, and the frozen rubric 1`] = `
+"do the task
+
+## Playbook: perf
+Follow these steps in order. In your final message, list every step as done, or as skipped with the reason.
+1. Measure a baseline first, with a probe you can rerun (a benchmark, a timing, a profile).
+2. Form hypotheses from the trace or profile, not from intuition.
+3. Change one thing at a time, and measure again with the same probe.
+4. Report the numbers before and after.
+
+## Verification expected
+- The same probe run on the base and on the branch, with both numbers.
+- The existing tests still pass.
+
+## Rubric
+Your work will be judged on these criteria, fixed before you started (sha256 a15ba13c903531e7125b3ebb70361049f9d7f750b435873fe6a5045aec8f6599):
+- measured-gain (weight 3, evidence: gate): The same probe shows an improvement from the base to the branch, with numbers.
+- no-regressions (weight 2, evidence: gate): The existing tests, typecheck and lint still pass on the branch.
+- same-results (weight 2, evidence: adversarial): Results stay the same under tests written by other candidates.
+- contained (weight 1, evidence: judgment): The optimization is contained and explained where it lives."
+`;
+
+exports[`codeBrief > should hold the prototype playbook steps and verification verbatim, and the frozen rubric 1`] = `
+"do the task
+
+## Playbook: prototype
+Follow these steps in order. In your final message, list every step as done, or as skipped with the reason.
+1. Name the decision the prototype must inform.
+2. Write throwaway code in a scratch directory; it will not be merged.
+3. Build the variants side by side so they can be compared.
+4. Finish with a decision and the evidence for it, not mergeable code.
+
+## Verification expected
+- A written decision (DECISION.md) with the evidence from the variants that ran.
+
+## Rubric
+Your work will be judged on these criteria, fixed before you started (sha256 3a4ee4f7da3dd9aaffe1eaffea237cd2937a1d554bf6816625ccb11258d37d88):
+- decision (weight 3, evidence: judgment): The output names the decision and recommends one option.
+- evidence (weight 2, evidence: judgment): The recommendation rests on evidence from variants that actually ran.
+- comparable (weight 1, evidence: judgment): The variants can be compared side by side."
+`;
+
+exports[`codeBrief > should hold the refactor playbook steps and verification verbatim, and the frozen rubric 1`] = `
+"do the task
+
+## Playbook: refactor
+Follow these steps in order. In your final message, list every step as done, or as skipped with the reason.
+1. Pin the current behavior with a characterization test before you move any structure.
+2. Subtract before adding: delete dead code and duplication first.
+3. Move in small behavior-preserving steps, and keep the pinned tests green after each one.
+4. Show equivalence: the same tests pass before and after, and no test was changed to fit.
+5. If the code is not easier to read at the end, revert instead.
+
+## Verification expected
+- Characterization tests that pass on the base and on the branch.
+- No test changed to fit the new code.
+
+## Rubric
+Your work will be judged on these criteria, fixed before you started (sha256 559d4ffc896d0554dd4d567c89bbf4278fc0a83e12c928d11cc4039cb9b68bfc):
+- behavior-preserved (weight 3, evidence: gate): Characterization tests pass on the base and on the branch.
+- equivalence (weight 2, evidence: adversarial): No behavior change shows up under tests written by other candidates.
+- reader-load (weight 2, evidence: judgment): The code is easier to read: less code and fewer concepts."
+`;

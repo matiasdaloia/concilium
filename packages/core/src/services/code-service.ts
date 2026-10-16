@@ -5,11 +5,15 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { framedTask, type CodeFrame } from '../domain/code-council/framing.js';
+import { classifyTask, PLAYBOOKS, type TaskType, type TaskTypeChoice } from '../domain/code-council/playbooks.js';
+import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
 import type { DriverUsage } from '../domain/driver/normalized-event.js';
 import type { Report, ReportStatus } from '../domain/driver/report.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
+import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
 
@@ -17,6 +21,9 @@ const log = createLogger('code');
 
 /** Wall-clock limit for one candidate. */
 export const CODE_TIMEOUT_MS = 30 * 60_000;
+
+/** Wall-clock limit for the read-only run that tailors the rubric. */
+export const FRAME_TIMEOUT_MS = 5 * 60_000;
 
 /** One agent CLI asked to write code, on its own default model unless `model` is set. */
 export type CodeAgent = { provider: string; model?: string };
@@ -56,6 +63,9 @@ export type CodeRunRecord = {
   /** What every candidate branched from: `headSha`, or the dirty-tree snapshot on top of it. */
   baseSha: string;
   snapshotRef?: string;
+  taskType: TaskTypeChoice;
+  /** Frozen before the first candidate started; every candidate brief holds it. */
+  rubric: FrozenRubric;
   candidates: CodeCandidate[];
 };
 
@@ -64,6 +74,8 @@ export type CodeRunInput = {
   /** Any directory inside the target repo. */
   repoDir: string;
   agents: CodeAgent[];
+  /** Without it, `classifyTask` picks one from the task. */
+  type?: TaskType;
   includeDirty?: boolean;
   timeoutMs?: number;
   /** Defaults to a new id. */
@@ -71,6 +83,8 @@ export type CodeRunInput = {
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
   workspace: WorkspaceManager;
   signal?: AbortSignal;
+  /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
+  onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
   onCandidateDone?: (candidate: CodeCandidate) => void;
 };
@@ -90,11 +104,14 @@ function candidateIds(agents: CodeAgent[]): string[] {
   });
 }
 
-/** The write-mode brief a candidate gets: its own worktree, read, write and shell. Each driver keeps what its CLI can do safely. */
-export function codeBrief(task: string, worktree: string, branch: string): Brief {
+/**
+ * The write-mode brief a candidate gets: the task with its playbook and rubric, its own worktree, read, write and shell.
+ * Each driver keeps what its CLI can do safely.
+ */
+export function codeBrief(task: string, frame: CodeFrame, worktree: string, branch: string): Brief {
   return {
     version: 1,
-    task,
+    task: framedTask(task, frame),
     mode: 'code',
     cwd: worktree,
     constraints: [
@@ -112,6 +129,27 @@ function commitMessage(task: string, candidate: CodeCandidate, runId: string): s
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Asks the first agent's CLI, read-only, to tailor the playbook's rubric to the task, and freezes the result.
+ * Any failure (no answer, no JSON, a rubric outside 3 to 6 criteria) falls back to the playbook's defaults.
+ */
+async function frameRubric(input: CodeRunInput, type: TaskType, signal: AbortSignal): Promise<FrozenRubric> {
+  const playbook = PLAYBOOKS[type];
+  const agent = input.agents[0];
+  if (!agent) return freezeRubric(playbook.rubric, { source: 'playbook', note: 'no agent to tailor the rubric' });
+  const framer = agent.model ? `${agent.provider}:${agent.model}` : agent.provider;
+  const gateway = new CliCouncilGateway({ drivers: input.drivers, timeoutMs: FRAME_TIMEOUT_MS });
+  const response = await gateway.query(framer, [{ role: 'user', content: rubricPrompt(input.task, playbook) }], undefined, signal);
+  if (!response) return freezeRubric(playbook.rubric, { source: 'playbook', framer, note: `${framer} gave no answer` });
+  try {
+    return freezeRubric(parseRubricAnswer(response.content), { source: 'framer', framer });
+  } catch (err) {
+    const note = `rubric from ${framer} rejected: ${errorMessage(err)}`;
+    log.warn(note);
+    return freezeRubric(playbook.rubric, { source: 'playbook', framer, note });
+  }
 }
 
 async function runDriver(driver: HeadlessCliDriver, brief: Brief, model: string | undefined, timeoutMs: number, signal: AbortSignal): Promise<Report> {
@@ -135,9 +173,8 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   const signal = input.signal ?? new AbortController().signal;
   const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty });
   const repoDir = base.repoDir;
-  log.info(`code run ${runId}: ${input.agents.length} candidates from ${base.baseSha}`);
 
-  const runCandidate = async (agent: CodeAgent, candidateId: string): Promise<CodeCandidate> => {
+  const runCandidate = async (agent: CodeAgent, candidateId: string, frame: CodeFrame): Promise<CodeCandidate> => {
     const candidate: CodeCandidate = {
       candidateId,
       provider: agent.provider,
@@ -159,7 +196,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       const workspace = await input.workspace.create({ repoDir, runId, candidateId });
       candidate.worktree = workspace.path;
       input.onCandidateStart?.({ candidateId, provider: agent.provider, worktree: workspace.path });
-      candidate.brief = codeBrief(input.task, workspace.path, workspace.branch);
+      candidate.brief = codeBrief(input.task, frame, workspace.path, workspace.branch);
 
       const driver = input.drivers.get(agent.provider);
       if (!driver) throw new Error(`No agent CLI driver for "${agent.provider}"`);
@@ -192,8 +229,14 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   };
 
   try {
+    // The type and the rubric are fixed before any worktree or candidate exists.
+    const taskType: TaskTypeChoice = input.type ? { type: input.type, source: 'flag', reason: 'set with --type' } : classifyTask(input.task);
+    const frame: CodeFrame = { taskType, rubric: await frameRubric(input, taskType.type, signal) };
+    input.onFramed?.(frame);
+    log.info(`code run ${runId}: ${taskType.type}, rubric ${frame.rubric.sha256.slice(0, 12)}, ${input.agents.length} candidates from ${base.baseSha}`);
+
     const ids = candidateIds(input.agents);
-    const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i])));
+    const candidates = await Promise.all(input.agents.map((agent, i) => runCandidate(agent, ids[i], frame)));
     return {
       version: 1,
       kind: 'code',
@@ -205,6 +248,8 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       headSha: base.headSha,
       baseSha: base.baseSha,
       ...(base.snapshotRef ? { snapshotRef: base.snapshotRef } : {}),
+      taskType,
+      rubric: frame.rubric,
       candidates,
     };
   } finally {
