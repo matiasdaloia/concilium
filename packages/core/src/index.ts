@@ -35,7 +35,6 @@ export { buildReport, parseReport, ReportValidationError, REPORT_STATUSES } from
 export type { NormalizedEvent, RunEvent, DriverUsage } from './domain/driver/normalized-event.js';
 
 // Port interfaces
-export type { AgentProvider, AgentExecutionConfig } from './ports/agent-provider.js';
 export type { LlmGateway, LlmResponse } from './ports/llm-gateway.js';
 export type { RunRepository } from './ports/run-repository.js';
 export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
@@ -45,10 +44,6 @@ export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from 
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
-export { ClaudeProvider } from './adapters/claude-provider.js';
-export { CodexProvider } from './adapters/codex-provider.js';
-export { OpenCodeProvider, ensureOpenCodeServer, shutdownEmbeddedServer } from './adapters/opencode-provider.js';
-export type { OpenCodeServerHandle, OpenCodeSdkConfig } from './adapters/opencode-provider.js';
 export { JsonRunRepository } from './adapters/json-run-repository.js';
 export { JsonConfigStore } from './adapters/json-config-store.js';
 export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
