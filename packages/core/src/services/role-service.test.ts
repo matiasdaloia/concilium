@@ -116,7 +116,7 @@ describe('role resolution', () => {
     );
   });
 
-  it('should rank jurors and the chairman as flag, env, factory.yaml, saved, default, and say where each came from', async () => {
+  it('should rank jurors and the chairman as flag, env, factory.yaml, saved, default, with the source of each', async () => {
     const rt = runtime();
     expect((await rt.resolveRoleMap({ repoDir: repo })).roles).toMatchObject({
       juror: { value: ['claude', 'codex'], source: 'default' },
