@@ -201,11 +201,10 @@ concilium config [subcommand]
 
 **Configuration priority** (highest wins, per setting):
 
-1. Environment variables: `OPENROUTER_API_KEY`, `COUNCIL_MODELS` (jurors), `CHAIRMAN_MODEL`, `OPENROUTER_API_URL`
-2. Saved config (`concilium config set ...`)
-3. Built-in defaults
-
-Known issues: `run --chairman` and `run --juror-models` are currently not applied; the saved or environment models are used instead. `config set` replaces the other saved settings, so set the API key last or use the environment variables.
+1. `run` flags (`--juror-models`, `--chairman`) and the `deliberate()` options (`councilModels`, `chairmanModel`, `apiKey`)
+2. Environment variables: `OPENROUTER_API_KEY`, `COUNCIL_MODELS` (jurors), `CHAIRMAN_MODEL`, `OPENROUTER_API_URL`
+3. Saved config (`concilium config set ...`); each `config set` changes only its own setting
+4. Built-in defaults
 
 **Examples:**
 
@@ -307,9 +306,9 @@ console.log(result.stage3?.response);
 | `prompt` | `string` | Yes | The deliberation prompt |
 | `cwd` | `string` | No | Working directory (defaults to `process.cwd()`) |
 | `agents` | `Array<{ provider, model? }>` | No | Agent list (defaults to 2x opencode) |
-| `apiKey` | `string` | No | OpenRouter API key (overrides config) |
-| `councilModels` | `string[]` | No | Juror model IDs |
-| `chairmanModel` | `string` | No | Chairman model ID |
+| `apiKey` | `string` | No | OpenRouter API key (overrides env and saved config) |
+| `councilModels` | `string[]` | No | Juror model IDs (overrides env and saved config) |
+| `chairmanModel` | `string` | No | Chairman model ID (overrides env and saved config) |
 | `onProgress` | `EventHandler` | No | Callback for progress events |
 | `save` | `boolean` | No | Persist run to history (default: `true`) |
 
