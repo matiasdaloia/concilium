@@ -1,14 +1,12 @@
 import type { Command } from 'commander';
 import {
-  ClaudeProvider,
-  CodexProvider,
-  OpenCodeProvider,
+  createProviders,
+  PROVIDER_IDS,
   ModelDiscoveryService,
   OpenRouterGateway,
   ConfigService,
   JsonConfigStore,
   PlaintextSecretStore,
-  type AgentProvider,
 } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 
@@ -16,7 +14,7 @@ export function registerModelsCommand(program: Command): void {
   program
     .command('models')
     .description('List available models')
-    .option('--agent <name>', 'Models for a specific agent (claude, codex, opencode)')
+    .option('--agent <name>', `Models for a specific agent (${PROVIDER_IDS.join(', ')})`)
     .option('--council', 'OpenRouter models for jurors/chairman')
     .option('--json', 'Output as JSON')
     .action(async (opts: { agent?: string; council?: boolean; json?: boolean }) => {
@@ -49,11 +47,7 @@ export function registerModelsCommand(program: Command): void {
         return;
       }
 
-      const providers = new Map<string, AgentProvider>();
-      if (!opts.agent || opts.agent === 'claude') providers.set('claude', new ClaudeProvider());
-      if (!opts.agent || opts.agent === 'codex') providers.set('codex', new CodexProvider());
-      if (!opts.agent || opts.agent === 'opencode') providers.set('opencode', new OpenCodeProvider());
-
+      const providers = createProviders(opts.agent ? [opts.agent] : undefined);
       const discovery = new ModelDiscoveryService(providers);
       const results = await discovery.discoverAll();
 

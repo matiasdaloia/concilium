@@ -1,6 +1,7 @@
 import type { AgentProvider } from '../ports/agent-provider.js';
 import type { AgentModelInfo } from '../domain/agent/agent-executor.js';
 import { DEFAULT_AGENT_MODELS } from '../domain/agent/agent-executor.js';
+import { getProviderInfo } from '../domain/agent/providers.js';
 import { createLogger } from '../shared/logger.js';
 
 const log = createLogger('model-discovery');
@@ -18,7 +19,7 @@ export class ModelDiscoveryService {
           id,
           models,
           defaultModel: DEFAULT_AGENT_MODELS[id] ?? models[0] ?? '',
-          supportsDiscovery: id === 'opencode',
+          supportsDiscovery: getProviderInfo(id)?.supportsDiscovery ?? false,
         });
       } catch (err) {
         log.warn(`discoverAll: failed for ${id}:`, err instanceof Error ? err.message : String(err));
@@ -26,7 +27,7 @@ export class ModelDiscoveryService {
           id,
           models: [],
           defaultModel: DEFAULT_AGENT_MODELS[id] ?? '',
-          supportsDiscovery: id === 'opencode',
+          supportsDiscovery: getProviderInfo(id)?.supportsDiscovery ?? false,
         });
       }
     }

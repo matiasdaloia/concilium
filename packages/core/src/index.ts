@@ -1,5 +1,14 @@
 // Domain types
 export type { AgentId, AgentProviderType, AgentInstance, AgentStatus, AgentConfig } from './domain/agent/agent-config.js';
+export {
+  PROVIDERS,
+  PROVIDER_IDS,
+  DEFAULT_PROVIDER,
+  isProviderId,
+  getProviderInfo,
+  createDefaultAgentInstances,
+} from './domain/agent/providers.js';
+export type { ProviderInfo } from './domain/agent/providers.js';
 export type { AgentResult } from './domain/agent/agent-result.js';
 export type { EventType, TokenUsage, ParsedEvent } from './domain/agent/parsed-event.js';
 export { RunController, runAgentsParallel, DEFAULT_AGENT_MODELS } from './domain/agent/agent-executor.js';
@@ -42,6 +51,8 @@ export { DeliberationService } from './services/deliberation-service.js';
 export type { DeliberationInput, DeliberationDeps } from './services/deliberation-service.js';
 export { ConfigService } from './services/config-service.js';
 export { ModelDiscoveryService } from './services/model-discovery-service.js';
+export { createConciliumRuntime, createProviders } from './services/create-concilium.js';
+export type { ConciliumAdapters, ConciliumRuntime } from './services/create-concilium.js';
 
 // Shared
 export { createLogger, setLogLevel, getLogLevel } from './shared/logger.js';

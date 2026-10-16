@@ -4,18 +4,15 @@ import React from 'react';
 import { render as inkRender } from 'ink';
 import type { Command } from 'commander';
 import {
-  DeliberationService,
-  OpenRouterGateway,
-  ClaudeProvider,
-  CodexProvider,
-  OpenCodeProvider,
+  createConciliumRuntime,
+  createDefaultAgentInstances,
   JsonRunRepository,
   JsonConfigStore,
-  ConfigService,
   PlaintextSecretStore,
   setLogLevel,
   type AgentInstance,
-  type AgentProvider,
+  type AgentProviderType,
+  type CouncilConfig,
   type RunRecord,
 } from '@concilium/core';
 import { createCallbackEventBridge } from '../adapters/callback-event-bridge.js';
@@ -41,28 +38,14 @@ interface RunOptions {
   quiet?: boolean;
 }
 
-function buildProviders(): Map<string, AgentProvider> {
-  const providers = new Map<string, AgentProvider>();
-  providers.set('claude', new ClaudeProvider());
-  providers.set('codex', new CodexProvider());
-  providers.set('opencode', new OpenCodeProvider());
-  return providers;
-}
-
 function parseAgentsFlag(agents?: string): AgentInstance[] {
-  if (!agents) {
-    // Default: two opencode instances
-    return [
-      { instanceId: crypto.randomUUID(), provider: 'opencode', model: '', enabled: true },
-      { instanceId: crypto.randomUUID(), provider: 'opencode', model: '', enabled: true },
-    ];
-  }
+  if (!agents) return createDefaultAgentInstances();
 
   return agents.split(',').map((spec) => {
     const [provider, model] = spec.includes(':') ? spec.split(':', 2) : [spec, ''];
     return {
       instanceId: crypto.randomUUID(),
-      provider: provider.trim() as 'claude' | 'codex' | 'opencode',
+      provider: provider.trim() as AgentProviderType,
       model: model?.trim() ?? '',
       enabled: true,
     };
@@ -108,27 +91,23 @@ export function registerRunCommand(program: Command): void {
       const isJson = opts.json || !process.stdout.isTTY;
       const isQuiet = opts.quiet ?? false;
 
-      // Set up dependencies
-      const secretStore = new PlaintextSecretStore();
-      const configStore = new JsonConfigStore(getConfigDir());
-      const configService = new ConfigService(configStore, secretStore);
-      const config = await configService.resolve();
-
       // Override council config from flags
+      const overrides: Partial<CouncilConfig> = {};
       if (opts.jurorModels) {
-        config.councilModels = opts.jurorModels.split(',').map((s) => s.trim()).filter(Boolean);
+        overrides.councilModels = opts.jurorModels.split(',').map((s) => s.trim()).filter(Boolean);
       }
       if (opts.chairman) {
-        config.chairmanModel = opts.chairman;
+        overrides.chairmanModel = opts.chairman;
       }
 
-      const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-      const providers = buildProviders();
-
-      // Build no-op or JSON run repository
-      const runRepository = opts.noSave
-        ? { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] }
-        : new JsonRunRepository(getDataDir());
+      const runtime = createConciliumRuntime({
+        secretStore: new PlaintextSecretStore(),
+        configStore: new JsonConfigStore(getConfigDir()),
+        // Build no-op or JSON run repository
+        runRepository: opts.noSave
+          ? { save: async () => '', load: async () => ({} as RunRecord), list: async () => [], loadAll: async () => [] }
+          : new JsonRunRepository(getDataDir()),
+      });
 
       const isInteractive = process.stdout.isTTY && !isJson && !isQuiet;
 
@@ -174,14 +153,7 @@ export function registerRunCommand(program: Command): void {
           },
         });
 
-        const service = new DeliberationService({
-          providers,
-          llmGateway,
-          configStore,
-          secretStore,
-          runRepository,
-          events,
-        });
+        const service = await runtime.createDeliberationService(events, overrides);
 
         try {
           await service.run({ prompt, images: [], agentInstances, cwd });
@@ -264,14 +236,7 @@ export function registerRunCommand(program: Command): void {
         },
       });
 
-      const service = new DeliberationService({
-        providers,
-        llmGateway,
-        configStore,
-        secretStore,
-        runRepository,
-        events,
-      });
+      const service = await runtime.createDeliberationService(events, overrides);
 
       try {
         await service.run({ prompt, images: [], agentInstances, cwd });

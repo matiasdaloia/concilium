@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import type { AgentConfig } from './agent-config.js';
 import type { AgentResult } from './agent-result.js';
+import { PROVIDERS } from './providers.js';
 import type { ImageAttachment } from '../deliberation/deliberation.js';
 import type { AgentProvider, RunnerCallbacks } from '../../ports/agent-provider.js';
 import { createLogger } from '../../shared/logger.js';
@@ -177,11 +178,9 @@ export const CODEX_MODELS = [
 ];
 
 /** Default models shown when agent is enabled but user hasn't picked one */
-export const DEFAULT_AGENT_MODELS: Record<string, string> = {
-  codex: 'gpt-5.2-codex',
-  claude: 'claude-opus-4-6',
-  opencode: '',
-};
+export const DEFAULT_AGENT_MODELS: Record<string, string> = Object.fromEntries(
+  PROVIDERS.map((p) => [p.id, p.defaultModel]),
+);
 
 export interface AgentModelInfo {
   id: string;

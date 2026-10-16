@@ -7,8 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import * as Tabs from '@radix-ui/react-tabs';
-import type { CouncilConfig } from '../types';
-import type { OpenRouterModelInfo } from '../../preload/preload';
+import type { CouncilConfig, OpenRouterModelInfo } from '../types';
 import { api } from '../api';
 
 interface SettingsModalProps {
