@@ -43,7 +43,8 @@ function gc(...args: string[]): { status: number | null; stdout: string; stderr:
 /** A process that starts a run with three candidate worktrees, says `ready`, then waits to be killed. */
 function startCandidates(repo: string, runId: string) {
   const script = `
-    const { GitWorktreeWorkspace } = await import(${JSON.stringify(coreEntry)});
+    const { GitWorktreeWorkspace, setLogLevel } = await import(${JSON.stringify(coreEntry)});
+    setLogLevel('error');
     const manager = new GitWorktreeWorkspace({ root: ${JSON.stringify(worktreeRoot)} });
     await manager.startRun({ repoDir: ${JSON.stringify(repo)}, runId: ${JSON.stringify(runId)} });
     for (const candidateId of ['claude', 'codex', 'gemini']) {
