@@ -32,12 +32,9 @@ interface RunOptions {
   file?: string;
   agents?: string;
   jurorModels?: string;
-  jurors?: string;
   chairman?: string;
-  stage1Only?: boolean;
   cwd?: string;
   json?: boolean;
-  format?: string;
   output?: string;
   noSave?: boolean;
   verbose?: boolean;
@@ -80,12 +77,9 @@ export function registerRunCommand(program: Command): void {
     .option('-f, --file <path>', 'Read prompt from file (- for stdin)')
     .option('--agents <list>', 'Agents to use (e.g. "claude,codex" or "claude:opus,codex:gpt-5.2-codex")')
     .option('--juror-models <list>', 'Juror models (comma-separated OpenRouter model IDs)')
-    .option('--jurors <n>', 'Number of juror models (uses defaults)')
     .option('--chairman <model>', 'Chairman model (OpenRouter model ID)')
-    .option('--stage1-only', 'Skip council stages (just run agents)')
     .option('--cwd <path>', 'Project working directory', process.cwd())
     .option('--json', 'Output as JSON to stdout')
-    .option('--format <type>', 'Output format: interactive (default), md, plain')
     .option('--output <file>', 'Save synthesis to file')
     .option('--no-save', "Don't persist run to history")
     .option('--verbose', 'Debug logging')

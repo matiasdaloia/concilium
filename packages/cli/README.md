@@ -60,12 +60,9 @@ concilium run [prompt...] [options]
 | `-f, --file <path>` | Read prompt from a file (`-` for stdin) | — |
 | `--agents <list>` | Agents to use, comma-separated | `opencode,opencode` |
 | `--juror-models <list>` | Juror model IDs (comma-separated OpenRouter IDs) | config default |
-| `--jurors <n>` | Number of juror models | 3 |
 | `--chairman <model>` | Chairman model (OpenRouter model ID) | config default |
-| `--stage1-only` | Run agents only, skip council review and synthesis | `false` |
 | `--cwd <path>` | Project working directory | current directory |
 | `--json` | Output full run record as JSON | `false` |
-| `--format <type>` | Output format: `interactive`, `md`, `plain` | `interactive` |
 | `--output <file>` | Save the synthesis to a file | — |
 | `--no-save` | Don't persist the run to history | `false` |
 | `--verbose` | Enable debug logging | `false` |
@@ -102,9 +99,6 @@ concilium run --json "design a cache layer" | jq '.stage3.response'
 
 # Save synthesis directly to a file
 concilium run --output solution.md "migrate the database schema"
-
-# Agents only (skip peer review and synthesis)
-concilium run --stage1-only "generate test fixtures for the user model"
 
 # Run in a different directory
 concilium run --cwd ~/projects/backend "add rate limiting to the API"

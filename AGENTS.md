@@ -141,7 +141,7 @@ import { getConfigDir } from '../adapters/xdg-paths.js';
 - **Utilities**: camelCase (`parseEventLine`, `createLogger`)
 - **Types/Interfaces**: PascalCase (`AgentInstance`, `Stage1Result`)
 - **Constants**: UPPER_SNAKE_CASE for true constants
-- **CLI commands**: kebab-case for flags (`--juror-models`, `--stage1-only`)
+- **CLI commands**: kebab-case for flags (`--juror-models`, `--no-save`)
 
 ### File Headers
 Add MIT license header to new files:

@@ -135,9 +135,6 @@ concilium run --json "Explain the auth flow" | jq '.stage3.response'
 
 # Save synthesis to a file
 concilium run --output solution.md "Migrate the database schema"
-
-# Stage 1 only (skip council review)
-concilium run --stage1-only "Generate test fixtures"
 ```
 
 ### Commands

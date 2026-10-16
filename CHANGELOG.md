@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- `concilium run` flags `--jurors`, `--stage1-only` and `--format`: they were accepted but never read, so they had no effect
+
 ## [2.1.0] - 2026-02-16
 
 ### Added
