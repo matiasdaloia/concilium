@@ -30,6 +30,9 @@ import {
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
 
+/** The exit code of a run that ended in `reframe-needed`: it finished, but needs the task restated before a patch. */
+export const REFRAME_EXIT_CODE = 2;
+
 interface CodeOptions {
   agents?: string;
   type?: string;
@@ -194,6 +197,20 @@ function printSynthesis(record: CodeRunRecord): void {
   if (s.synthesisPath) console.log(`    Report: ${s.synthesisPath}`);
 }
 
+function printReframe(record: CodeRunRecord): void {
+  const r = record.reframe;
+  if (!r) return;
+  console.log('\n  Reframe needed: the candidates diverge, so the task can be read more than one way. No patch was written.');
+  for (const d of r.divergence) {
+    console.log(`    ${d.trigger}: ${d.detail}`);
+    for (const c of d.conflicts) console.log(`      "${c.clause}": ${c.evidence.join('; ')}`);
+  }
+  console.log(`\n  Questions (${r.source === 'phraser' ? `phrased by ${r.phraser}` : 'written from the evidence'}):`);
+  r.questions.forEach((q, i) => console.log(`    ${i + 1}. On "${q.clause}": ${q.question}`));
+  for (const note of r.notes) console.log(`    ${note}`);
+  if (r.reportPath) console.log(`    Report: ${r.reportPath}`);
+}
+
 function summaryRows(candidates: CodeCandidate[]): string[][] {
   return [
     ['Candidate', 'Status', 'Verified', 'Files', '+/-', 'Commits', 'Duration', 'Tokens in/out', 'Branch'],
@@ -221,6 +238,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   printAdversarial(record);
   printRanking(record);
   printSynthesis(record);
+  printReframe(record);
 
   const failed = record.candidates.filter((c) => c.errors.length > 0);
   if (failed.length > 0) {
@@ -251,7 +269,7 @@ export function registerCodeCommand(program: Command): void {
     .option('--no-verify', `Skip the gates (${VERIFY_CONFIG}, or the detected test, lint and typecheck commands) and the integrity checks after the candidates finish; also skips the adversarial tests`)
     .option('--no-adversarial', 'Skip the adversarial round, where one agent per family writes tests against the other candidates')
     .option('--no-judge', 'Do not ask a judge CLI (from another model family when one is usable) to order candidates tied on the evidence; a tie at the top goes to the smallest diff')
-    .option('--no-synthesis', 'Do not graft ideas from the other candidates into the winner on the integration branch, and write no result.patch or synthesis.md')
+    .option('--no-synthesis', 'Do not graft ideas from the other candidates into the winner on the integration branch, and write no result.patch or synthesis.md; also skips the divergence check that ends a run in reframe-needed (exit 2)')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
       const fail = (message: string): never => {
@@ -273,6 +291,8 @@ export function registerCodeCommand(program: Command): void {
         runRepository: new JsonRunRepository(getDataDir()),
       });
 
+      // Progress goes to stderr so stdout holds only the summary or the JSON.
+      const progress = (line: string) => !opts.json && console.error(line);
       let record: CodeRunRecord;
       let savedTo: string | null = null;
       try {
@@ -281,8 +301,6 @@ export function registerCodeCommand(program: Command): void {
           : (await runtime.defaultAgentInstances()).map((a) => ({ provider: a.provider }));
         if (agents.length === 0) fail('--agents names no agent');
 
-        // Progress goes to stderr so stdout holds only the summary or the JSON.
-        const progress = (line: string) => !opts.json && console.error(line);
         const store = new JsonCodeRunStore(getDataDir());
         const runId = newRunId();
         record = await runCodeCandidates({
@@ -320,8 +338,10 @@ export function registerCodeCommand(program: Command): void {
         return fail(err instanceof Error ? err.message : String(err));
       }
 
+      if (record.reframe) progress(`  ✗ reframe needed: ${record.reframe.questions.length} questions${record.reframe.reportPath ? ` in ${record.reframe.reportPath}` : ''}`);
       if (opts.json) console.log(JSON.stringify(record, null, 2));
       else printSummary(record, savedTo);
       if (record.candidates.every((c) => c.status !== 'ok')) process.exitCode = 1;
+      else if (record.status === 'reframe-needed') process.exitCode = REFRAME_EXIT_CODE;
     });
 }

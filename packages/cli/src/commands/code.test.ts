@@ -49,6 +49,9 @@ const ADVERSARIAL_TESTS = {
   codex: "if (require('./sum.js')(2, 2) !== 5) throw new Error('2 + 2 is not 5');\n",
 };
 
+/** The acceptance line of the ambiguous task: a separator, but which one? */
+const AMBIGUOUS_LINE = "slugify('Hello World') joins the words with a separator";
+
 /**
  * A fake agent CLI that edits files in its cwd, as the real one would in its worktree. `claude` adds input
  * validation and a test and succeeds; `codex` writes half a change, deletes `sum.test.js` and exits 1. Asked for the rubric (its cwd holds
@@ -56,7 +59,10 @@ const ADVERSARIAL_TESTS = {
  * worktree is `adv-<family>`), each writes its test from ADVERSARIAL_TESTS and the manifest; `codex` then exits 1.
  * Both answer detection as installed and signed in. Asked to judge, `claude` scores the candidate whose diff
  * holds `TypeError` 9 on every criterion and the others 3. Asked for grafts, `claude` names the first file of
- * candidate A's diff; as the integrator (its worktree is `integration`), it writes `grafted.js`.
+ * candidate A's diff; as the integrator (its worktree is `integration`), it writes `grafted.js`. Asked for spec
+ * questions, `claude` asks about AMBIGUOUS_LINE. Where an `AMBIGUOUS` file exists, each reads AMBIGUOUS_LINE its own
+ * way (`claude` a hyphen, `codex` an underscore): it writes `slug.js` as a candidate, a test of its reading as an
+ * adversary, and succeeds.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
@@ -75,6 +81,25 @@ if (${JSON.stringify(cli)} === 'claude' && prompt.startsWith('You are choosing g
   const file = /\\+\\+\\+ b\\/(\\S+)/.exec(prompt.split('## Candidate A')[1] ?? '')?.[1];
   const grafts = file ? [{ candidate: 'A', files: [file], instruction: 'Take its ' + file + '.', why: 'The base lacks it.' }] : [];
   console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ grafts }) }));
+  process.exit(0);
+}
+if (${JSON.stringify(cli)} === 'claude' && prompt.startsWith('You are phrasing spec questions')) {
+  const questions = [{ clause: ${JSON.stringify(AMBIGUOUS_LINE)}, question: 'Hyphen or underscore between the words?' }];
+  console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: JSON.stringify({ questions }) }));
+  process.exit(0);
+}
+if (fs.existsSync('AMBIGUOUS')) {
+  const sep = ${JSON.stringify(cli === 'claude' ? '-' : '_')};
+  if (require('node:path').basename(process.cwd()).startsWith('adv-')) {
+    fs.writeFileSync(${JSON.stringify(`${cli}-reading.test.js`)}, "if (require('./slug.js')('Hello World') !== 'hello" + sep + "world') throw new Error('other reading');\\n");
+    fs.writeFileSync('concilium-adversarial.json', JSON.stringify({ tests: [{ files: [${JSON.stringify(`${cli}-reading.test.js`)}], specClause: ${JSON.stringify(AMBIGUOUS_LINE)} }] }));
+  } else {
+    fs.writeFileSync('slug.js', "module.exports = (s) => s.toLowerCase().split(' ').join('" + sep + "');\\n");
+  }
+  console.log(JSON.stringify(${JSON.stringify(cli)} === 'claude'
+    ? { type: 'result', subtype: 'success', is_error: false, result: 'Done' }
+    : { type: 'item.completed', item: { type: 'agent_message', text: 'Done' } }));
+  if (${JSON.stringify(cli)} === 'codex') console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }));
   process.exit(0);
 }
 if (${JSON.stringify(cli)} === 'claude' && require('node:path').basename(process.cwd()) === 'integration') {
@@ -339,5 +364,42 @@ describe('concilium code', () => {
     expect(record.verification).toBeDefined();
     expect(record.adversarial).toBeUndefined();
     expect(git(repo, 'branch', '--list', `concilium/${record.id}/adv-*`)).toBe('');
+  }, 60_000);
+
+  it('should exit 2 with the spec questions and no patch when the candidates read one line two ways', () => {
+    // Runs last: from here on the fakes read the task's acceptance line two ways.
+    writeFileSync(join(repo, 'AMBIGUOUS'), '');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'ambiguous');
+    const task = `Add slugify(text) in slug.js. Acceptance: ${AMBIGUOUS_LINE}`;
+
+    const result = code('--json', '--agents', 'claude,codex', task);
+    expect(result.status).toBe(2);
+    const record = JSON.parse(result.stdout) as CodeRunRecord;
+    const runDir = join(sandbox, 'data', 'concilium', 'runs', record.id);
+    expect(record.status).toBe('reframe-needed');
+    expect(record.reframe).toMatchObject({
+      phraser: 'claude', source: 'phraser', reportPath: join(runDir, 'reframe.md'),
+      divergence: [{ trigger: 'disjoint-survival', conflicts: [{ clause: AMBIGUOUS_LINE }] }],
+      questions: [{ clause: AMBIGUOUS_LINE, question: 'Hyphen or underscore between the words?' }],
+    });
+    expect(record.synthesis).toMatchObject({ skipped: 'the candidates diverge (disjoint-survival), so the task needs a reframe' });
+    expect(existsSync(join(runDir, 'result.patch'))).toBe(false);
+    expect(git(repo, 'branch', '--list', `concilium/${record.id}/integration`)).toBe('');
+    expect(readFileSync(join(runDir, 'reframe.md'), 'utf8')).toContain(`1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?`);
+    expect((JSON.parse(readFileSync(join(runDir, 'run.json'), 'utf8')) as CodeRunRecord).status).toBe('reframe-needed');
+
+    const summary = code('--agents', 'claude,codex', task);
+    expect(summary.status).toBe(2);
+    expect(summary.stderr).toMatch(/✗ reframe needed: 1 questions in \S+reframe\.md\n/);
+    expect(summary.stdout).toContain('Synthesis skipped: the candidates diverge (disjoint-survival), so the task needs a reframe');
+    expect(summary.stdout).toContain('Reframe needed: the candidates diverge, so the task can be read more than one way. No patch was written.');
+    expect(summary.stdout).toContain(`"${AMBIGUOUS_LINE}": claude passes anthropic-1, fails openai-1; codex passes openai-1, fails anthropic-1`);
+    expect(summary.stdout).toContain(`Questions (phrased by claude):\n    1. On "${AMBIGUOUS_LINE}": Hyphen or underscore between the words?\n`);
+
+    // Without synthesis there is nothing to blend, so nothing is checked: exit 0.
+    const plain = code('--json', '--no-synthesis', '--agents', 'claude,codex', task);
+    expect(plain.status).toBe(0);
+    expect((JSON.parse(plain.stdout) as CodeRunRecord).status).toBe('done');
   }, 60_000);
 });
