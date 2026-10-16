@@ -11,7 +11,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFi
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { DiffStat, GcOptions, GcRunResult, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
+import type { DiffStat, GcOptions, GcRunResult, PatchCheck, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
 import { createLogger } from '../shared/logger.js';
 
 const log = createLogger('workspace');
@@ -260,6 +260,53 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
         stat.deletions += Number(deleted) || 0;
       }
       return stat;
+    });
+  }
+
+  async revert(input: { repoDir: string; runId: string; candidateId: string; sha: string; message: string }): Promise<string> {
+    assertId('run id', input.runId);
+    assertId('candidate id', input.candidateId);
+    return this.serial(async () => {
+      const repoDir = await this.repoRoot(input.repoDir);
+      const path = join(this.runDir(repoDir, input.runId), input.candidateId);
+      if (!existsSync(path)) throw new Error(`Candidate ${input.candidateId} of run ${input.runId} has no worktree at ${path}`);
+      await git(path, ['revert', '--no-commit', input.sha]);
+      await git(path, ['commit', '--quiet', '--no-verify', '--no-gpg-sign', '-m', input.message], CONCILIUM_IDENTITY);
+      return git(path, ['rev-parse', 'HEAD']);
+    });
+  }
+
+  async patch(input: { repoDir: string; runId: string; candidateId: string }): Promise<string> {
+    assertId('run id', input.runId);
+    assertId('candidate id', input.candidateId);
+    return this.serial(async () => {
+      const repoDir = await this.repoRoot(input.repoDir);
+      const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
+      if (!manifest) throw new Error(`Run ${input.runId} has no base for ${repoDir}`);
+      const diff = await git(repoDir, ['-c', 'core.quotePath=false', 'diff', '--binary', '--no-color', '--no-ext-diff', manifest.baseSha, candidateBranch(input.runId, input.candidateId)]);
+      // git() trims the output; a patch must end with its newline.
+      return diff ? `${diff}\n` : '';
+    });
+  }
+
+  async checkPatch(input: { repoDir: string; patch: string }): Promise<PatchCheck> {
+    return this.serial(async () => {
+      const repoDir = await this.repoRoot(input.repoDir);
+      const targetSha = await git(repoDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
+      // A scratch index holding HEAD: the check ignores the user's index and working tree.
+      const tempDir = await mkdtemp(join(tmpdir(), 'concilium-patch-'));
+      try {
+        const env = { GIT_INDEX_FILE: join(tempDir, 'index') };
+        const file = join(tempDir, 'result.patch');
+        await writeFile(file, input.patch);
+        await git(repoDir, ['read-tree', targetSha], env);
+        return await git(repoDir, ['apply', '--check', '--cached', file], env).then(
+          () => ({ applies: true, targetSha, output: '' }),
+          (err: Error) => ({ applies: false, targetSha, output: err.message }),
+        );
+      } finally {
+        await rm(tempDir, { recursive: true, force: true });
+      }
     });
   }
 

@@ -363,17 +363,18 @@ describe('runCodeCandidates with verify', () => {
   });
 });
 
+/** Runs every `*.test.js` under the worktree; any that throws fails the suite. */
+const RUN_TESTS = [
+  "const fs = require('node:fs'); const path = require('node:path');",
+  'const files = [];',
+  "(function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === '.git') continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith('.test.js')) files.push(p); } })('.');",
+  'let failed = 0;',
+  "for (const f of files) { try { require(path.resolve(f)); } catch (e) { failed++; console.error(f + ': ' + e.message); } }",
+  'process.exit(failed ? 1 : 0);',
+  '',
+].join('\n');
+
 describe('runCodeCandidates with adversarial', () => {
-  /** Runs every `*.test.js` under the worktree; any that throws fails the suite. */
-  const RUN_TESTS = [
-    "const fs = require('node:fs'); const path = require('node:path');",
-    'const files = [];',
-    "(function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === '.git') continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (e.name.endsWith('.test.js')) files.push(p); } })('.');",
-    'let failed = 0;',
-    "for (const f of files) { try { require(path.resolve(f)); } catch (e) { failed++; console.error(f + ': ' + e.message); } }",
-    'process.exit(failed ? 1 : 0);',
-    '',
-  ].join('\n');
   const throwsOn = (args: string, from = '.') =>
     `const sum = require('${from}/sum.js'); let threw = false; try { sum(${args}); } catch (e) { threw = e instanceof TypeError; } if (!threw) throw new Error(${JSON.stringify(`sum(${args}) did not throw`)});\n`;
   const TASK = 'sum must reject an argument that is not a number with a TypeError';
@@ -721,5 +722,173 @@ describe('runCodeCandidates ranking', () => {
     expect(record.candidates[0].report!.reason).toMatch(/^disqualified; .*deleted the test file sum\.test\.js/);
     expect(record.ranking).toMatchObject({ winner: null, reason: 'no winner: every candidate is blocked or disqualified', judgments: [] });
     expect(drivers.get('gemini')!.runs).toEqual([]);
+  });
+});
+
+describe('runCodeCandidates synthesis', () => {
+  const STEPS = '1. done\n2. done\n3. done\n4. skipped: no user surface';
+  const CLAUDE_SUM = 'module.exports = (a, b) => Number(a) + Number(b);\n';
+  const STRINGS_TEST = "if (require('./sum.js')('2', '3') !== 5) throw new Error('strings');\n";
+  const TASK = 'make sum accept numeric strings';
+
+  /** A repo whose `test` gate runs every `*.test.js`, with one test that passes on the base. */
+  function seedSuite(): string {
+    writeFileSync(join(repo, 'run-tests.js'), RUN_TESTS);
+    writeFileSync(join(repo, 'sum.test.js'), "if (require('./sum.js')(1, 2) !== 3) throw new Error('1 + 2');\n");
+    mkdirSync(join(repo, '.concilium'));
+    writeFileSync(join(repo, '.concilium', 'verify.yaml'), 'gates:\n  test: node run-tests.js\n');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'suite');
+    return git(repo, 'rev-parse', 'HEAD');
+  }
+
+  /**
+   * A fake CLI with a role per brief: candidate (writes `files`), adversary (writes `tests` and a manifest),
+   * integrator (`integrate` maps a graft id to the files it writes). `seen` records each integrator brief.
+   */
+  function agent(id: string, files: Record<string, string>, opts: { tests?: Record<string, string>; integrate?: Record<string, Record<string, string>>; seen?: Brief[] } = {}): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        if (brief.mode === 'plan') return [{ type: 'error', message: 'no framing' }];
+        let write = files;
+        if (brief.task.startsWith('You are an adversary')) {
+          const tests = opts.tests ?? {};
+          if (Object.keys(tests).length === 0) return [{ type: 'text', text: 'no tests' }];
+          write = tests;
+          writeFileSync(join(brief.cwd, 'concilium-adversarial.json'), JSON.stringify({ tests: Object.keys(tests).map((f) => ({ files: [f], specClause: 'sum adds' })) }));
+        } else if (brief.task.startsWith('You are integrating')) {
+          opts.seen?.push(brief);
+          const graft = /^Graft (graft-\d+):/m.exec(brief.task)![1];
+          write = opts.integrate?.[graft] ?? {};
+        }
+        for (const [name, content] of Object.entries(write)) writeFileSync(join(brief.cwd, name), content);
+        return [{ type: 'text', text: STEPS }];
+      },
+    });
+  }
+
+  /** The read-only graft picker: answers a prompt that starts with `You are choosing grafts` with `grafts`. */
+  function picker(id: string, grafts: object[], prompts: string[]): FakeCliDriver {
+    return new FakeCliDriver({
+      id,
+      respond: (brief: Brief) => {
+        const prompt = readFileSync(join(brief.cwd, COUNCIL_PROMPT_FILE), 'utf8');
+        if (!prompt.startsWith('You are choosing grafts')) return [{ type: 'error', message: 'not a graft prompt' }];
+        prompts.push(prompt);
+        return [{ type: 'text', text: JSON.stringify({ grafts }) }];
+      },
+    });
+  }
+
+  it('should graft the losers\' ideas into the winner one commit each, revert a graft that breaks a test, and emit a patch that applies', async () => {
+    const baseSha = seedSuite();
+    const prompts: string[] = [];
+    const seen: Brief[] = [];
+    const drivers = new Map([
+      // The winner, on the smallest diff, and the integrator: graft-1 adds codex's strings test, graft-2 (seeded) breaks sum.
+      ['claude', agent('claude', { 'sum.js': CLAUDE_SUM }, {
+        seen, integrate: { 'graft-1': { 'strings.test.js': STRINGS_TEST }, 'graft-2': { 'sum.js': 'module.exports = () => 0;\n' } },
+      })],
+      // Same fix plus a test, so a bigger diff; its adversary writes a regression guard that passes on the base.
+      ['codex', agent('codex', { 'sum.js': 'module.exports = (a, b) => +a + +b;\n', 'strings.test.js': STRINGS_TEST }, {
+        tests: { 'adds.test.js': "if (require('./sum.js')(2, 3) !== 5) throw new Error('2 + 3');\n" },
+      })],
+      // Makes no change: a dropout.
+      ['opencode', agent('opencode', {})],
+      ['gemini', picker('gemini', [
+        { candidate: 'A', files: ['strings.test.js'], instruction: 'Add the numeric strings test.', why: 'The base has no test for the task.' },
+        { candidate: 'A', files: ['sum.js'], hunk: '@@ -1 +1 @@', instruction: 'Use unary plus.', why: 'Shorter.' },
+        { candidate: 'B', files: ['x.js'], instruction: 'Nothing.', why: 'None.' },
+      ], prompts)],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const done: string[] = [];
+
+    const record = await runCodeCandidates({
+      task: TASK, type: 'feature', repoDir: repo, runId: 'syn1', drivers, workspace, verify: true, adversarial: true, judge: false,
+      agents: [{ provider: 'claude' }, { provider: 'codex' }, { provider: 'opencode' }], synthesis: { runDir },
+      onGraftDone: (g) => done.push(`${g.id} ${g.status}`),
+    });
+    const [claude] = record.candidates;
+    const s = record.synthesis!;
+
+    expect(record.ranking.winner).toBe('claude');
+    expect(record.adversarial!.tests).toEqual([expect.objectContaining({ id: 'openai-1', validity: 'regression-guard' })]);
+    expect(s).toMatchObject({
+      base: { candidateId: 'claude', headSha: claude.headSha }, branch: 'concilium/syn1/integration',
+      picker: { provider: 'gemini', sameFamily: false }, dropouts: [{ candidateId: 'opencode', reason: 'BLOCKED: made no change' }],
+      notes: ['grafts[2] dropped: candidate must be one of A'],
+    });
+    expect(done).toEqual(['graft-1 applied', 'graft-2 rejected']);
+
+    // The picker read the base and the loser blind; the dropout was not offered.
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('## Base');
+    expect(prompts[0]).toContain('## Candidate A');
+    expect(prompts[0]).not.toContain('## Candidate B');
+    expect(prompts[0]).not.toMatch(/claude|codex|opencode|anthropic|openai/i);
+    expect(drivers.get('gemini')!.runs[0].brief).toMatchObject({ mode: 'plan', allowedActions: ['read'] });
+
+    // A fresh integrator run per graft, in the integration worktree, with the source diff read-only.
+    expect(seen.map((b) => b.cwd)).toEqual([s.worktree, s.worktree]);
+    expect(seen[0].task).toContain('Instruction: Add the numeric strings test.');
+    const source = seen[0].constraints.find((c) => c.startsWith('Source solution diff, read-only: '))!;
+    expect(existsSync(source.slice(34))).toBe(false);
+
+    const [applied, rejected] = s.grafts;
+    expect(applied).toMatchObject({ id: 'graft-1', candidateId: 'codex', files: ['strings.test.js'], status: 'applied', revertSha: null, reason: '' });
+    expect(git(repo, 'log', '-1', '--format=%an|%s', applied.commitSha!)).toBe('concilium|concilium: graft-1 from codex for run syn1');
+    // graft-1 was checked at its own head: the gate and the valid adversarial test both pass there.
+    expect(s.checks).toEqual({ sha: applied.commitSha, gates: { test: 'pass' }, tests: { 'openai-1': 'pass' } });
+
+    expect(rejected).toMatchObject({ id: 'graft-2', candidateId: 'codex', hunk: '@@ -1 +1 @@', status: 'rejected' });
+    expect(rejected.reason).toBe('gate test passed before the graft and is fail after it; adversarial test openai-1 (sum adds) passed before the graft and is error after it');
+    expect(rejected.evidence[0]).toMatchObject({ kind: 'gate', sha: rejected.commitSha });
+    expect(rejected.evidence[0].output).toContain('1 + 2');
+    // Reverted on the branch: history keeps the graft and its revert, the tree is graft-1's.
+    expect(git(repo, 'rev-list', '--reverse', `${claude.headSha}..${s.branch}`).split('\n')).toEqual([applied.commitSha, rejected.commitSha, rejected.revertSha]);
+    expect(s.headSha).toBe(rejected.revertSha);
+    expect(git(repo, 'show', `${s.branch}:sum.js`)).toBe(CLAUDE_SUM.trimEnd());
+    expect(git(repo, 'show', `${s.branch}:strings.test.js`)).toBe(STRINGS_TEST.trimEnd());
+
+    // The patch is the integration branch against the base, and it applies to the checkout's HEAD.
+    expect(s.patchPath).toBe(join(runDir, 'result.patch'));
+    const patch = readFileSync(s.patchPath!, 'utf8');
+    expect(patch).toBe(`${git(repo, 'diff', '--binary', baseSha, s.branch!)}\n`);
+    expect(s).toMatchObject({ mergeable: true, mergeCheck: { applies: true, targetSha: baseSha } });
+    git(repo, 'apply', '--check', s.patchPath!);
+
+    const md = readFileSync(join(runDir, 'synthesis.md'), 'utf8');
+    expect(s.synthesisPath).toBe(join(runDir, 'synthesis.md'));
+    expect(md).toContain(`\`claude\` at \`${claude.headSha}\``);
+    expect(md).toContain('- **graft-1** from `codex` (`strings.test.js`): Add the numeric strings test.');
+    expect(md).toContain('- **graft-2** from `codex` (`sum.js`, hunk `@@ -1 +1 @@`): Use unary plus.');
+    expect(md).toContain(`reverted by \`${rejected.revertSha}\``);
+    expect(md).toContain('- `opencode`: BLOCKED: made no change');
+    expect(md).toContain('- Mergeable: yes');
+
+    // The checkout is untouched; gc keeps the integration branch.
+    expect(git(repo, 'status', '--porcelain')).toBe('');
+    const gc = await workspace.gc({ runId: 'syn1', dryRun: true });
+    expect(gc[0].keptBranches).toEqual(['concilium/syn1/integration']);
+  }, 60_000);
+
+  it('should skip synthesis with fewer than 2 candidates, without a winner, and without the gates', async () => {
+    seedSuite();
+    const drivers = new Map([
+      ['claude', agent('claude', { 'sum.js': CLAUDE_SUM })],
+      ['codex', agent('codex', { 'sum.test.js': "const it = { skip: () => {} };\nit.skip('adds', () => {});\n" })],
+    ]);
+    const runDir = join(sandbox, `run-dir-${counter}`);
+    const run = (runId: string, agents: { provider: string }[], verify = true) =>
+      runCodeCandidates({ task: TASK, type: 'feature', repoDir: repo, runId, drivers, workspace, verify, agents, synthesis: { runDir } });
+
+    expect((await run('syn2', [{ provider: 'claude' }])).synthesis).toMatchObject({ skipped: 'fewer than 2 candidates', branch: null, patchPath: null, mergeable: false });
+    // codex skips the test: disqualified, so two of it leave no winner.
+    expect((await run('syn3', [{ provider: 'codex' }, { provider: 'codex' }])).synthesis).toMatchObject({ skipped: 'no winner' });
+    expect((await run('syn4', [{ provider: 'claude' }, { provider: 'codex' }], false)).synthesis).toMatchObject({ skipped: 'the gates did not run, so no graft could be re-verified' });
+    expect(git(repo, 'branch', '--list', 'concilium/*/integration')).toBe('');
+    expect(existsSync(runDir)).toBe(false);
   });
 });

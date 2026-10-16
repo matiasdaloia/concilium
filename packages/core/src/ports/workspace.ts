@@ -51,6 +51,9 @@ export type DiffStat = {
   deletions: number;
 };
 
+/** A patch checked against the target repo's `HEAD` at `targetSha`. `output` holds git's complaints when it does not apply. */
+export type PatchCheck = { applies: boolean; targetSha: string; output: string };
+
 export type GcOptions = {
   /** Only this run. Without it, every finished or crashed run under the worktree root. */
   runId?: string;
@@ -80,6 +83,12 @@ export interface WorkspaceManager {
   commit(input: { repoDir: string; runId: string; candidateId: string; message: string }): Promise<{ headSha: string; committed: boolean }>;
   /** The candidate branch against the run's base. */
   diffStat(input: { repoDir: string; runId: string; candidateId: string }): Promise<DiffStat>;
+  /** Commit the revert of `sha` on the candidate's branch, as `concilium`. Returns the new branch head. */
+  revert(input: { repoDir: string; runId: string; candidateId: string; sha: string; message: string }): Promise<string>;
+  /** `git diff --binary` from the run's base to the candidate branch head. */
+  patch(input: { repoDir: string; runId: string; candidateId: string }): Promise<string>;
+  /** Whether `patch` applies to the target repo's current `HEAD` (`git apply --check` on a scratch index; the checkout is not touched). */
+  checkPatch(input: { repoDir: string; patch: string }): Promise<PatchCheck>;
   /** Mark the run finished, so gc collects it. */
   finishRun(input: { repoDir: string; runId: string }): Promise<void>;
   /** Remove worktrees, `concilium/` branches and scratch refs of finished (or crashed) runs. */

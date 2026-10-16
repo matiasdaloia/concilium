@@ -220,6 +220,49 @@ describe('GitWorktreeWorkspace', () => {
     expect(await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'm' })).toEqual({ headSha: base.baseSha, committed: false });
     expect(await manager.diffStat({ repoDir: repo, runId: 'r1', candidateId: 'a' })).toEqual({ commits: 0, filesChanged: 0, insertions: 0, deletions: 0 });
   });
+
+  it('should revert one commit on a branch built from another candidate head, as concilium', async () => {
+    await manager.startRun({ repoDir: repo, runId: 'r1' });
+    const a = await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+    writeFileSync(join(a.path, 'a.txt'), 'one\ntwo\n');
+    const { headSha: aHead } = await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'a' });
+
+    const integration = await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'integration', fromSha: aHead });
+    expect(git(integration.path, 'rev-parse', 'HEAD')).toBe(aHead);
+    writeFileSync(join(integration.path, 'b.txt'), 'graft\n');
+    const { headSha: graft } = await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'integration', message: 'graft' });
+
+    const head = await manager.revert({ repoDir: repo, runId: 'r1', candidateId: 'integration', sha: graft, message: 'revert the graft' });
+    expect(head).toBe(git(repo, 'rev-parse', integrationBranch('r1')));
+    expect(git(repo, 'log', '-1', '--format=%an|%s', head)).toBe('concilium|revert the graft');
+    expect(git(repo, 'rev-parse', `${head}^`)).toBe(graft);
+    expect(existsSync(join(integration.path, 'b.txt'))).toBe(false);
+    expect(git(integration.path, 'status', '--porcelain')).toBe('');
+  });
+
+  it('should emit the branch as a patch from the base and check it against the current HEAD without touching the checkout', async () => {
+    await manager.startRun({ repoDir: repo, runId: 'r1' });
+    const ws = await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+    writeFileSync(join(ws.path, 'a.txt'), 'one\ntwo\n');
+    writeFileSync(join(ws.path, 'logo.bin'), Buffer.from([0, 1, 2, 255]));
+    await manager.commit({ repoDir: repo, runId: 'r1', candidateId: 'a', message: 'a' });
+
+    const patch = await manager.patch({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+    expect(patch).toContain('+two');
+    expect(patch).toContain('GIT binary patch');
+    const head = git(repo, 'rev-parse', 'HEAD');
+    expect(await manager.checkPatch({ repoDir: repo, patch })).toEqual({ applies: true, targetSha: head, output: '' });
+
+    // The target moves on in a way that conflicts; the user's dirty tree does not count either way.
+    writeFileSync(join(repo, 'a.txt'), 'uno\n');
+    git(repo, 'commit', '-q', '-am', 'moved on');
+    writeFileSync(join(repo, 'a.txt'), 'one\n');
+    const moved = await manager.checkPatch({ repoDir: repo, patch });
+    expect(moved).toMatchObject({ applies: false, targetSha: git(repo, 'rev-parse', 'HEAD') });
+    expect(moved.output).toContain('a.txt');
+    expect(git(repo, 'status', '--porcelain')).toBe(' M a.txt');
+    expect(git(repo, 'diff', '--cached')).toBe('');
+  });
 });
 
 describe('GitWorktreeWorkspace gc', () => {

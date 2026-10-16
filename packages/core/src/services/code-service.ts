@@ -9,6 +9,7 @@ import { framedTask, type CodeFrame } from '../domain/code-council/framing.js';
 import { classifyTask, PLAYBOOKS, type TaskType, type TaskTypeChoice } from '../domain/code-council/playbooks.js';
 import type { Judgment } from '../domain/code-council/judging.js';
 import type { CandidateReport, Ranking } from '../domain/code-council/ranking.js';
+import type { Graft, Synthesis } from '../domain/code-council/synthesis.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import type { Brief } from '../domain/driver/brief.js';
 import type { GateResult } from '../domain/verification/gates.js';
@@ -24,6 +25,7 @@ import { createLogger } from '../shared/logger.js';
 import { runAdversarialRound, type AdversarialInput, type AdversarialRound } from './adversarial-service.js';
 import { rankRun } from './ranking-service.js';
 import { runDriver } from './run-driver.js';
+import { synthesize } from './synthesis-service.js';
 import { verifyCandidates, type CandidateVerification, type RunVerification } from './verification-service.js';
 
 const log = createLogger('code');
@@ -86,6 +88,8 @@ export type CodeRunRecord = {
   adversarial?: AdversarialRound;
   /** Evidence first, a judge only for exact ties, and the winner if there is one. */
   ranking: Ranking;
+  /** The winner with grafts from the others on the integration branch, and its patch. Absent when not asked for. */
+  synthesis?: Synthesis;
 };
 
 export type CodeRunInput = {
@@ -108,6 +112,8 @@ export type CodeRunInput = {
   adversarial?: boolean;
   /** Send candidates tied on the evidence to one read-only judge CLI, from another model family when one is usable. */
   judge?: boolean;
+  /** After ranking, graft the others' best ideas into the winner on `concilium/<run-id>/integration`, re-verify, and write `result.patch` and `synthesis.md` to `runDir`. */
+  synthesis?: { runDir: string };
   /** Called once the type is chosen and the rubric frozen, before any candidate starts. */
   onFramed?: (frame: CodeFrame) => void;
   onCandidateStart?: (candidate: { candidateId: string; provider: string; worktree: string }) => void;
@@ -116,6 +122,7 @@ export type CodeRunInput = {
   onAdversaryDone?: AdversarialInput['onAdversaryDone'];
   onTestDone?: AdversarialInput['onTestDone'];
   onJudgeDone?: (judgment: Judgment) => void;
+  onGraftDone?: (graft: Graft) => void;
 };
 
 /** A run id that sorts by start time and is a safe directory and ref component: `20261016T141015-a1b2c3`. */
@@ -299,6 +306,13 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       judge: input.judge ?? false, drivers: input.drivers, signal, onJudgeDone: input.onJudgeDone,
     });
     log.info(`code run ${runId}: winner ${ranking.winner ?? 'none'} (${ranking.reason})`);
+
+    const synthesis = input.synthesis
+      ? await synthesize({
+        task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
+        verification, adversarial, drivers: input.drivers, workspace: input.workspace, timeoutMs, signal, onGraftDone: input.onGraftDone,
+      })
+      : undefined;
     return {
       version: 1,
       kind: 'code',
@@ -316,6 +330,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       ...(verification ? { verification } : {}),
       ...(adversarial ? { adversarial } : {}),
       ranking,
+      ...(synthesis ? { synthesis } : {}),
     };
   } finally {
     await input.workspace.finishRun({ repoDir, runId });
