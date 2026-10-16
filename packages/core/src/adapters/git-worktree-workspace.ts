@@ -77,6 +77,12 @@ async function git(cwd: string, args: string[], extraEnv?: Record<string, string
   }
 }
 
+/** Whether `sha` names a commit in the repo at `repoDir`. */
+export async function commitExists(repoDir: string, sha: string): Promise<boolean> {
+  if (!/^[0-9a-f]{7,64}$/.test(sha)) return false;
+  return git(repoDir, ['cat-file', '-e', `${sha}^{commit}`]).then(() => true, () => false);
+}
+
 function parseWorktreeList(porcelain: string): GitWorktree[] {
   const worktrees: GitWorktree[] = [];
   for (const block of porcelain.split(/\n\n+/)) {

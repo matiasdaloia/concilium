@@ -117,6 +117,12 @@ export type { ReframeInput } from './services/reframe-service.js';
 export type { Dissent, DissentEvidence, DissentInput, DissentResolution, DissentSource } from './domain/code-council/dissent.js';
 export { DISSENT_FILE, RUBRIC_SCORE_SPREAD, blockingDissent, collectDissent, dissentMarkdown, withDissent } from './domain/code-council/dissent.js';
 export { recordDissent } from './services/dissent-service.js';
+export type { Decision, DecisionRow, TrailEvent, TrailProblem } from './domain/code-council/trail.js';
+export {
+  DECISION_COLUMNS, DECISIONS_FILE, EVENTS_FILE, RUBRIC_FILE, auditTrail, formatDecisionRow, parseDecisions, parseEvents,
+} from './domain/code-council/trail.js';
+export { COMMITTED_TRAIL_FILES, DecisionTrail, checkTrail, committedTrailDir, decisions } from './services/trail-service.js';
+export type { RunTrail, TrailCheck } from './services/trail-service.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
