@@ -78,6 +78,7 @@ export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
 export { CliCouncilGateway, councilBrief, COUNCIL_PROMPT_FILE, COUNCIL_TIMEOUT_MS } from './adapters/cli/cli-council-gateway.js';
 export { CliDriver, createHeadlessCliDrivers, parseOpenCodeModels } from './adapters/cli/cli-drivers.js';
 export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
+export { PUSH_CREDENTIAL_VARS, withoutPushCredentials } from './adapters/cli/agent-env.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
 // Application services
