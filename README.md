@@ -197,9 +197,9 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, gui
+│       │   ├── commands/ # run, history, config, models
 │       │   ├── ui/       # Ink (React) terminal components
-│       │   ├── adapters/ # XDG paths, terminal secret store
+│       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
 │       └── package.json
 ├── desktop/              # Electron desktop application

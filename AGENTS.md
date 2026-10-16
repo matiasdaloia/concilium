@@ -18,7 +18,7 @@ concilium/
 │   └── cli/              # @concilium/cli — terminal interface
 │       ├── bin/          # Entry point (concilium command)
 │       ├── src/
-│       │   ├── commands/ # run, history, config, models, gui
+│       │   ├── commands/ # run, history, config, models
 │       │   ├── ui/       # Ink (React) terminal components
 │       │   ├── adapters/ # XDG paths, callback event bridge
 │       │   └── formatters/
@@ -96,7 +96,7 @@ npm run test -w concilium           # Run all tests
 npx vitest run packages/core/src/domain/deliberation/ranking.test.ts
 
 # Run specific test pattern
-npx vitest run -t "should parse step_start"
+npx vitest run -t "should read the numbered list after FINAL RANKING"
 
 # Run tests for a specific directory
 npx vitest run packages/core/src/
