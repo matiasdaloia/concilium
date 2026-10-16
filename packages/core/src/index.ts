@@ -41,12 +41,21 @@ export type { ConfigStore, CouncilConfigPrefs } from './ports/config-store.js';
 export type { SecretStore } from './ports/secret-store.js';
 export type { DeliberationEvents } from './ports/deliberation-events.js';
 export type { HeadlessCliDriver, CliDetection, CliAuth, DriverRunOptions } from './ports/headless-cli-driver.js';
+export type { WorkspaceManager, Workspace, RunBase, GcOptions, GcRunResult } from './ports/workspace.js';
 
 // Adapters
 export { OpenRouterGateway } from './adapters/openrouter-gateway.js';
 export { JsonRunRepository } from './adapters/json-run-repository.js';
 export { JsonConfigStore } from './adapters/json-config-store.js';
 export { PlaintextSecretStore } from './adapters/plaintext-secret-store.js';
+export {
+  GitWorktreeWorkspace,
+  DirtyWorktreeError,
+  candidateBranch,
+  integrationBranch,
+  BRANCH_PREFIX,
+  INTEGRATION_CANDIDATE,
+} from './adapters/git-worktree-workspace.js';
 export { streamSubprocess, captureSubprocess, detectRateLimit } from './adapters/cli/subprocess.js';
 export type { SubprocessSpec, SubprocessItem, SubprocessOutcome, RateLimitSignal } from './adapters/cli/subprocess.js';
 export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
