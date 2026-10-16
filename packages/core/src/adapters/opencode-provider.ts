@@ -316,9 +316,13 @@ export class OpenCodeProvider implements AgentProvider {
   readonly id = 'opencode';
   readonly name = 'OpenCode';
 
+  constructor(
+    private readonly connect: () => Promise<{ client: OpencodeClient }> = () => ensureOpenCodeServer({}),
+  ) {}
+
   async discoverModels(): Promise<string[]> {
     try {
-      const { client } = await ensureOpenCodeServer({});
+      const { client } = await this.connect();
       const providersRes = await client.config.providers();
       const providersData = providersRes.data;
 
@@ -360,7 +364,7 @@ export class OpenCodeProvider implements AgentProvider {
     log.info(`execute: starting ${agent.name} (${agentKey})`);
 
     try {
-      const { client } = await ensureOpenCodeServer({});
+      const { client } = await this.connect();
 
       const sessionRes = await client.session.create({
         body: { title: `Concilium: ${agent.name}` },
