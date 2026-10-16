@@ -47,9 +47,9 @@ export interface ConciliumRuntime extends ConciliumAdapters {
   configService: ConfigService;
   modelDiscovery: ModelDiscoveryService;
   /**
-   * Resolve config, build the OpenRouter gateway from it, and return a service
-   * that reports progress to `events`. `overrides` apply to the config the
-   * gateway is built from.
+   * Resolve config once with `overrides` on top (see `ConfigService.resolve`),
+   * build the OpenRouter gateway from it, and return a service that runs with
+   * that config and reports progress to `events`.
    */
   createDeliberationService(
     events: DeliberationEvents,
@@ -68,9 +68,9 @@ export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRu
     configService,
     modelDiscovery: new ModelDiscoveryService(providers),
     async createDeliberationService(events, overrides = {}) {
-      const config = { ...(await configService.resolve()), ...overrides };
+      const config = await configService.resolve(overrides);
       const llmGateway = new OpenRouterGateway(config.openRouterApiKey, config.openRouterApiUrl);
-      return new DeliberationService({ ...adapters, providers, llmGateway, events });
+      return new DeliberationService({ runRepository: adapters.runRepository, providers, llmGateway, config, events });
     },
   };
 }

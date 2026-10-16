@@ -49,7 +49,7 @@ The CLI tests and the repo invariants import `@concilium/core` from `packages/co
 | Agents with the same provider and model | same file | Two default OpenCode agents get distinct names (`opencode`, `opencode #2`) and two leaderboard rows |
 | Subscription agent cost | same file | CLI agents get `costPer1kTokens: null` in model snapshots, never API per-token prices |
 | Provider registry and composition root | `packages/core/src/services/create-concilium.test.ts` | `createProviders` builds one provider per `PROVIDERS` entry in registry order, ignores unknown ids; saved agent instances accept every registered provider and drop unknown ones |
-| Config precedence | `packages/core/src/services/config-service.test.ts` | Per setting: env var > saved config > built-in default (API key, API URL, jurors, chairman); `COUNCIL_MODELS` is trimmed and split on commas; settings fall through independently; reset returns to defaults |
+| Config precedence | `packages/core/src/services/config-service.test.ts` | Per setting: explicit override (CLI flag or `deliberate()` option) > env var > saved config > built-in default; saving one setting keeps the others; run overrides pick the jurors and chairman asked and an override API key is the one sent (API key, API URL, jurors, chairman); `COUNCIL_MODELS` is trimmed and split on commas; settings fall through independently; reset returns to defaults |
 | Ranking parser | `packages/core/src/domain/deliberation/ranking.test.ts` | `FINAL RANKING:` numbered list is read and earlier mentions are ignored |
 | Prompts | `packages/core/src/domain/deliberation/prompts.test.ts` | Ranking prompt: each response under its `Response X` label, the task text, no model names, no example label order, label→model map, format the parser reads. Synthesis prompt: task, labelled plans, numbered juror evaluations, no agent or juror names. Research wrapper: read-only rules, user request last |
 | Claude stream-json parsing | `packages/core/src/adapters/parsers/claude-parser.test.ts` (fixture `parsers/__fixtures__/claude-plan.jsonl`) | Recorded session → ordered thinking/tool/status/text events, tool labels with path or command, per-turn and cumulative final usage (cache tokens and cost included), `Run failed` status; blank lines, ANSI text and truncated JSON become raw events or nothing |
@@ -66,8 +66,6 @@ Each is an `it.skip` with a `BUG:` comment. Fix the code, then remove `.skip`; t
 | Bug | Skipped test |
 |---|---|
 | Claude plan text is duplicated: text deltas plus the final `result` text are concatenated | `claude-provider.test.ts` › should use the final plan text exactly once |
-| `config set chairman`/`jurors`/`api-key` replaces the other saved settings | `config-service.test.ts` › should keep the other saved settings when one setting is saved |
-| `run --juror-models` and `--chairman` are ignored: `DeliberationService` resolves config again and drops the overrides | `config-service.test.ts` › should ask the juror and chairman models passed as run overrides |
 
 Not covered by any test yet: the Codex provider, the OpenCode event stream beyond the working directory, `OpenRouterGateway` HTTP error handling, the Ink UI, the `history`/`config`/`models` command output, and the Electron main/renderer.
 

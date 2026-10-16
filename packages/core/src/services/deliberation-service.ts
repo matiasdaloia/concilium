@@ -9,12 +9,9 @@ import { runCouncilStages } from '../domain/deliberation/pipeline.js';
 import type { ModelPerformanceSnapshot } from '../domain/run/run-metadata.js';
 import type { RunRecord } from '../domain/run/run-record.js';
 import type { AgentProvider } from '../ports/agent-provider.js';
-import type { ConfigStore } from '../ports/config-store.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
 import type { LlmGateway } from '../ports/llm-gateway.js';
 import type { RunRepository } from '../ports/run-repository.js';
-import type { SecretStore } from '../ports/secret-store.js';
-import { ConfigService } from './config-service.js';
 import { createLogger } from '../shared/logger.js';
 
 const log = createLogger('deliberation-service');
@@ -30,19 +27,15 @@ export interface DeliberationInput {
 export interface DeliberationDeps {
   providers: Map<string, AgentProvider>;
   llmGateway: LlmGateway;
-  configStore: ConfigStore;
-  secretStore: SecretStore;
+  /** Resolved once by the caller (`ConfigService.resolve`); the service never re-reads config. */
+  config: CouncilConfig;
   runRepository: RunRepository;
   events: DeliberationEvents;
 }
 
 export class DeliberationService {
   private activeControllers = new Map<string, RunController>();
-  private configService: ConfigService;
-
-  constructor(private deps: DeliberationDeps) {
-    this.configService = new ConfigService(deps.configStore, deps.secretStore);
-  }
+  constructor(private deps: DeliberationDeps) {}
 
   async run(input: DeliberationInput): Promise<RunRecord> {
     const runId = input.runId ?? randomUUID();
@@ -52,7 +45,7 @@ export class DeliberationService {
     this.activeControllers.set(runId, controller);
 
     try {
-      const config = await this.configService.resolve();
+      const { config } = this.deps;
       const workingDir = input.cwd;
 
       // Build agent configs from instances. The name keys rankings and stats,

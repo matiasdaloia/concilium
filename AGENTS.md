@@ -314,7 +314,7 @@ import { getConfigDir, getDataDir, getCacheDir } from '../adapters/xdg-paths.js'
 | `SUPABASE_URL` | website | Supabase project URL (server-side only) |
 | `SUPABASE_ANON_KEY` | website | Supabase anon key (server-side only) |
 
-Config precedence, highest first, per setting: environment variable, then saved config (`concilium config set ...`), then built-in default. `ConfigService.resolve` implements it and `packages/core/src/services/config-service.test.ts` pins it. The `run --juror-models` and `--chairman` flags are currently not applied (a skipped test in the same file records the bug).
+Config precedence, highest first, per setting: explicit overrides (`run --juror-models`/`--chairman`, the `deliberate()` options `councilModels`/`chairmanModel`/`apiKey`), then environment variable, then saved config (`concilium config set ...`, which merges into the saved settings), then built-in default. `ConfigService.resolve(overrides)` implements it, `createConciliumRuntime` resolves it once per deliberation and passes it to `DeliberationService`, and `packages/core/src/services/config-service.test.ts` pins it.
 
 ## Pre-Submission Checklist
 - [ ] Verified offline per `.claude/skills/verify-concilium/SKILL.md`: `npm run build`, `npm run typecheck`, `npm test`, `npm run lint -w concilium` and `node packages/cli/dist/bin/concilium.js --help` all exit 0
