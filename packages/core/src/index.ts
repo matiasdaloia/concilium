@@ -124,6 +124,10 @@ export {
 } from './domain/code-council/trail.js';
 export { COMMITTED_TRAIL_FILES, DecisionTrail, checkTrail, committedTrailDir, decisions } from './services/trail-service.js';
 export type { RunTrail, TrailCheck } from './services/trail-service.js';
+export {
+  ActionGate, GATE_OUTPUT_LIMIT, GATES_JSON, GATES_MD, approveGate, classifyAction, gatesMarkdown, gitPushCommand, isConciliumRef, listGates, rejectGate, shellLine,
+} from './services/action-gate.js';
+export type { ActionKind, ActionOutcome, ActionRequest, AutonomyTier, CommandResult, GateEntry, GatesFile, GateStatus } from './services/action-gate.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
