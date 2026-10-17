@@ -11,7 +11,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, rmdir, writeFi
 import { hostname, tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
-import type { DiffStat, GcOptions, GcRunResult, PatchCheck, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
+import type { DiffStat, GcOptions, GcRunResult, MergeTarget, PatchCheck, RunBase, Workspace, WorkspaceManager } from '../ports/workspace.js';
 import { createLogger } from '../shared/logger.js';
 
 const log = createLogger('workspace');
@@ -343,10 +343,11 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     });
   }
 
-  async checkPatch(input: { repoDir: string; patch: string }): Promise<PatchCheck> {
+  async checkPatch(input: { repoDir: string; patch: string; target?: MergeTarget }): Promise<PatchCheck> {
     return this.serial(async () => {
       const repoDir = await repoRoot(input.repoDir);
-      const targetSha = await git(repoDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
+      const target = input.target?.label ?? 'HEAD';
+      const targetSha = await git(repoDir, ['rev-parse', '--verify', `${input.target?.sha ?? 'HEAD'}^{commit}`]);
       // A scratch index holding HEAD: the check ignores the user's index and working tree.
       const tempDir = await mkdtemp(join(tmpdir(), 'concilium-patch-'));
       try {
@@ -355,8 +356,8 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
         await writeFile(file, input.patch);
         await git(repoDir, ['read-tree', targetSha], env);
         return await git(repoDir, ['apply', '--check', '--cached', file], env).then(
-          () => ({ applies: true, targetSha, output: '' }),
-          (err: Error) => ({ applies: false, targetSha, output: err.message }),
+          () => ({ applies: true, targetSha, target, output: '' }),
+          (err: Error) => ({ applies: false, targetSha, target, output: err.message }),
         );
       } finally {
         await rm(tempDir, { recursive: true, force: true });

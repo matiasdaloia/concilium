@@ -174,7 +174,7 @@ export const decisions = {
   },
 
   mergeable(s: Synthesis, baseSha: string, patchFile: string | null): Decision {
-    const check = s.mergeCheck && (s.mergeCheck.applies ? `git apply --check passes against HEAD ${s.mergeCheck.targetSha}` : `git apply --check fails: ${s.mergeCheck.output.split('\n')[0]}`);
+    const check = s.mergeCheck && (s.mergeCheck.applies ? `git apply --check passes against ${s.mergeCheck.target ?? 'HEAD'} ${s.mergeCheck.targetSha}` : `git apply --check fails: ${s.mergeCheck.output.split('\n')[0]}`);
     return {
       step: 'mergeable', decision: 'label the patch', chosen: s.mergeable ? 'mergeable' : 'not mergeable', alternatives: [s.mergeable ? 'not mergeable' : 'mergeable'],
       evidence: [...(patchFile ? [filePointer(patchFile)] : []), commitPointer(s.headSha ?? baseSha)],

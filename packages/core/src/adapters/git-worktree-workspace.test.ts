@@ -272,16 +272,21 @@ describe('GitWorktreeWorkspace', () => {
     expect(patch).toContain('+two');
     expect(patch).toContain('GIT binary patch');
     const head = git(repo, 'rev-parse', 'HEAD');
-    expect(await manager.checkPatch({ repoDir: repo, patch })).toEqual({ applies: true, targetSha: head, output: '' });
+    expect(await manager.checkPatch({ repoDir: repo, patch })).toEqual({ applies: true, targetSha: head, target: 'HEAD', output: '' });
 
     // The target moves on in a way that conflicts; the user's dirty tree does not count either way.
     writeFileSync(join(repo, 'a.txt'), 'uno\n');
     git(repo, 'commit', '-q', '-am', 'moved on');
     writeFileSync(join(repo, 'a.txt'), 'one\n');
     const moved = await manager.checkPatch({ repoDir: repo, patch });
-    expect(moved).toMatchObject({ applies: false, targetSha: git(repo, 'rev-parse', 'HEAD') });
+    expect(moved).toMatchObject({ applies: false, targetSha: git(repo, 'rev-parse', 'HEAD'), target: 'HEAD' });
     expect(moved.output).toContain('a.txt');
     expect(git(repo, 'status', '--porcelain')).toBe(' M a.txt');
+    expect(git(repo, 'diff', '--cached')).toBe('');
+
+    // Checked against a given commit instead, the moved HEAD does not count.
+    const target = { sha: head, label: "task t1's head" };
+    expect(await manager.checkPatch({ repoDir: repo, patch, target })).toEqual({ applies: true, targetSha: head, target: "task t1's head", output: '' });
     expect(git(repo, 'diff', '--cached')).toBe('');
   });
 });

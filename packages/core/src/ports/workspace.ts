@@ -51,8 +51,14 @@ export type DiffStat = {
   deletions: number;
 };
 
-/** A patch checked against the target repo's `HEAD` at `targetSha`. `output` holds git's complaints when it does not apply. */
-export type PatchCheck = { applies: boolean; targetSha: string; output: string };
+/**
+ * A patch checked against `targetSha`: the target repo's `HEAD`, or the commit a stacked run builds on. `target` says
+ * which (`HEAD` when absent, as in records written before it). `output` holds git's complaints when it does not apply.
+ */
+export type PatchCheck = { applies: boolean; targetSha: string; target?: string; output: string };
+
+/** The commit to check a patch against instead of `HEAD`, and how reports name it (`the previous task's head`). */
+export type MergeTarget = { sha: string; label: string };
 
 export type GcOptions = {
   /** Only this run. Without it, every finished or crashed run under the worktree root. */
@@ -90,8 +96,11 @@ export interface WorkspaceManager {
   revert(input: { repoDir: string; runId: string; candidateId: string; sha: string; message: string }): Promise<string>;
   /** `git diff --binary` from the run's base to the candidate branch head. */
   patch(input: { repoDir: string; runId: string; candidateId: string }): Promise<string>;
-  /** Whether `patch` applies to the target repo's current `HEAD` (`git apply --check` on a scratch index; the checkout is not touched). */
-  checkPatch(input: { repoDir: string; patch: string }): Promise<PatchCheck>;
+  /**
+   * Whether `patch` applies to the target repo's current `HEAD`, or to `target` when given (`git apply --check` on a
+   * scratch index; the checkout is not touched).
+   */
+  checkPatch(input: { repoDir: string; patch: string; target?: MergeTarget }): Promise<PatchCheck>;
   /** Mark the run finished, so gc collects it. */
   finishRun(input: { repoDir: string; runId: string }): Promise<void>;
   /** Remove worktrees, `concilium/` branches and scratch refs of finished (or crashed) runs. */

@@ -114,6 +114,8 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
   await saveFactory(dir, record);
 
   let baseSha = startSha;
+  // A stacked task merges into the task before it, so `mergeable` is checked there, never against the checkout.
+  let mergeTarget = { sha: startSha, label: 'the factory base' };
   for (const task of tasks) {
     if (record.stoppedAt) {
       record.steps.push({ taskId: task.id, outcome: 'not-run', reason: `task ${record.stoppedAt} stopped the chain` });
@@ -129,7 +131,7 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
     try {
       const runDir = input.runDir(runId);
       run = await runCodeCandidates({
-        ...input.code, task: taskBrief(task), type: task.type, repoDir, runId, baseSha, verify: true, synthesis: { runDir }, trail: { runDir },
+        ...input.code, task: taskBrief(task), type: task.type, repoDir, runId, baseSha, verify: true, synthesis: { runDir, mergeTarget }, trail: { runDir },
       });
       await input.saveRun(run);
       const blocked = unshippable(run);
@@ -151,8 +153,10 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
       step = stop(`the run failed: ${errorMessage(err)}`, run, null);
     }
     record.steps.push(step);
-    if (step.outcome === 'shipped') baseSha = step.headSha;
-    else record.stoppedAt = task.id;
+    if (step.outcome === 'shipped') {
+      baseSha = step.headSha;
+      mergeTarget = { sha: step.headSha, label: `task ${task.id}'s head` };
+    } else record.stoppedAt = task.id;
     log.info(`factory ${id}: task ${task.id} ${step.outcome}${step.outcome === 'stopped' ? ` (${step.reason})` : ''}`);
     input.onTaskDone?.(step, run);
     await saveFactory(dir, record);

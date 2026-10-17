@@ -22,7 +22,7 @@ import { testGate } from '../domain/verification/adversarial.js';
 import { familyKey } from '../domain/agent/providers.js';
 import { defaultCodeRoles, ROLE_KEYWORDS, specAgent, type CodeRoleMap } from '../domain/roles/roles.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
-import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
+import type { DiffStat, MergeTarget, WorkspaceManager } from '../ports/workspace.js';
 import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { candidateBranch } from '../adapters/git-worktree-workspace.js';
 import { createLogger } from '../shared/logger.js';
@@ -150,8 +150,9 @@ export type CodeRunInput = {
    * After ranking, graft the others' best ideas into the winner on `concilium/<run-id>/integration`, re-verify, and
    * write `result.patch` and `synthesis.md` to `runDir`. When the candidates diverge, write `reframe.md` there instead
    * (for `disjoint-survival` alone, only when grafting does not make the integration head pass the conflicting tests).
+   * `mergeTarget`: check `mergeable` against that commit instead of the target repo's `HEAD` (a stacked factory task).
    */
-  synthesis?: { runDir: string };
+  synthesis?: { runDir: string; mergeTarget?: MergeTarget };
   /**
    * Write `decisions.tsv` (one row per orchestrator decision) and `events.jsonl` to `runDir`, append-only. Unless
    * `commit` is false, commit `decisions.tsv`, `dissent.json` and `synthesis.md` as the last commit of the integration
@@ -444,6 +445,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       synthesis = await synthesize({
         task: input.task, type: taskType.type, repoDir, runId, baseSha: base.baseSha, runDir: input.synthesis.runDir, candidates, ranking,
         verification, adversarial, drivers: input.drivers, workspace: input.workspace, pickerSpec: judgeSpec, integrator, timeoutMs, signal, onGraftDone: io.onGraftDone,
+        ...(input.synthesis.mergeTarget ? { mergeTarget: input.synthesis.mergeTarget } : {}),
         ...(graftFirst ? { conflictTests: [...conflicts].map((id) => adversarial!.tests.find((t) => t.id === id)!) } : {}),
       });
       if (graftFirst && !synthesis.divergence?.resolved) {

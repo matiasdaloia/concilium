@@ -44,7 +44,8 @@ const TASKS = [
  * A fake agent CLI, installed and signed in. Asked to plan (`You are planning`), `claude` answers TASKS; asked to
  * review, each logs its name and passes; asked for grafts, it names none; any other read-only prompt (the rubric)
  * fails, so the playbook rubric is used. As a candidate it writes `mul.js` and its test, or, where `mul.js` already
- * exists (a base stacked on the first task), `square.js` and a test that needs `mul.js`. Codex writes a bigger diff,
+ * exists (a base stacked on the first task), `square.js`, a test that needs `mul.js` and a line in `mul.js`, so that
+ * patch does not apply without the first task. Codex writes a bigger diff,
  * so claude wins each task on the smallest diff and codex, another family, verifies.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
@@ -76,6 +77,7 @@ if (fs.existsSync('council-prompt.md')) {
 }
 const pad = claude ? '' : '// a longer change\\n// by codex\\n';
 if (fs.existsSync('mul.js')) {
+  fs.appendFileSync('mul.js', '// square.js builds on this\\n');
   fs.writeFileSync('square.js', pad + "const mul = require('./mul.js');\\nmodule.exports = (x) => mul(x, x);\\n");
   if (claude) fs.writeFileSync('square.test.js', "if (require('./square.js')(4) !== 16) throw new Error('square');\\n");
 } else {
@@ -131,11 +133,19 @@ describe('concilium factory', () => {
     expect(first).toMatchObject({ taskId: 'mul', baseSha: head, branch: `concilium/${first.runId}/integration`, verdict: 'PASS' });
     expect(second).toMatchObject({ taskId: 'square', baseSha: first.headSha, branch: `concilium/${second.runId}/integration`, verdict: 'PASS' });
     git(repo, 'merge-base', '--is-ancestor', first.headSha, second.headSha);
-    for (const step of [first, second]) {
+    const targets = [{ sha: head, label: 'the factory base' }, { sha: first.headSha, label: "task mul's head" }];
+    for (const [i, step] of [first, second].entries()) {
       const run = JSON.parse(readFileSync(join(runsDir, step.runId, 'run.json'), 'utf8')) as CodeRunRecord;
       expect(run.prVerdict).toMatchObject({ verdict: 'PASS', headSha: step.headSha, gates: { test: 'pass' }, verifier: { provider: 'codex', sameFamily: false } });
       expect(git(repo, 'rev-parse', `${step.branch}~1`)).toBe(step.headSha); // the trail commit sits on top
+      // Mergeable into what it stacks on (task 1: the factory base, task 2: task 1's head), not the checkout's HEAD.
+      expect(run.synthesis).toMatchObject({ mergeable: true, mergeCheck: { applies: true, targetSha: targets[i].sha, target: targets[i].label } });
+      expect(readFileSync(join(runsDir, step.runId, 'synthesis.md'), 'utf8')).toContain(`- Mergeable: yes, \`git apply --check\` against ${targets[i].label} at \`${targets[i].sha}\``);
     }
+    // Against the checkout's HEAD, which lacks mul.js, the second task's patch does not apply.
+    const applyToHead = spawnSync('git', ['apply', '--check', join(runsDir, second.runId, 'result.patch')], { cwd: repo, env: { ...env, PATH: process.env.PATH }, encoding: 'utf8' });
+    expect(applyToHead.status).not.toBe(0);
+    expect(applyToHead.stderr).toContain('mul.js');
     expect(readFileSync(reviewLog, 'utf8')).toBe('codex\ncodex\n');
 
     // The planner, rubric, graft picker and verifier runs skip the user's hooks and plugins through each CLI's
