@@ -634,6 +634,40 @@ concilium factory spec.md --role planner=claude --role verifier=gemini
 concilium status 20261017T092657-640fda
 ```
 
+### `concilium stats`
+
+Show the learning ledger of the repo's code runs. The ledger is not a separate file: it is read from every saved `run.json` whose repo is the one holding `--cwd`, so it always agrees with each run's `decisions.tsv`. It has one row per run, role and runner (`cli[:model]` and its model family), with the run's task type, an outcome, evidence counts and the wall time where the run recorded one. An implementer row (one per candidate) has one of these outcomes, the first that applies:
+
+| Outcome | The candidate |
+|---------|---------------|
+| `base` | was the synthesis base, or the ranking winner when there was no synthesis |
+| `grafted` | gave a graft that was applied |
+| `dropout` | was blocked (no head, no change) or disqualified |
+| `gate-failed` | had a new gate failure |
+| `killed-by-adversary` | failed an adversarial test of another family |
+| `outranked` | passed, but another candidate was picked |
+
+The other roles: the planner is `framed` (its rubric was frozen) or `fallback`; an adversary is `landed` (at least one `evidence` or `regression-guard` test), `missed` or `error`; the judge (tie judgments and graft picks) is `judged` or `blocked`; the integrator is `applied` (at least one graft applied) or `rejected`; the verifier has the PR verdict.
+
+The summary shows the win rate (a win is `base`) by task type and runner with each outcome's count and the mean wall time, then the other roles' outcomes. Once a task type has at least `--min-sample` runs, it suggests a candidate set for it: the best runner of each model family by win rate, best first, as an `--agents` list. A set always spans two families or more: when the task type's runners cover one family (OpenCode has no known family), it suggests nothing and says why.
+
+```
+concilium stats [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <path>` | Directory of the git repo whose code runs to count (default: current directory) |
+| `--min-sample <n>` | Runs of a task type needed before a candidate set is suggested for it (default: 10) |
+| `--json` | Output the ledger rows and the stats as JSON to stdout: `rows`, `byRunner`, `byRole`, `suggestions`, `withheld` |
+
+**Examples:**
+
+```bash
+concilium stats
+concilium stats --min-sample 20 --json
+```
+
 ## Configuration
 
 ### File locations

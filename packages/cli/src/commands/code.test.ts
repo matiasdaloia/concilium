@@ -5,13 +5,13 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CodeRunRecord } from '@concilium/core';
+import { parseDecisions, type CodeRunRecord, type LedgerRow, type LedgerStats } from '@concilium/core';
 
 const cliRoot = fileURLToPath(new URL('../..', import.meta.url));
 const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
@@ -596,5 +596,117 @@ describe('roles', () => {
     } finally {
       rmSync(join(sandbox, 'config', 'concilium'), { recursive: true, force: true });
     }
+  }, 60_000);
+});
+
+describe('concilium stats', () => {
+  // Runs last: the ledger is every code run the cases above saved for `repo` (the roles cases used their own repo).
+  const runsDir = join(sandbox, 'data', 'concilium', 'runs');
+
+  function cli(cwd: string, ...args: string[]) {
+    return spawnSync(process.execPath, ['--import', tsxLoader, binPath, ...args], { cwd, env, encoding: 'utf8' });
+  }
+
+  function count<T>(values: T[]): Map<T, number> {
+    const n = new Map<T, number>();
+    for (const v of values) n.set(v, (n.get(v) ?? 0) + 1);
+    return n;
+  }
+
+  it('should reproduce the counts in each run\'s decisions.tsv and suggest nothing below the minimum sample', () => {
+    const result = cli(repo, 'stats', '--json');
+    expect(result.status).toBe(0);
+    const out = JSON.parse(result.stdout) as LedgerStats & { repoDir: string; rows: LedgerRow[] };
+    expect(out.repoDir).toBe(realpathSync(repo));
+    const ids = readdirSync(runsDir).filter((id) => existsSync(join(runsDir, id, 'run.json'))
+      && (JSON.parse(readFileSync(join(runsDir, id, 'run.json'), 'utf8')) as CodeRunRecord).repoDir === out.repoDir);
+    expect(ids.length).toBeGreaterThanOrEqual(8);
+    expect(out.runs).toBe(ids.length);
+    expect([...new Set(out.rows.map((r) => r.runId))].sort()).toEqual(ids.sort());
+
+    const wins: string[] = [];
+    for (const id of ids) {
+      const { rows: trail, problems } = parseDecisions(readFileSync(join(runsDir, id, 'decisions.tsv'), 'utf8'));
+      expect(problems).toEqual([]);
+      const step = (name: string) => trail.filter((d) => d.step === name);
+      const rows = out.rows.filter((r) => r.runId === id);
+      const implementers = rows.filter((r): r is Extract<LedgerRow, { role: 'implementer' }> => r.role === 'implementer');
+      const of = <R extends LedgerRow['role']>(role: R) => rows.filter((r): r is Extract<LedgerRow, { role: R }> => r.role === role);
+
+      // One implementer row per candidate of the `candidates` row, all of the `task-type` row's type.
+      expect(implementers.map((r) => r.candidateId)).toEqual(step('candidates')[0].chosen.split(', '));
+      expect(new Set(rows.map((r) => r.taskType))).toEqual(new Set([step('task-type')[0].chosen]));
+
+      // The base is the `base-pick` row's choice, else the `ranking` row's winner.
+      const pick = step('base-pick')[0]?.chosen;
+      const winner = step('ranking')[0].chosen;
+      const base = pick && pick !== 'none' ? pick : winner !== 'none' ? winner : null;
+      expect(implementers.filter((r) => r.outcome === 'base').map((r) => r.candidateId)).toEqual(base ? [base] : []);
+      if (base) wins.push(`${step('task-type')[0].chosen} ${base}`);
+
+      // The `verification` rows' verdicts.
+      const verdicts = step('verification').map((d) => d.chosen).filter((c) => c !== 'not checked');
+      expect(count(implementers.flatMap((r) => (r.evidence.verification ? [r.evidence.verification] : [])))).toEqual(count(verdicts));
+      expect(implementers.filter((r) => r.outcome === 'dropout').length).toBeGreaterThanOrEqual(verdicts.filter((v) => v === 'DISQUALIFIED').length);
+
+      // The `graft` rows: an applied graft's donor is grafted (unless it is the base), and the integrators' counts add up.
+      const grafts = step('graft');
+      const donors = grafts.filter((d) => d.chosen === 'applied').map((d) => /^graft-\d+ from (\S+) /.exec(d.decision)![1]);
+      expect(implementers.filter((r) => r.outcome === 'grafted').map((r) => r.candidateId).sort()).toEqual([...new Set(donors)].filter((d) => d !== base).sort());
+      expect(of('integrator').reduce((n, r) => n + r.evidence.applied, 0)).toBe(grafts.filter((d) => d.chosen === 'applied').length);
+      expect(of('integrator').reduce((n, r) => n + r.evidence.rejected, 0)).toBe(grafts.filter((d) => d.chosen === 'rejected').length);
+
+      // The `adversarial` row's tests by validity: every test, and the valid ones.
+      const adversarial = step('adversarial')[0]?.chosen ?? 'skipped';
+      const validity = /^[a-z-]+ \d+(, [a-z-]+ \d+)*$/.test(adversarial)
+        ? adversarial.split(', ').map((part) => part.split(' ')).map(([v, n]) => [v, Number(n)] as const)
+        : [];
+      expect(of('adversary').reduce((n, r) => n + r.evidence.tests, 0)).toBe(validity.reduce((n, [, c]) => n + c, 0));
+      expect(of('adversary').reduce((n, r) => n + r.evidence.valid, 0)).toBe(validity.filter(([v]) => v === 'evidence' || v === 'regression-guard').reduce((n, [, c]) => n + c, 0));
+
+      // The `judge` rows: one tie each.
+      expect(of('judge').reduce((n, r) => n + r.evidence.ties, 0)).toBe(step('judge').length);
+      expect(of('judge').reduce((n, r) => n + r.evidence.blocked, 0)).toBe(step('judge').filter((d) => d.chosen === 'BLOCKED').length);
+    }
+
+    // Wins by task type and runner: these runs set no model, so the runner is the candidate id.
+    const expected = count(wins);
+    expect(new Map(out.byRunner.filter((s) => s.wins > 0).map((s) => [`${s.taskType} ${s.runner.spec}`, s.wins]))).toEqual(expected);
+    expect(out.byRunner.reduce((n, s) => n + s.runs, 0)).toBe(out.rows.filter((r) => r.role === 'implementer').length);
+    // The default sample is 10 runs of a task type: the feature runs reach it, and the suggestion spans both families.
+    expect(out.minSample).toBe(10);
+    const feature = ids.filter((id) => out.rows.some((r) => r.runId === id && r.taskType === 'feature')).length;
+    expect(feature).toBeGreaterThanOrEqual(10);
+    expect(out.suggestions.map((s) => [s.taskType, s.runs])).toEqual([['feature', feature]]);
+    expect(out.suggestions[0].candidates.map((r) => r.family).sort()).toEqual(['anthropic', 'openai']);
+    expect(out.withheld.map((w) => w.reason)).toEqual(out.withheld.map((w) => `${w.runs} runs, fewer than the minimum sample of 10`));
+  }, 60_000);
+
+  it('should suggest nothing below the minimum sample, print the tables, and exit 1 outside a repo', () => {
+    const below = JSON.parse(cli(repo, 'stats', '--json', '--min-sample', '100').stdout) as LedgerStats;
+    expect(below.suggestions).toEqual([]);
+    expect(below.withheld.find((w) => w.taskType === 'feature')!.reason).toMatch(/^\d+ runs, fewer than the minimum sample of 100$/);
+
+    const result = cli(repo, 'stats', '--json', '--min-sample', '1');
+    expect(result.status).toBe(0);
+    const out = JSON.parse(result.stdout) as LedgerStats;
+    expect(out.suggestions.length).toBeGreaterThan(0);
+    for (const s of out.suggestions) expect(s.candidates.map((r) => r.family).sort()).toEqual(['anthropic', 'openai']);
+
+    const text = cli(repo, 'stats', '--min-sample', '1');
+    expect(text.status).toBe(0);
+    expect(text.stdout).toContain(`Ledger of ${realpathSync(repo)}: ${out.runs} code runs`);
+    expect(text.stdout).toMatch(/^ {2}Type\s+Runner\s+Family\s+Runs\s+Wins\s+Win rate\s+base\s+grafted\s+dropout\s+gate-failed\s+killed-by-adversary\s+outranked\s+Mean time$/m);
+    expect(text.stdout).toMatch(/^ {2}feature\s+claude\s+anthropic\s+\d+\s+\d+\s+\d+%/m);
+    expect(text.stdout).toContain('Routing suggestions (at least 1 runs of a task type; a candidate set always spans two model families or more):');
+    expect(text.stdout).toMatch(/^ {2}feature: --agents (claude,codex|codex,claude) \(\d+ runs\)$/m);
+
+    // The roles repo has its own runs; a directory outside any repo, and a bad --min-sample, exit 1.
+    expect((JSON.parse(cli(join(sandbox, 'roles-repo'), 'stats', '--json').stdout) as LedgerStats).runs).toBeGreaterThan(0);
+    const outside = cli(sandbox, 'stats', '--json');
+    expect(outside.status).toBe(1);
+    expect(outside.stdout).toBe('');
+    expect(JSON.parse(outside.stderr).error).toContain('is not inside a git repo');
+    expect(cli(repo, 'stats', '--min-sample', '0').stderr).toContain('--min-sample must be a positive whole number, got "0"');
   }, 60_000);
 });

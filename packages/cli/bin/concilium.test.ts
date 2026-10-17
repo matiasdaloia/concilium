@@ -76,7 +76,7 @@ for (const line of lines) console.log(JSON.stringify(line));
 describe('concilium bin (from source)', () => {
   it('should list every registered command in --help', () => {
     const help = runCli('--help');
-    for (const command of ['run', 'history', 'config', 'models', 'doctor', 'gc', 'trail', 'gates', 'approve', 'reject', 'pr', 'verify-pr', 'status', 'factory']) {
+    for (const command of ['run', 'history', 'config', 'models', 'doctor', 'gc', 'trail', 'gates', 'approve', 'reject', 'pr', 'verify-pr', 'status', 'factory', 'stats']) {
       expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'));
     }
   });
