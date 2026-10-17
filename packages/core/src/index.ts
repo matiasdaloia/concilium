@@ -130,9 +130,10 @@ export type { RunTrail, TrailCheck } from './services/trail-service.js';
 export {
   ActionGate, GATE_OUTPUT_LIMIT, GATES_JSON, GATES_MD, approveGate, classifyAction, gatesMarkdown, ghPrCreateCommand, gitPushCommand, isConciliumRef, listGates, rejectGate, shellLine,
 } from './services/action-gate.js';
-export type { PrRequest, PrReview, PrVerdict, PrVerdictStatus } from './domain/code-council/shipping.js';
+export type { PrRequest, PrReview, PrVerdict, PrVerdictStatus, ShipSource, Verifier } from './domain/code-council/shipping.js';
 export {
-  PR_BODY, VERIFICATION_REPORT, authorFamilies, decideVerdict, parseReview, pickVerifier, prBody, prTitle, reviewPrompt, verdictState, verificationMarkdown,
+  PR_BODY, TRAIL_PATH_PREFIX, VERIFICATION_REPORT, authorFamilies, decideVerdict, draftReason, isTrailPath, parseReview, pickVerifier, prBody, prTitle,
+  reviewPrompt, sameFamilyWarning, shipSource, verdictState, verificationMarkdown, verifierSpec,
 } from './domain/code-council/shipping.js';
 export { prBranch, prStatus, requestPr, verifyPr } from './services/pr-service.js';
 export type { PrStatus, RequestPrInput, VerifyPrInput } from './services/pr-service.js';
@@ -142,10 +143,10 @@ export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
-export type { CodeRoleMap, CodeRoleName, ResolvedRole, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue } from './domain/roles/roles.js';
+export type { CodeRoleMap, CodeRoleName, ResolvedRole, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue, ShipRoleName } from './domain/roles/roles.js';
 export {
-  CODE_ROLES, FACTORY_CONFIG, ROLE_KEYWORDS, ROLE_NAMES, RolesValidationError, defaultCodeRoles, isListRole, parseFactoryRoles, parseRoleFlags,
-  pickRole, resolveCodeRoles, roleWarnings, specAgent, specFamily, validateRoles,
+  CODE_ROLES, FACTORY_CONFIG, ROLE_KEYWORDS, ROLE_NAMES, RolesValidationError, SHIP_ROLES, defaultCodeRoles, isListRole, parseFactoryRoles, parseRoleFlags,
+  pickRole, resolveCodeRoles, resolveVerifierRole, roleWarnings, specAgent, specFamily, validateRoles,
 } from './domain/roles/roles.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime, RepoOptions } from './services/create-concilium.js';

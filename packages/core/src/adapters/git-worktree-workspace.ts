@@ -99,6 +99,12 @@ export async function patchId(repoDir: string, baseSha: string, headSha: string)
   return out.trim().split(/\s+/)[0] || null;
 }
 
+/** Every path `fromSha..toSha` adds, changes or deletes (a rename as both its paths). */
+export async function changedFiles(repoDir: string, fromSha: string, toSha: string): Promise<string[]> {
+  const out = await git(repoDir, ['diff', '--name-only', '--no-renames', fromSha, toSha]);
+  return out ? out.split('\n') : [];
+}
+
 /** A new worktree detached at `sha` in its own temp dir, outside every run's manifest. `remove` deletes it. */
 export async function detachedWorktree(repoDir: string, sha: string): Promise<{ path: string; remove: () => Promise<void> }> {
   const parent = await mkdtemp(join(tmpdir(), 'concilium-detached-'));

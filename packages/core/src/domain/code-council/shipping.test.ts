@@ -9,13 +9,17 @@ import type { Dissent } from './dissent.js';
 import {
   authorFamilies,
   decideVerdict,
+  draftReason,
+  isTrailPath,
   parseReview,
   pickVerifier,
   prBody,
   prTitle,
+  shipSource,
   verdictState,
   verificationMarkdown,
   type PrVerdict,
+  type Verifier,
 } from './shipping.js';
 import type { Graft, Synthesis } from './synthesis.js';
 
@@ -41,11 +45,18 @@ function synthesis(grafts: Graft[]): Synthesis {
   };
 }
 
+const GEMINI: Verifier = { provider: 'gemini', model: null, configured: false, sameFamily: false, family: 'google' };
+const SAME_FAMILY: Verifier = {
+  provider: 'claude', model: null, configured: false, sameFamily: true, family: 'anthropic',
+  sameFamilyReason: 'no installed, signed-in CLI outside the author families (anthropic); claude (anthropic) verified',
+};
+
 function verdict(overrides: Partial<PrVerdict> = {}): PrVerdict {
   return {
-    verdict: 'PASS', reason: 'all good', notes: [], verifier: { provider: 'gemini', family: 'google' }, authorFamilies: ['anthropic'],
-    branch: 'concilium/r/integration', headSha: HEAD, baseSha: 'b'.repeat(40), patchId: 'c'.repeat(40), gates: { test: 'pass' }, tests: {},
-    review: { status: 'PASS', text: 'VERDICT: PASS' }, verifiedAt: '2026-10-17T10:00:00.000Z', reportPath: null, ...overrides,
+    verdict: 'PASS', reason: 'all good', notes: [], verifier: GEMINI, authorFamilies: ['anthropic'],
+    branch: 'concilium/r/integration', branchHead: HEAD, headSha: HEAD, trailSha: null, baseSha: 'b'.repeat(40), patchId: 'c'.repeat(40),
+    gates: { test: 'pass' }, tests: {}, review: { status: 'PASS', text: 'VERDICT: PASS' }, verifiedAt: '2026-10-17T10:00:00.000Z', reportPath: null,
+    ...overrides,
   };
 }
 
@@ -71,13 +82,71 @@ describe('pickVerifier', () => {
   ];
 
   it('should take the first usable CLI whose family wrote none of the commits', () => {
-    expect(pickVerifier(['anthropic'], usable)).toEqual({ provider: 'codex', family: 'openai' });
-    expect(pickVerifier(['anthropic', 'openai'], usable)).toEqual({ provider: 'gemini', family: 'google' });
+    expect(pickVerifier(['anthropic'], usable)).toEqual({ verifier: { provider: 'codex', model: null, configured: false, sameFamily: false, family: 'openai' }, notes: [] });
+    expect(pickVerifier(['anthropic', 'openai'], usable, 'auto').verifier).toMatchObject({ provider: 'gemini', family: 'google', sameFamily: false });
   });
 
-  it('should never fall back to an author family or an unknown one', () => {
-    expect(pickVerifier(['anthropic', 'openai', 'google'], usable)).toBeNull();
-    expect(pickVerifier(['anthropic'], [{ provider: 'claude', family: 'anthropic' }, { provider: 'opencode', family: null }])).toBeNull();
+  it('should prefer a configured verifier outside the author families, with its model', () => {
+    expect(pickVerifier(['anthropic'], usable, 'gemini:gemini-3-pro')).toEqual({
+      verifier: { provider: 'gemini', model: 'gemini-3-pro', configured: true, sameFamily: false, family: 'google' }, notes: [],
+    });
+  });
+
+  it('should pass over a configured verifier of an author family, or one not usable, and say why', () => {
+    expect(pickVerifier(['anthropic', 'openai'], usable, 'codex:gpt-5.2')).toEqual({
+      verifier: { provider: 'gemini', model: null, configured: false, sameFamily: false, family: 'google' },
+      notes: ['the configured verifier codex:gpt-5.2 is of an author family (openai); gemini verifies instead'],
+    });
+    expect(pickVerifier(['anthropic'], usable.slice(0, 2), 'gemini').notes).toEqual(['the configured verifier gemini is not installed and signed in']);
+  });
+
+  it('should fall back to an author family, flagged same-family, only when no CLI outside them is usable', () => {
+    expect(pickVerifier(['anthropic', 'openai', 'google'], usable).verifier).toEqual({
+      provider: 'claude', model: null, configured: false, sameFamily: true, family: 'anthropic',
+      sameFamilyReason: 'no installed, signed-in CLI outside the author families (anthropic, openai, google); claude (anthropic) verified',
+    });
+    // A configured verifier is the fallback when it is usable; an unknown family never counts as another family.
+    expect(pickVerifier(['anthropic', 'openai', 'google'], usable, 'codex:gpt-5.2').verifier).toMatchObject({ provider: 'codex', model: 'gpt-5.2', configured: true, sameFamily: true });
+    expect(pickVerifier(['anthropic'], [{ provider: 'opencode', family: null }]).verifier).toMatchObject({ provider: 'opencode', family: null, sameFamily: true });
+  });
+
+  it('should find no verifier only when no CLI is usable', () => {
+    expect(pickVerifier(['anthropic'], [])).toEqual({ verifier: null, notes: [] });
+  });
+});
+
+describe('shipSource', () => {
+  const candidate = (id: string, headSha: string | null) => ({ candidateId: id, provider: id, branch: `concilium/r/${id}`, headSha });
+
+  it('should ship the integration branch, written by the base and the grafts', () => {
+    expect(shipSource({ synthesis: synthesis([graft('codex', 'claude', 'f'.repeat(40))]), candidates: [candidate('claude', HEAD), candidate('codex', HEAD)] }))
+      .toEqual({ kind: 'integration', branch: 'concilium/r/integration', authorFamilies: ['anthropic', 'openai'] });
+  });
+
+  it("should ship a single candidate's branch, written by its family alone", () => {
+    const skipped = { ...synthesis([]), branch: null, base: null };
+    expect(shipSource({ synthesis: skipped, candidates: [candidate('codex', HEAD)] })).toEqual({ kind: 'candidate', branch: 'concilium/r/codex', authorFamilies: ['openai'] });
+    expect(shipSource({ candidates: [candidate('codex', null)] })).toEqual({ blocked: 'the only candidate, codex, has no head' });
+  });
+
+  it('should ship nothing from several candidates without an integration branch', () => {
+    expect(shipSource({ candidates: [candidate('claude', HEAD), candidate('codex', HEAD)] })).toEqual({ blocked: 'the run has no integration branch' });
+  });
+
+  it('should treat only .concilium/runs/ paths as the trail', () => {
+    expect(isTrailPath('.concilium/runs/r/decisions.tsv')).toBe(true);
+    expect(isTrailPath('.concilium/verify.yaml')).toBe(false);
+    expect(isTrailPath('src/.concilium/runs/x')).toBe(false);
+  });
+});
+
+describe('draftReason', () => {
+  it('should open a draft for a verdict that is not a pass or a same-family verifier, whatever the verdict', () => {
+    expect(draftReason(verdict())).toBeNull();
+    expect(draftReason(verdict({ verdict: 'PASS+NOTES' }))).toBeNull();
+    expect(draftReason(verdict({ verdict: 'FAIL' }))).toBe('the verdict is FAIL');
+    expect(draftReason(verdict({ verifier: SAME_FAMILY }))).toBe('the verifier is of an author family');
+    expect(draftReason(verdict({ verdict: 'BLOCKED', verifier: SAME_FAMILY }))).toBe('the verdict is BLOCKED; the verifier is of an author family');
   });
 });
 
@@ -117,12 +186,20 @@ describe('parseReview', () => {
 
 describe('verdictState', () => {
   it('should hold only for the verified head, locally and on the pushed branch', () => {
-    expect(verdictState(verdict(), { local: HEAD, remote: null })).toEqual({ valid: true, reason: `for head ${HEAD.slice(0, 12)}` });
+    expect(verdictState(verdict(), { local: HEAD, remote: null })).toEqual({ valid: true, reason: `for commit ${HEAD.slice(0, 12)}` });
     expect(verdictState(verdict(), { local: HEAD, remote: HEAD }).valid).toBe(true);
     expect(verdictState(verdict(), { local: 'd'.repeat(40), remote: null }))
       .toEqual({ valid: false, reason: `void: concilium/r/integration is at dddddddddddd, the verdict is for ${HEAD.slice(0, 12)}; run verify-pr again` });
     expect(verdictState(verdict(), { local: HEAD, remote: 'e'.repeat(40) }).reason).toContain('void: the pushed branch is at eeeeeeeeeeee');
     expect(verdictState(verdict({ headSha: null }), { local: null, remote: null }).valid).toBe(false);
+  });
+
+  it('should compare the local branch with the head it verified and the pushed branch with the commit it shipped', () => {
+    const PARENT = 'p'.repeat(40);
+    const withoutTrail = verdict({ branchHead: HEAD, headSha: PARENT, trailSha: HEAD });
+    expect(verdictState(withoutTrail, { local: HEAD, remote: PARENT })).toEqual({ valid: true, reason: `for commit ${PARENT.slice(0, 12)}` });
+    expect(verdictState(withoutTrail, { local: HEAD, remote: HEAD }).valid).toBe(false);
+    expect(verdictState(withoutTrail, { local: PARENT, remote: null }).valid).toBe(false);
   });
 });
 
@@ -134,15 +211,32 @@ describe('verification.md and the PR body', () => {
     expect(md).toContain(`- patch-id: ${'c'.repeat(40)}`);
     expect(md).toContain('- verifier: gemini (google)');
     expect(md).toContain('- author families: anthropic');
+    expect(md).not.toContain('Warning');
+  });
+
+  it('should flag a same-family verifier and name the trail commit left out', () => {
+    const md = verificationMarkdown(verdict({ verifier: SAME_FAMILY, trailSha: 'f'.repeat(40) }), { id: 'r', task: 'add a flag' });
+    expect(md).toContain(`**Warning: same-family verification: ${SAME_FAMILY.sameFamily && SAME_FAMILY.sameFamilyReason}. The pull request is a draft.**`);
+    expect(md).toContain('- verifier: claude (anthropic), SAME FAMILY as the authors');
+    expect(md).toContain(`- trail commit left out: ${'f'.repeat(40)}`);
   });
 
   it('should hold the verdict, the dissent summary, the trail pointer and synthesis.md', () => {
     const open = { id: 'dissent-1', source: 'adversarial-test', summary: 'test fails', resolution: 'open', acceptanceClause: 'x' } as unknown as Dissent;
-    const body = prBody({ runId: 'r', synthesisMd: '# Synthesis of run r\n', dissent: [open], verdict: verdict(), trail: { commitSha: 'f'.repeat(40), dir: '.concilium/runs/r' } });
+    const body = prBody({ runId: 'r', synthesisMd: '# Synthesis of run r\n', dissent: [open], verdict: verdict({ trailSha: 'f'.repeat(40) }), trailDir: '.concilium/runs/r' });
     expect(body).toContain(`**Verdict: PASS** at \`${HEAD}\``);
     expect(body).toContain('1 records: 1 open (1 blocking), 0 warnings.\n- open dissent-1 (adversarial-test): test fails');
-    expect(body).toContain(`\`.concilium/runs/r/decisions.tsv\`, \`dissent.json\` and \`synthesis.md\` in commit \`${'f'.repeat(40)}\``);
+    expect(body).toContain(
+      `\`.concilium/runs/r/decisions.tsv\`, \`dissent.json\` and \`synthesis.md\` are in commit \`${'f'.repeat(40)}\` on \`concilium/r/integration\`, left out of this pull request`,
+    );
+    expect(body).not.toContain('Warning');
     expect(body.trimEnd().endsWith('# Synthesis of run r')).toBe(true);
+  });
+
+  it('should warn in the PR body when the verifier is of an author family', () => {
+    const body = prBody({ runId: 'r', synthesisMd: null, dissent: [], verdict: verdict({ verifier: SAME_FAMILY }), trailDir: '.concilium/runs/r' });
+    expect(body).toContain('by claude (anthropic), SAME FAMILY as the authors');
+    expect(body).toContain('> **Warning: same-family verification: no installed, signed-in CLI outside the author families (anthropic); claude (anthropic) verified. The pull request is a draft.**');
   });
 
   it('should title the PR with the first line of the task, cut at 72 characters', () => {
