@@ -8,7 +8,9 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { registerIpcHandlers, cancelAllRuns } from './ipc';
-import { watchSmokeTest } from './smoke-test';import { createLogger } from '@concilium/core';
+import { watchSmokeTest } from './smoke-test';
+import { openRunArg } from './run-dir';
+import { createLogger } from '@concilium/core';
 
 const log = createLogger('main');
 
@@ -28,6 +30,9 @@ const cliCwd = app.commandLine.getSwitchValue('cwd');
 const resolvedProjectCwd = cliCwd?.trim()
   ? path.resolve(cliCwd.trim())
   : process.cwd();
+
+// --open-run <dir>: show that code-run directory at start.
+const openRun = openRunArg(process.argv, process.cwd());
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -59,7 +64,7 @@ const createWindow = () => {
     }
   );
 
-  registerIpcHandlers(mainWindow, resolvedProjectCwd);
+  registerIpcHandlers(mainWindow, resolvedProjectCwd, openRun);
 
   if (app.commandLine.hasSwitch('smoke-test')) {
     watchSmokeTest(mainWindow);

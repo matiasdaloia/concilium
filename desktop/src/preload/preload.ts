@@ -12,6 +12,7 @@ import type {
   OpenRouterModelInfo,
   UserRanking,
 } from '@concilium/core';
+import type { RunView } from '../shared/run-view';
 
 /** Council settings as the main process reports them over IPC (`config:get`). */
 export interface CouncilConfig {
@@ -47,6 +48,10 @@ export interface ElectronAPI {
   getCwd(): Promise<string>;
   selectCwd(): Promise<string | null>;
 
+  // Code-run directories, read-only: null when the dialog was cancelled, or without --open-run
+  openRunDir(): Promise<RunView | null>;
+  initialRunDir(): Promise<RunView | null>;
+
   // Council configuration
   saveCouncilConfig(config: { chairmanModel?: string; councilModels?: string[]; apiKey?: string }): Promise<{ success: boolean }>;
   fetchOpenRouterModels(apiKey: string): Promise<OpenRouterModelInfo[]>;
@@ -80,6 +85,10 @@ const api: ElectronAPI = {
   // Project working directory
   getCwd: () => ipcRenderer.invoke('app:getCwd'),
   selectCwd: () => ipcRenderer.invoke('app:selectCwd') as Promise<string | null>,
+
+  // Code-run directories
+  openRunDir: () => ipcRenderer.invoke('runs:open'),
+  initialRunDir: () => ipcRenderer.invoke('runs:initial'),
 
   // Agent instances (dynamic configuration)
   getAgentInstances: () => ipcRenderer.invoke('agents:get'),

@@ -16,8 +16,10 @@ import {
   type StartRunConfig,
   type UserRanking,
 } from "@concilium/core";
+import { existsSync } from "node:fs";
 import { ElectronSecretStore } from "./adapters/electron-secret-store";
 import { ElectronEventBridge } from "./adapters/electron-event-bridge";
+import { cliRunsDir, readRunDir } from "./run-dir";
 
 const log = createLogger("ipc");
 
@@ -31,6 +33,7 @@ export function cancelAllRuns() {
 export function registerIpcHandlers(
   mainWindow: BrowserWindow,
   initialCwd: string,
+  openRun: string | null = null,
 ) {
   let projectCwd = initialCwd;
   // Core dependencies
@@ -94,6 +97,20 @@ export function registerIpcHandlers(
     projectCwd = result.filePaths[0];
     return projectCwd;
   });
+
+  // Code-run directories a CLI run wrote, read-only. The renderer never sends a path: the main process takes it
+  // from the open dialog or from --open-run, and reads only the run files inside it.
+  ipcMain.handle("runs:open", async () => {
+    const runsDir = cliRunsDir();
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ["openDirectory"],
+      defaultPath: existsSync(runsDir) ? runsDir : app.getPath("home"),
+      title: "Open a code-run directory",
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return readRunDir(result.filePaths[0]);
+  });
+  ipcMain.handle("runs:initial", () => (openRun ? readRunDir(openRun) : null));
 
   // Storage handlers
   ipcMain.handle("storage:listRuns", () => runRepository.list());
