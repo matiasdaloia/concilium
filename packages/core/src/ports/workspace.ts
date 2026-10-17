@@ -68,8 +68,11 @@ export type GcOptions = {
  * Every operation is idempotent and safe to repeat after a crash.
  */
 export interface WorkspaceManager {
-  /** Pin the run's base. Refuses a dirty tree unless `includeDirty`, which snapshots it to a scratch ref. Repeating returns the same base. */
-  startRun(input: { repoDir: string; runId: string; includeDirty?: boolean }): Promise<RunBase>;
+  /**
+   * Pin the run's base: `baseSha` when given (a factory task stacked on the previous one), else `HEAD`. Without
+   * `baseSha`, refuses a dirty tree unless `includeDirty`, which snapshots it to a scratch ref. Repeating returns the same base.
+   */
+  startRun(input: { repoDir: string; runId: string; includeDirty?: boolean; baseSha?: string }): Promise<RunBase>;
   /** Create (or return the existing) worktree on `concilium/<run-id>/<candidate-id>`, from the run's base or `fromSha`. */
   create(input: { repoDir: string; runId: string; candidateId: string; fromSha?: string }): Promise<Workspace>;
   /** The run's recorded workspaces, or every run's for the repo. */

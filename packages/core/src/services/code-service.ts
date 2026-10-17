@@ -132,6 +132,8 @@ export type CodeRunInput = {
   /** Without it, `classifyTask` picks one from the task. */
   type?: TaskType;
   includeDirty?: boolean;
+  /** The commit the candidates branch from instead of `HEAD`: a factory task's base is the previous task's shipped commit. */
+  baseSha?: string;
   timeoutMs?: number;
   /** Defaults to a new id. */
   runId?: string;
@@ -311,7 +313,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
   const roles = rolesOf(input);
   const judgeSpec = roles.judge.value === ROLE_KEYWORDS.judge ? undefined : roles.judge.value;
   const integrator = roles.integrator.value === ROLE_KEYWORDS.integrator ? undefined : specAgent(roles.integrator.value);
-  const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty });
+  const base = await input.workspace.startRun({ repoDir: input.repoDir, runId, includeDirty: input.includeDirty, baseSha: input.baseSha });
   const repoDir = base.repoDir;
   const trail = input.trail ? new DecisionTrail(input.trail.runDir, { runId, repoDir, baseSha: base.baseSha }) : null;
   const io = traced(input, trail);

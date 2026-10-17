@@ -166,18 +166,24 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     this.root = realpathSync(options.root);
   }
 
-  async startRun(input: { repoDir: string; runId: string; includeDirty?: boolean }): Promise<RunBase> {
+  async startRun(input: { repoDir: string; runId: string; includeDirty?: boolean; baseSha?: string }): Promise<RunBase> {
     assertId('run id', input.runId);
+    if (input.baseSha && input.includeDirty) throw new Error('startRun takes a baseSha or includeDirty, not both');
     return this.serial(async () => {
       const repoDir = await this.repoRoot(input.repoDir);
       const existing = await this.readManifest(this.runDir(repoDir, input.runId));
       if (existing) return toBase(existing);
 
       const headSha = await git(repoDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
-      const status = await git(repoDir, ['status', '--porcelain']);
       let baseSha = headSha;
       let snapshotRef: string | undefined;
-      if (status) {
+      // A pinned base never reads the checkout, so its uncommitted changes do not matter.
+      const status = input.baseSha ? '' : await git(repoDir, ['status', '--porcelain']);
+      if (input.baseSha) {
+        const pinned = await refHead(repoDir, input.baseSha);
+        if (!pinned) throw new Error(`${input.baseSha} is not a commit in ${repoDir}`);
+        baseSha = pinned;
+      } else if (status) {
         if (!input.includeDirty) throw new DirtyWorktreeError(repoDir, status);
         snapshotRef = `refs/concilium/${input.runId}/snapshot`;
         baseSha = await this.snapshot(repoDir, headSha, input.runId, snapshotRef);
