@@ -20,6 +20,8 @@ const binPath = join(cliRoot, 'bin', 'concilium.ts');
 const sandbox = mkdtempSync(join(tmpdir(), 'concilium-factory-test-'));
 const binDir = join(sandbox, 'bin');
 const reviewLog = join(sandbox, 'review.log');
+/** One JSON line per agent CLI run: which CLI, whether it was a read-only council run (a prompt file), its argv. */
+const argvLog = join(sandbox, 'argv.log');
 const env: NodeJS.ProcessEnv = {
   // Only the fake agent CLIs and git: a real claude or codex can never start.
   PATH: binDir,
@@ -53,6 +55,7 @@ if (args === '--version') { console.log('1.0.0'); process.exit(0); }
 if (args === 'auth status') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max' })); process.exit(0); }
 if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
 const claude = ${JSON.stringify(cli)} === 'claude';
+fs.appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify({ cli: ${JSON.stringify(cli)}, council: fs.existsSync('council-prompt.md'), argv: process.argv.slice(2) }) + '\\n');
 function say(text) {
   if (claude) console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text }));
   else {
@@ -134,6 +137,17 @@ describe('concilium factory', () => {
       expect(git(repo, 'rev-parse', `${step.branch}~1`)).toBe(step.headSha); // the trail commit sits on top
     }
     expect(readFileSync(reviewLog, 'utf8')).toBe('codex\ncodex\n');
+
+    // The planner, rubric, graft picker and verifier runs skip the user's hooks and plugins through each CLI's
+    // own flags; the candidates keep the user's setup.
+    const calls = readFileSync(argvLog, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { cli: string; council: boolean; argv: string[] });
+    const isolated = { claude: ['--safe-mode'], codex: ['--ignore-user-config', '--disable=hooks', '--disable=plugins'] } as Record<string, string[]>;
+    const council = calls.filter((c) => c.council);
+    const candidates = calls.filter((c) => !c.council);
+    expect(council.map((c) => c.cli)).toEqual(expect.arrayContaining(['claude', 'codex']));
+    expect(candidates.map((c) => c.cli)).toEqual(expect.arrayContaining(['claude', 'codex']));
+    for (const c of council) expect(c.argv).toEqual(expect.arrayContaining(isolated[c.cli]));
+    for (const c of candidates) for (const flag of isolated[c.cli]) expect(c.argv).not.toContain(flag);
     expect(readFileSync(join(runsDir, id, 'tasks.md'), 'utf8')).toContain('## 1. mul: Add mul.js exporting a multiply function');
 
     // The summary: each task's run and verdict, and the pr commands that would ship the stack in order.

@@ -22,10 +22,17 @@ const TOOLS_BY_ACTION: Record<AllowedAction, string[]> = {
 };
 
 /**
+ * What an isolated run (`DriverRunOptions.isolated`) adds. `--safe-mode` (Claude Code 2.1) starts without the user's
+ * CLAUDE.md, skills, plugins, hooks, MCP servers and custom agents, and keeps the login. `--bare` would skip them
+ * too, but it reads only `ANTHROPIC_API_KEY`, never the subscription login.
+ */
+export const CLAUDE_ISOLATED_ARGS = ['--safe-mode'] as const;
+
+/**
  * `claude -p` arguments for a brief. A plan brief runs in plan mode (read-only). A code brief runs in
  * `dontAsk` mode, where only the tools listed in `--allowedTools` run and anything else is denied.
  */
-export function claudeArgs(brief: Brief, model?: string): string[] {
+export function claudeArgs(brief: Brief, model?: string, isolated = false): string[] {
   const tools = brief.allowedActions.flatMap((action) => TOOLS_BY_ACTION[action]);
   const args = [
     '-p',
@@ -36,6 +43,7 @@ export function claudeArgs(brief: Brief, model?: string): string[] {
     `--tools=${tools.join(',')}`,
     `--allowedTools=${tools.join(',')}`,
   ];
+  if (isolated) args.push(...CLAUDE_ISOLATED_ARGS);
   if (model?.trim()) args.push(`--model=${model.trim()}`);
   args.push('--', briefPrompt(brief));
   return args;
@@ -137,7 +145,7 @@ export async function* runClaudeCode(input: {
     return event;
   };
 
-  const items = streamSubprocess({ command, args: claudeArgs(brief, opts.model), cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, signal: opts.signal });
+  const items = streamSubprocess({ command, args: claudeArgs(brief, opts.model, opts.isolated), cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, signal: opts.signal });
   for await (const item of items) {
     if (item.kind === 'line') {
       if (item.stream === 'stderr') {

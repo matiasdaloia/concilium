@@ -26,6 +26,13 @@ export type DriverRunOptions = {
   model?: string;
   timeoutMs: number;
   signal: AbortSignal;
+  /**
+   * Run without the user's own hooks, plugins, memory and MCP servers, so none of their output reaches the answer.
+   * Set for the read-only reviewer runs (`CliCouncilGateway`: jurors, chairman, framer, judge, graft picker,
+   * reframe, planner, verifier). Each driver uses only its CLI's own flags and keeps the login; a CLI with no such
+   * flag (Gemini today) runs as usual.
+   */
+  isolated?: boolean;
 };
 
 /**

@@ -41,6 +41,15 @@ describe('claudeArgs', () => {
     expect(args).toContain('--model=opus');
     expect(args.at(-1)).toBe('List the top-level folders.\n\nConstraints:\n- Touch only src/');
   });
+
+  it("should run without the user's customizations only when isolated, keeping the login", () => {
+    expect(claudeArgs(planBrief)).not.toContain('--safe-mode');
+    const args = claudeArgs(planBrief, undefined, true);
+    expect(args).toContain('--safe-mode');
+    // --bare would drop the subscription login.
+    expect(args).not.toContain('--bare');
+    expect(args.slice(-2)).toEqual(['--', 'List the top-level folders.']);
+  });
 });
 
 describe('ClaudeCode driver run (fake claude on PATH)', () => {

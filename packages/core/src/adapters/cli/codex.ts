@@ -14,11 +14,19 @@ import { detectRateLimit, streamSubprocess } from './subprocess.js';
 const log = createLogger('codex');
 
 /**
+ * What an isolated run (`DriverRunOptions.isolated`) adds. `--ignore-user-config` (Codex 0.159) skips
+ * `$CODEX_HOME/config.toml`, so its MCP servers, profiles and settings, while the login still comes from
+ * `CODEX_HOME`; the `hooks` and `plugins` features are turned off for the run. The user's `AGENTS.md` instructions
+ * have no flag and still load.
+ */
+export const CODEX_ISOLATED_ARGS = ['--ignore-user-config', '--disable=hooks', '--disable=plugins'] as const;
+
+/**
  * `codex exec --json` arguments for a brief. A plan brief runs in the read-only sandbox, a code brief in
  * the workspace-write sandbox (network only when the brief allows it). Codex reads files through its shell
  * tool, so the sandbox is what limits a run; `read` and `shell` add no flags. Approvals are never asked for.
  */
-export function codexArgs(brief: Brief, cwd: string, model?: string): string[] {
+export function codexArgs(brief: Brief, cwd: string, model?: string, isolated = false): string[] {
   const args = [
     'exec',
     '--json',
@@ -27,6 +35,7 @@ export function codexArgs(brief: Brief, cwd: string, model?: string): string[] {
     '--color=never',
     `--sandbox=${brief.mode === 'plan' ? 'read-only' : 'workspace-write'}`,
     '--config=approval_policy="never"',
+    ...(isolated ? CODEX_ISOLATED_ARGS : []),
   ];
   if (brief.mode === 'code' && brief.allowedActions.includes('network')) args.push('--config=sandbox_workspace_write.network_access=true');
   args.push(`--cd=${cwd}`);
@@ -130,7 +139,7 @@ export async function* runCodex(input: {
   const isRepeat = (event: RunEvent) =>
     (event.type === 'rate_limit' && rateLimited()) || (event.type === 'error' && streamed.some((e) => e.type === 'error' && e.message === event.message));
 
-  const args = codexArgs(brief, opts.cwd, opts.model);
+  const args = codexArgs(brief, opts.cwd, opts.model, opts.isolated);
   for await (const item of streamSubprocess({ command, args, cwd: opts.cwd, env, timeoutMs: opts.timeoutMs, signal: opts.signal })) {
     if (item.kind === 'line') {
       if (item.stream === 'stderr') {

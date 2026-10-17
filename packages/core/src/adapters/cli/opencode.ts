@@ -21,12 +21,15 @@ const PERMISSIONS_BY_ACTION: Record<AllowedAction, string[]> = {
   network: ['webfetch', 'websearch', 'codesearch'],
 };
 
+/** What an isolated run (`DriverRunOptions.isolated`) adds: `--pure` (OpenCode 1.18) runs without external plugins. */
+export const OPENCODE_ISOLATED_ARGS = ['--pure'] as const;
+
 /**
  * `opencode run --format json` arguments for a brief. A plan brief runs the built-in `plan` agent, a code brief
  * the `build` agent. `--auto` is never passed, so `run` rejects every permission OpenCode would ask for.
  */
-export function openCodeArgs(brief: Brief, model?: string): string[] {
-  const args = ['run', '--format=json', `--agent=${brief.mode === 'plan' ? 'plan' : 'build'}`];
+export function openCodeArgs(brief: Brief, model?: string, isolated = false): string[] {
+  const args = ['run', '--format=json', `--agent=${brief.mode === 'plan' ? 'plan' : 'build'}`, ...(isolated ? OPENCODE_ISOLATED_ARGS : [])];
   if (model?.trim()) args.push(`--model=${model.trim()}`);
   args.push('--', briefPrompt(brief));
   return args;
@@ -139,7 +142,7 @@ export async function* runOpenCode(input: {
     return event;
   };
 
-  const args = openCodeArgs(brief, opts.model);
+  const args = openCodeArgs(brief, opts.model, opts.isolated);
   const childEnv = { ...env, OPENCODE_PERMISSION: JSON.stringify(openCodePermission(brief)) };
   for await (const item of streamSubprocess({ command, args, cwd: opts.cwd, env: childEnv, timeoutMs: opts.timeoutMs, signal: opts.signal })) {
     if (item.kind === 'line') {

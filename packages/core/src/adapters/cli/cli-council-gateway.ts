@@ -120,7 +120,8 @@ export class CliCouncilGateway implements LlmGateway {
     const cwd = await mkdtemp(join(tmpdir(), 'concilium-council-'));
     try {
       await writeFile(join(cwd, COUNCIL_PROMPT_FILE), messages.map((m) => m.content).join('\n\n'));
-      const runOptions = { cwd, model, timeoutMs: this.options.timeoutMs ?? COUNCIL_TIMEOUT_MS, signal: signal ?? new AbortController().signal };
+      // Isolated: the user's hooks and plugins would write into the answer this gateway parses.
+      const runOptions = { cwd, model, timeoutMs: this.options.timeoutMs ?? COUNCIL_TIMEOUT_MS, signal: signal ?? new AbortController().signal, isolated: true };
       let report: Report | undefined;
       for await (const event of driver.run(councilBrief(cwd), runOptions)) {
         if (event.type === 'text') onChunk(event.text);
