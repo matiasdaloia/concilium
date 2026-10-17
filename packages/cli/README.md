@@ -524,7 +524,7 @@ concilium trail check --run 20261016T141015-a1b2c3 --json | jq '.problems'
 
 ### `concilium gates`
 
-List the actions Concilium paused instead of running. Concilium sorts every side effect of its own in three tiers: it runs what stays in the run (worktrees and `concilium/` branches, agent CLIs and gates in a worktree, the run store, reverting a graft, `gc`), runs and announces a dependency install or a rebase of the integration branch, and always pauses a push to any remote, opening, merging or closing a pull request, a write to your checkout or to a branch outside `concilium/`, a delete outside the run's own worktrees and branches, a deploy and a message to a person. A paused action is a gate: an entry in `gates.json` and `gates.md` in `$XDG_DATA_HOME/concilium/runs/<run-id>/`, with its id (`<run-id>-g<n>`), the exact command and the directory it runs in, the reason and the time. It runs only when you approve that gate. An approval covers one gate and never a later one, even with the same command. Status is `pending`, `approved` (its command started), `executed`, `failed` (with the exit code and the end of the output) or `rejected`. No command of Concilium pauses yet; opening the integration pull request (M7.2) will be the first.
+List the actions Concilium paused instead of running. Concilium sorts every side effect of its own in three tiers: it runs what stays in the run (worktrees and `concilium/` branches, agent CLIs and gates in a worktree, the run store, reverting a graft, `gc`), runs and announces a dependency install or a rebase of the integration branch, and always pauses a push to any remote, opening, merging or closing a pull request, a write to your checkout or to a branch outside `concilium/`, a delete outside the run's own worktrees and branches, a deploy and a message to a person. A paused action is a gate: an entry in `gates.json` and `gates.md` in `$XDG_DATA_HOME/concilium/runs/<run-id>/`, with its id (`<run-id>-g<n>`), the exact command and the directory it runs in, the reason and the time. It runs only when you approve that gate. An approval covers one gate and never a later one, even with the same command. Status is `pending`, `approved` (its command started), `executed`, `failed` (with the exit code and the end of the output) or `rejected`. `concilium pr` is the first command that pauses: it asks for a push and a pull request.
 
 ```
 concilium gates [options]
@@ -558,6 +558,45 @@ concilium gates
 concilium gates --run 20261016T141015-a1b2c3 --json | jq '.[] | select(.status == "pending")'
 concilium approve 20261016T141015-a1b2c3-g1
 concilium reject 20261016T141015-a1b2c3-g2
+```
+
+### `concilium pr`
+
+Ship a code run's integration branch, `concilium/<run-id>/integration` with its decision trail commit, as a pull request. It never pushes or opens anything itself. First it verifies the branch as `concilium verify-pr` does and saves the verdict. Then it writes the PR body to `pr-body.md` in the run directory (the verdict, a dissent summary, a pointer to the trail commit and `synthesis.md`) and asks for two gates: a push of the branch to `concilium/<run-id>` on the remote, and `gh pr create` from that branch with the task's first line as the title and `pr-body.md` as the body. It prints both gate ids and the `concilium approve` commands; approve the push first. Unless the verdict is `PASS` or `PASS+NOTES`, the pull request is opened as a draft. Merging stays with you; Concilium has no merge command.
+
+```
+concilium pr <run-id> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--remote <name>` | The remote to push to (default: `origin`) |
+| `--base <branch>` | The pull request's base branch (default: the remote's default branch) |
+
+### `concilium verify-pr`
+
+Verify a code run's integration branch with a model family that wrote none of it. The author families are the base candidate's, and each committed graft's donor and integrator. The verifier is the first installed, signed-in agent CLI (in `claude`, `codex`, `gemini`, `opencode` order) of a known family outside them; when there is none the verdict is `BLOCKED`, with no same-family fallback. In a fresh worktree detached at the branch head, it re-runs the run's gates and its valid adversarial tests (`evidence` and `regression-guard`), then the verifier CLI reviews the diff read-only and answers `PASS`, `NOTES` or `FAIL`. The verdict is `FAIL` when a gate that passes on the base, a valid test or the review fails; `PASS+NOTES` when a gate fails on the base too or the review has notes; `BLOCKED` when the review gives no verdict; `PASS` otherwise. It is keyed to the head SHA, the base SHA and the `git patch-id` of the diff, saved as `prVerdict` in the run record and written to `verification.md` in the run directory. It exits 1 unless the verdict is `PASS` or `PASS+NOTES`.
+
+```
+concilium verify-pr <run-id>
+```
+
+### `concilium status`
+
+Show a code run's gates and its verdict. The verdict is void when the integration branch head differs from the head it verified, or when the pushed branch, as this repo last saw it (`<remote>/concilium/<run-id>`, read locally, with no network call), does. Run `concilium verify-pr` again after a new commit.
+
+```
+concilium status <run-id>
+```
+
+**Examples:**
+
+```bash
+concilium pr 20261016T141015-a1b2c3 --base main
+concilium approve 20261016T141015-a1b2c3-g1   # the push
+concilium approve 20261016T141015-a1b2c3-g2   # the pull request
+concilium status 20261016T141015-a1b2c3
+concilium verify-pr 20261016T141015-a1b2c3
 ```
 
 ## Configuration
