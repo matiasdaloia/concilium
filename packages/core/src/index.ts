@@ -161,11 +161,12 @@ export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js'
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
 export type {
-  CodeRoleMap, CodeRoleName, ResolvedRole, RoleCommand, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue, ShipRoleName,
+  CodeRoleMap, CodeRoleName, FactoryConfig, ResolvedRole, RoleCommand, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue, ShipRoleName, VerifierRole,
 } from './domain/roles/roles.js';
 export {
-  CODE_ROLES, FACTORY_CONFIG, ROLE_COMMANDS, ROLE_KEYWORDS, ROLE_NAMES, SHIP_ROLES, checkRoleFamilies, defaultCodeRoles, isListRole, parseCommandRoles,
-  parseFactoryRoles, parseRoleFlags, pickRole, resolveCodeRoles, resolveVerifierRole, specAgent, specFamily, validateRoles,
+  ALLOW_SAME_FAMILY_VERIFIER, CODE_ROLES, FACTORY_CONFIG, ROLE_COMMANDS, ROLE_KEYWORDS, ROLE_NAMES, SHIP_ROLES, checkRoleFamilies, defaultCodeRoles, isListRole,
+  parseCommandRoles, parseFactoryConfig, parseFactoryRoles, parseRoleFlags, pickRole, resolveAllowSameFamily, resolveCodeRoles, resolveVerifierRole, specAgent,
+  specFamily, validateRoles,
 } from './domain/roles/roles.js';
 export type { RoleOrigin, RoleRuleId, RoleRuleSeverity, RoleViolation } from './domain/roles/role-rules.js';
 export { formatViolation, ROLE_RULES, roleOrigin, RolesValidationError, throwOnRoleErrors } from './domain/roles/role-rules.js';

@@ -92,6 +92,18 @@ export class ConfigService {
     await this.configStore.saveCouncilConfigPrefs(config);
   }
 
+  /** The saved same-family verifier opt-in, or undefined when none is saved. */
+  async savedAllowSameFamilyVerifier(): Promise<boolean | undefined> {
+    const value = (await this.configStore.getCouncilConfigPrefs()).allowSameFamilyVerifier;
+    return typeof value === 'boolean' ? value : undefined;
+  }
+
+  async saveAllowSameFamilyVerifier(allow: boolean): Promise<void> {
+    const config = await this.configStore.getCouncilConfigPrefs();
+    config.allowSameFamilyVerifier = allow;
+    await this.configStore.saveCouncilConfigPrefs(config);
+  }
+
   async saveApiKey(key: string): Promise<void> {
     await this.saveCouncilConfig({ apiKey: key });
   }

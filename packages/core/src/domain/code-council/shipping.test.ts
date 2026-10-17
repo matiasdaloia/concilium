@@ -117,6 +117,37 @@ describe('pickVerifier', () => {
     expect(pickVerifier(['anthropic'], [{ provider: 'opencode', family: null }]).verifier).toMatchObject({ provider: 'opencode', family: null, sameFamily: true });
   });
 
+  // A configured verifier of an author family verifies only with the opt-in, and is then flagged everywhere.
+  const OPT_IN = [
+    { configured: 'claude', allow: false, provider: 'codex', configuredUsed: false, sameFamily: false, draft: null },
+    {
+      configured: 'claude', allow: true, provider: 'claude', configuredUsed: true, sameFamily: true,
+      draft: 'the verifier is of an author family',
+    },
+    { configured: 'gemini', allow: true, provider: 'gemini', configuredUsed: true, sameFamily: false, draft: null },
+    // Not usable, or of an unknown family: the opt-in does not apply.
+    { configured: 'opencode:mistral/devstral-2', allow: true, provider: 'codex', configuredUsed: false, sameFamily: false, draft: null },
+  ] as const;
+
+  it.each(OPT_IN)('should verify with $provider for configured $configured and opt-in $allow', ({ configured, allow, provider, configuredUsed, sameFamily, draft }) => {
+    const { verifier } = pickVerifier(['anthropic'], usable, configured, allow);
+    expect(verifier).toMatchObject({ provider, configured: configuredUsed, sameFamily });
+    const v = verdict({ verifier });
+    expect(draftReason(v)).toBe(draft);
+    const markdown = verificationMarkdown(v, { id: 'r', task: 'add a flag' });
+    const body = prBody({ runId: 'r', synthesisMd: null, dissent: [], verdict: v, trailDir: '.concilium/runs/r' });
+    if (!sameFamily) {
+      expect(markdown).not.toContain('Warning');
+      expect(body).not.toContain('Warning');
+      return;
+    }
+    const warning = 'same-family verification: the configured verifier claude is of an author family (anthropic); allow-same-family-verifier allows it. The pull request is a draft.';
+    expect(verifier).toMatchObject({ family: 'anthropic', sameFamilyReason: 'the configured verifier claude is of an author family (anthropic); allow-same-family-verifier allows it' });
+    expect(markdown).toContain(`**Warning: ${warning}**`);
+    expect(markdown).toContain('- verifier: claude (anthropic), SAME FAMILY as the authors');
+    expect(body).toContain(`> **Warning: ${warning}**`);
+  });
+
   it("should take a configured OpenCode verifier's family from its model id", () => {
     expect(pickVerifier(['anthropic'], usable, 'opencode:openrouter/google/gemini-3-pro-preview').verifier).toEqual({
       provider: 'opencode', model: 'openrouter/google/gemini-3-pro-preview', configured: true, sameFamily: false, family: 'google',

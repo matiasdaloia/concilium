@@ -156,6 +156,28 @@ describe('concilium factory', () => {
     expect(run.stdout).toContain('  valid');
   }, 120_000);
 
+  it('should refuse an author-family verifier before planning, and run it flagged same-family with --allow-same-family-verifier', () => {
+    const refused = concilium('factory', 'spec.md', '--cwd', repo, '--no-adversarial', '--no-judge', '--role', 'verifier=claude');
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('Error: [verifier-author-family] --role verifier: verifier claude is of the anthropic family, which can write the code it verifies');
+    expect(refused.stderr).not.toContain('Planned');
+
+    const result = concilium('factory', 'spec.md', '--cwd', repo, '--no-adversarial', '--no-judge', '--role', 'verifier=claude', '--allow-same-family-verifier');
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Warning: [verifier-author-family-allowed] --role verifier:');
+    const id = /^Factory (\S+) in /m.exec(result.stdout)![1];
+    const record = JSON.parse(readFileSync(join(runsDir, id, 'factory.json'), 'utf8')) as FactoryRecord;
+    expect(record.steps.map((s) => [s.outcome, s.outcome === 'shipped' && s.sameFamily])).toEqual([['shipped', true], ['shipped', true]]);
+    for (const step of record.steps) {
+      if (step.outcome !== 'shipped') throw new Error(result.stdout);
+      const run = JSON.parse(readFileSync(join(runsDir, step.runId, 'run.json'), 'utf8')) as CodeRunRecord;
+      expect(run.prVerdict).toMatchObject({ verdict: 'PASS', verifier: { provider: 'claude', configured: true, sameFamily: true } });
+    }
+    expect(result.stdout).toMatch(/^  mul\s+feature\s+shipped\s+.*PASS \(same family\)$/m);
+    expect(result.stdout).toContain('Warning: mul was verified by a CLI of an author family');
+    expect(result.stdout).toContain('Warning: square was verified by a CLI of an author family');
+  }, 120_000);
+
   it('should exit 1 on a spec file it cannot read', () => {
     const result = concilium('factory', 'missing.md', '--cwd', repo);
 

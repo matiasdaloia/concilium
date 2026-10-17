@@ -146,13 +146,26 @@ describe('role resolution', () => {
   it('should take the verifier from flags, then factory.yaml, then saved config, else auto, without detecting', async () => {
     installed = [];
     const rt = runtime();
-    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'auto', source: 'default' });
+    const no = { value: false, source: 'default' };
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'auto', source: 'default', allowSameFamily: no });
     await rt.configService.saveRoles({ verifier: 'claude' });
-    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'claude', source: 'saved' });
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'claude', source: 'saved', allowSameFamily: no });
     writeFactory('roles:\n  verifier: codex:gpt-5.2\n');
-    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'codex:gpt-5.2', source: 'repo' });
-    expect(await rt.resolveVerifier({ repoDir: repo, flags: parseRoleFlags(['verifier=gemini']) })).toEqual({ value: 'gemini', source: 'flag' });
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'codex:gpt-5.2', source: 'repo', allowSameFamily: no });
+    expect(await rt.resolveVerifier({ repoDir: repo, flags: parseRoleFlags(['verifier=gemini']) })).toEqual({ value: 'gemini', source: 'flag', allowSameFamily: no });
     expect((await rt.resolveRoleMap({ repoDir: repo })).roles.verifier).toEqual({ value: 'codex:gpt-5.2', source: 'repo' });
+  });
+
+  it('should take the same-family verifier opt-in from the flag, then factory.yaml, then saved config, else no', async () => {
+    installed = [];
+    const rt = runtime();
+    const allow = async (flag?: boolean) => (await rt.resolveVerifier({ repoDir: repo, allowSameFamily: flag })).allowSameFamily;
+    expect(await allow()).toEqual({ value: false, source: 'default' });
+    await rt.configService.saveAllowSameFamilyVerifier(true);
+    expect(await allow()).toEqual({ value: true, source: 'saved' });
+    writeFactory('allow-same-family-verifier: false\n');
+    expect(await allow()).toEqual({ value: false, source: 'repo' });
+    expect(await allow(true)).toEqual({ value: true, source: 'flag' });
   });
 
   it('should show the role map without an agent CLI, with a note instead of failing', async () => {

@@ -65,6 +65,8 @@ export type VerifyPrInput = {
   drivers: ReadonlyMap<string, HeadlessCliDriver>;
   /** The configured verifier (`cli[:model]`), or `auto`/absent to pick one. */
   verifier?: string;
+  /** The `allow-same-family-verifier` opt-in: a configured verifier of an author family verifies, flagged `sameFamily`. */
+  allowSameFamily?: boolean;
   runner?: GateRunner;
   signal?: AbortSignal;
   onStep?: (line: string) => void;
@@ -112,7 +114,7 @@ export async function verifyPr(input: VerifyPrInput): Promise<PrVerdict> {
   }
   verdict.headSha = ship.sha;
   verdict.patchId = await patchId(record.repoDir, record.baseSha, ship.sha);
-  const picked = pickVerifier(verdict.authorFamilies, await usableClis(input.drivers), input.verifier ?? null);
+  const picked = pickVerifier(verdict.authorFamilies, await usableClis(input.drivers), input.verifier ?? null, input.allowSameFamily);
   verdict.verifier = picked.verifier;
   verdict.notes.push(...picked.notes);
   if (!verdict.verifier) {

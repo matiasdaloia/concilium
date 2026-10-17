@@ -25,6 +25,7 @@ import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths
 import { factoryLines } from '../formatters/factory.js';
 import { printError, violationLines } from '../formatters/roles.js';
 import { REFRAME_EXIT_CODE } from './code.js';
+import { ALLOW_SAME_FAMILY_HELP } from './pr.js';
 import { collect } from './roles.js';
 
 interface FactoryOptions {
@@ -34,6 +35,7 @@ interface FactoryOptions {
   timeout?: string;
   adversarial: boolean;
   judge: boolean;
+  allowSameFamilyVerifier?: boolean;
   json?: boolean;
 }
 
@@ -54,6 +56,7 @@ export function registerFactoryCommand(program: Command): void {
     .option('--timeout <minutes>', 'Wall-clock limit per candidate and per adversary in minutes, in every task')
     .option('--no-adversarial', 'Skip the adversarial round in every task')
     .option('--no-judge', 'Do not ask a judge CLI to order tied candidates in any task')
+    .option('--allow-same-family-verifier', ALLOW_SAME_FAMILY_HELP)
     .option('--json', 'Output the factory record as JSON to stdout')
     .action(async (specFile: string, opts: FactoryOptions) => {
       const fail = (err: unknown): never => {
@@ -78,7 +81,9 @@ export function registerFactoryCommand(program: Command): void {
         // The role rules run before the planner does: an error stops here, a warning is printed.
         const { verifier, ...codeFlags } = parseCommandRoles('factory', { roles: opts.role, agents: opts.agents });
         const roles = await runtime.resolveCodeRoles({ repoDir, flags: codeFlags });
-        const verifierRole = await runtime.resolveVerifier({ repoDir, flags: verifier === undefined ? {} : { verifier } });
+        const verifierRole = await runtime.resolveVerifier({
+          repoDir, flags: verifier === undefined ? {} : { verifier }, allowSameFamily: opts.allowSameFamilyVerifier,
+        });
         for (const line of violationLines(throwOnRoleErrors(checkRoleFamilies({ roles, verifier: verifierRole })))) progress(`  ${line}`);
         const agents = roles.implementer.value.map(specAgent);
         if (agents.length === 0 || !roles.planner.value) fail('no implementer to run');
@@ -89,6 +94,7 @@ export function registerFactoryCommand(program: Command): void {
           repoDir,
           planner: roles.planner.value,
           verifier: verifierRole.value,
+          allowSameFamilyVerifier: verifierRole.allowSameFamily.value,
           code: {
             agents, roles, drivers: runtime.drivers, workspace: new GitWorktreeWorkspace({ root: getWorktreeRoot() }),
             timeoutMs: timeoutMinutes === undefined ? undefined : timeoutMinutes * 60_000, adversarial: opts.adversarial, judge: opts.judge,

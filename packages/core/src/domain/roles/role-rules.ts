@@ -7,8 +7,15 @@
 import { getProviderInfo, PROVIDER_IDS, VENDOR_FAMILY } from '../agent/providers.js';
 import type { RoleName, RoleSource } from './roles.js';
 
-/** The per-repo factory config. Only its `roles:` section is read today. */
+/** The per-repo factory config. Only its `roles:` section and `allow-same-family-verifier` are read today. */
 export const FACTORY_CONFIG = '.concilium/factory.yaml';
+
+/**
+ * The explicit opt-in to a configured verifier of an author family: the `--allow-same-family-verifier` flag of `pr`,
+ * `verify-pr` and `factory`, a top-level `allow-same-family-verifier: true` in `factory.yaml`, or
+ * `concilium config set allow-same-family-verifier true`.
+ */
+export const ALLOW_SAME_FAMILY_VERIFIER = 'allow-same-family-verifier';
 
 /** The agent CLIs of a known model family: the only ones the cross-family rules can vouch for. */
 const KNOWN_FAMILY_CLIS = PROVIDER_IDS.filter((id) => getProviderInfo(id)?.family);
@@ -37,7 +44,12 @@ export const ROLE_RULES = {
     severity: 'error',
     hint: `use ${KNOWN_FAMILY_CLIS.join(', ')}, or opencode:[<provider>/]<vendor>/<model> with a vendor of ${Object.keys(VENDOR_FAMILY).join(', ')} (a known model family), or \`auto\``,
   },
-  'verifier-author-family': { severity: 'error', hint: 'pick a verifier of a family that wrote none of the code, or `auto`' },
+  'verifier-author-family': {
+    severity: 'error',
+    hint: `pick a verifier of a family that wrote none of the code, or \`auto\`; or opt in with ${ALLOW_SAME_FAMILY_VERIFIER} to verify same-family as a draft PR`,
+  },
+  // `verifier-author-family` with the opt-in: the verdict is flagged same-family everywhere and the PR is a draft.
+  'verifier-author-family-allowed': { severity: 'warning', hint: `drop ${ALLOW_SAME_FAMILY_VERIFIER} and pick a verifier of a family that wrote none of the code, or \`auto\`` },
 } as const satisfies Record<string, { severity: 'error' | 'warning'; hint: string }>;
 
 export type RoleRuleId = keyof typeof ROLE_RULES;

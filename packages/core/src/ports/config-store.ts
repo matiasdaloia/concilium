@@ -7,6 +7,8 @@ export interface CouncilConfigPrefs {
   apiKeyEncrypted?: string;
   /** Saved code-council roles (`concilium config set <role> ...`). Jurors and the chairman stay in the fields above. */
   roles?: RoleSettings;
+  /** `concilium config set allow-same-family-verifier true|false`: a configured author-family verifier may verify. */
+  allowSameFamilyVerifier?: boolean;
 }
 
 export interface ConfigStore {

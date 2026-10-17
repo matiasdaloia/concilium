@@ -5,7 +5,7 @@
  */
 
 import { agentFamily, familyKey } from '../agent/providers.js';
-import { ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
+import { ALLOW_SAME_FAMILY_VERIFIER, ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
 import type { SurvivalCell } from '../verification/adversarial.js';
 import type { StepResult } from '../verification/gates.js';
 import { blockingDissent, warningDissent, type Dissent } from './dissent.js';
@@ -130,12 +130,14 @@ export function isTrailPath(path: string): boolean {
  * The verifier, preferring a family outside `authors`: the configured one (`cli[:model]`, or `auto`/null for none)
  * when its CLI is usable and outside them, else the first usable CLI of a known family outside them. With none, the
  * configured one or the first usable CLI, flagged `sameFamily`. Null only when no CLI is usable. The notes say why a
- * configured verifier was passed over.
+ * configured verifier was passed over. With `allowSameFamily` (`ALLOW_SAME_FAMILY_VERIFIER`), a usable configured
+ * verifier of an author family verifies anyway, still flagged `sameFamily` with the opt-in as its reason.
  */
 export function pickVerifier(
   authors: string[],
   usable: { provider: string; family: string | null }[],
   configured: string | null = null,
+  allowSameFamily = false,
 ): { verifier: Verifier | null; notes: string[] } {
   const spec = configured && configured !== ROLE_KEYWORDS.verifier ? specAgent(configured) : null;
   const mine = spec && usable.some((u) => u.provider === spec.provider) ? { provider: spec.provider, family: agentFamily(spec.provider, spec.model) } : undefined;
@@ -143,6 +145,10 @@ export function pickVerifier(
   const notes: string[] = [];
   if (mine && outside(mine)) {
     return { verifier: { provider: mine.provider, model: spec!.model ?? null, configured: true, sameFamily: false, family: mine.family }, notes };
+  }
+  if (allowSameFamily && mine?.family && authors.includes(mine.family)) {
+    const sameFamilyReason = `the configured verifier ${configured} is of an author family (${mine.family}); ${ALLOW_SAME_FAMILY_VERIFIER} allows it`;
+    return { verifier: { provider: mine.provider, model: spec!.model ?? null, configured: true, sameFamily: true, family: mine.family, sameFamilyReason }, notes };
   }
   if (spec && !mine) notes.push(`the configured verifier ${configured} is not installed and signed in`);
   const other = usable.find(outside);

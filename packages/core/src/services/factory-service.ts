@@ -48,6 +48,8 @@ export type FactoryInput = {
   planner: string;
   /** The verifier role (`cli[:model]`), or `auto`/absent to pick one per task. */
   verifier?: string;
+  /** The `allow-same-family-verifier` opt-in for every task's verdict (`VerifyPrInput.allowSameFamily`). */
+  allowSameFamilyVerifier?: boolean;
   code: FactoryCodeOptions;
   /** The run directory for an id: the factory's own (`factory.json`, `tasks.json`, `tasks.md`) and each task run's. */
   runDir: (id: string) => string;
@@ -133,7 +135,7 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
       const blocked = unshippable(run);
       if (blocked) step = stop(blocked, run, null);
       else {
-        const verdict = await verifyPr({ record: run, runDir, drivers: input.code.drivers, verifier: input.verifier, signal: input.code.signal, onStep: input.onVerifyStep });
+        const verdict = await verifyPr({ record: run, runDir, drivers: input.code.drivers, verifier: input.verifier, allowSameFamily: input.allowSameFamilyVerifier, signal: input.code.signal, onStep: input.onVerifyStep });
         run.prVerdict = verdict;
         await input.saveRun(run);
         const failed = verdictStop(verdict);

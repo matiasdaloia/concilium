@@ -10,8 +10,10 @@ import {
   checkRoleFamilies,
   defaultCodeRoles,
   parseCommandRoles,
+  parseFactoryConfig,
   parseFactoryRoles,
   parseRoleFlags,
+  resolveAllowSameFamily,
   resolveCodeRoles,
   validateRoles,
   type CodeRoleMap,
@@ -56,6 +58,10 @@ describe('role rules', () => {
     { rule: 'judge-shares-family', source: 'flag', at: '--role judge', found: () => checkRoleFamilies({ roles: roles({ judge: { value: 'codex:gpt-5.2', source: 'flag' } }) }) },
     { rule: 'unknown-family', source: 'saved', at: 'saved config roles.judge', found: () => checkRoleFamilies({ roles: roles({ judge: { value: 'opencode', source: 'saved' } }) }) },
     { rule: 'verifier-author-family', source: 'flag', at: '--role verifier', found: () => checkRoleFamilies({ verifier: { value: 'claude', source: 'flag' }, authors: ['anthropic'] }) },
+    {
+      rule: 'verifier-author-family-allowed', source: 'flag', at: '--role verifier',
+      found: () => checkRoleFamilies({ verifier: { value: 'claude', source: 'flag', allowSameFamily: { value: true, source: 'saved' } }, authors: ['anthropic'] }),
+    },
   ];
 
   it('should have a case for every rule', () => {
@@ -149,6 +155,21 @@ describe('parseFactoryRoles', () => {
     expect(() => parseFactoryRoles('- roles\n')).toThrow('[factory-yaml] .concilium/factory.yaml: must be a mapping');
     expect(() => parseFactoryRoles('roles: [\n')).toThrow(/^\[factory-yaml\] \.concilium\/factory\.yaml: not valid YAML/);
   });
+
+  it('should read the same-family verifier opt-in, only as true or false', () => {
+    expect(parseFactoryConfig('allow-same-family-verifier: true\nroles:\n  verifier: claude\n')).toEqual({ roles: { verifier: 'claude' }, allowSameFamilyVerifier: true });
+    expect(parseFactoryConfig('allow-same-family-verifier: false\n')).toEqual({ roles: {}, allowSameFamilyVerifier: false });
+    expect(parseFactoryConfig('roles: {}\n')).toEqual({ roles: {} });
+    expect(() => parseFactoryConfig('allow-same-family-verifier: yes please\n')).toThrow('[factory-yaml] .concilium/factory.yaml: allow-same-family-verifier must be true or false');
+  });
+});
+
+describe('resolveAllowSameFamily', () => {
+  it('should take the opt-in from the highest source that sets it, else no', () => {
+    expect(resolveAllowSameFamily([['flag', undefined], ['repo', false], ['saved', true]])).toEqual({ value: false, source: 'repo' });
+    expect(resolveAllowSameFamily([['flag', true], ['repo', false]])).toEqual({ value: true, source: 'flag' });
+    expect(resolveAllowSameFamily([['flag', undefined], ['saved', undefined]])).toEqual({ value: false, source: 'default' });
+  });
 });
 
 describe('parseRoleFlags', () => {
@@ -203,6 +224,28 @@ describe('checkRoleFamilies', () => {
     expect(checkRoleFamilies({ roles: roles({}), verifier })).toEqual([]);
     expect(checkRoleFamilies({ verifier: { value: 'claude', source: 'flag' }, authors: ['openai'] })).toEqual([]);
     expect(rules(checkRoleFamilies({ verifier: { value: 'opencode', source: 'flag' }, authors: ['openai'] }))).toEqual([['unknown-family', '--role verifier']]);
+  });
+
+  // The same-family verifier opt-in turns only `verifier-author-family` into a warning.
+  const OPT_IN: { verifier: string; allow: boolean | null; authors?: string[]; found: [string, string][] }[] = [
+    { verifier: 'claude', allow: null, authors: ['anthropic'], found: [['verifier-author-family', 'error']] },
+    { verifier: 'claude', allow: false, authors: ['anthropic'], found: [['verifier-author-family', 'error']] },
+    { verifier: 'claude', allow: true, authors: ['anthropic'], found: [['verifier-author-family-allowed', 'warning']] },
+    // Before the code exists, against the implementer families.
+    { verifier: 'codex:gpt-5.2', allow: false, found: [['verifier-author-family', 'error']] },
+    { verifier: 'codex:gpt-5.2', allow: true, found: [['verifier-author-family-allowed', 'warning']] },
+    // Outside the authors there is nothing to allow; an unknown family stays an error.
+    { verifier: 'gemini', allow: true, authors: ['anthropic'], found: [] },
+    { verifier: 'opencode:mistral/devstral-2', allow: true, authors: ['anthropic'], found: [['unknown-family', 'error']] },
+  ];
+
+  it.each(OPT_IN)('should give verifier $verifier with the opt-in $allow and authors $authors: $found', ({ verifier, allow, authors, found }) => {
+    const v = { value: verifier, source: 'flag' as const, ...(allow === null ? {} : { allowSameFamily: { value: allow, source: 'repo' as const } }) };
+    const violations = checkRoleFamilies({ roles: roles({}), verifier: v, ...(authors ? { authors } : {}) });
+    expect(violations.map((x) => [x.rule, x.severity])).toEqual(found);
+    if (found[0]?.[0] === 'verifier-author-family-allowed') {
+      expect(violations[0].message).toContain('allowed by .concilium/factory.yaml allow-same-family-verifier, so the verdict is flagged same-family and the PR is a draft');
+    }
   });
 
   it("should take an OpenCode member's family from its model id, and keep an unknown vendor unknown", () => {
