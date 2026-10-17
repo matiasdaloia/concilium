@@ -15,6 +15,7 @@ import { registerModelsCommand } from "../src/commands/models.js";
 import { registerPrCommands } from "../src/commands/pr.js";
 import { registerRolesCommand } from "../src/commands/roles.js";
 import { registerRunCommand } from "../src/commands/run.js";
+import { registerStatsCommand } from "../src/commands/stats.js";
 import { registerTrailCommand } from "../src/commands/trail.js";
 
 // Walk up to the nearest package.json: bin/ in dev (tsx), dist/bin/ when built.
@@ -50,4 +51,5 @@ registerTrailCommand(program);
 registerGatesCommands(program);
 registerPrCommands(program);
 registerFactoryCommand(program);
+registerStatsCommand(program);
 program.parse();

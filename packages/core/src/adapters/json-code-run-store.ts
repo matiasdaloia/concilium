@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CodeRunRecord } from '../services/code-service.js';
+import { createLogger } from '../shared/logger.js';
+
+const log = createLogger('code-run-store');
 
 /**
  * Code runs next to the plan council's runs: `<dataDir>/runs/<run-id>/run.json`. A directory, so the
@@ -30,5 +33,23 @@ export class JsonCodeRunStore {
 
   async load(id: string): Promise<CodeRunRecord> {
     return JSON.parse(await readFile(join(this.runDir(id), 'run.json'), 'utf-8')) as CodeRunRecord;
+  }
+
+  /** Every saved code run, by id (oldest first). Directories without a `run.json` (factories) are left out; unreadable ones are logged and left out. */
+  async list(): Promise<CodeRunRecord[]> {
+    const entries = await readdir(join(this.dataDir, 'runs'), { withFileTypes: true }).catch(() => []);
+    const records: CodeRunRecord[] = [];
+    for (const id of entries.filter((d) => d.isDirectory()).map((d) => d.name).sort()) {
+      const path = join(this.runDir(id), 'run.json');
+      const text = await readFile(path, 'utf-8').catch(() => null);
+      if (text === null) continue;
+      try {
+        const record = JSON.parse(text) as CodeRunRecord;
+        if (record.kind === 'code') records.push(record);
+      } catch (err) {
+        log.warn(`skipped ${path}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return records;
   }
 }

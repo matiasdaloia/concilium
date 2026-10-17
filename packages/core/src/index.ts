@@ -72,6 +72,7 @@ export {
   integrationBranch,
   patchId,
   refHead,
+  repoRoot,
   BRANCH_PREFIX,
   INTEGRATION_CANDIDATE,
 } from './adapters/git-worktree-workspace.js';
@@ -143,6 +144,12 @@ export {
   tasksMarkdown, unshippable, verdictStop,
 } from './domain/code-council/factory.js';
 export { loadFactory, runFactory } from './services/factory-service.js';
+export type {
+  CandidateSet, ImplementerEvidence, ImplementerFacts, ImplementerOutcome, LedgerRole, LedgerRow, LedgerStats, RoleStats, RoutingSuggestion, Runner, RunnerStats,
+  WithheldSuggestion,
+} from './domain/code-council/ledger.js';
+export { DEFAULT_MIN_SAMPLE, IMPLEMENTER_OUTCOMES, crossFamilySet, implementerOutcome, ledgerStats } from './domain/code-council/ledger.js';
+export { ledgerRows } from './services/ledger-service.js';
 export type { FactoryCodeOptions, FactoryInput } from './services/factory-service.js';
 export type { ActionKind, ActionOutcome, ActionRequest, AutonomyTier, CommandResult, GateEntry, GatesFile, GateStatus } from './services/action-gate.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
