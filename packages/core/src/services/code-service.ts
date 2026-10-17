@@ -11,6 +11,7 @@ import type { Judgment } from '../domain/code-council/judging.js';
 import { contends, type CandidateReport, type Ranking } from '../domain/code-council/ranking.js';
 import { detectDivergence, type Reframe } from '../domain/code-council/reframe.js';
 import type { Graft, Synthesis } from '../domain/code-council/synthesis.js';
+import type { PrRequest, PrVerdict } from '../domain/code-council/shipping.js';
 import { freezeRubric, parseRubricAnswer, rubricPrompt, type FrozenRubric } from '../domain/code-council/rubric.js';
 import { RUBRIC_FILE } from '../domain/code-council/trail.js';
 import type { Brief } from '../domain/driver/brief.js';
@@ -111,6 +112,10 @@ export type CodeRunRecord = {
   reframe?: Reframe;
   /** M6.2: `decisions.tsv` and `events.jsonl` in the run directory, and the trail's commit on the integration branch. Absent when not asked for. */
   trail?: RunTrail;
+  /** M7.2: the latest independent verdict on the integration branch (`concilium verify-pr`, `concilium pr`). */
+  prVerdict?: PrVerdict;
+  /** M7.2: the push and pull request gates `concilium pr` asked for. */
+  pr?: PrRequest;
 };
 
 export type CodeRunInput = {

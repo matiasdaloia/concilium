@@ -100,6 +100,9 @@ Commands:
   gates [options]             List paused actions from each run's gates.md
   approve <gate-id>           Approve one paused action and run its command
   reject <gate-id>            Reject one paused action; its command never runs
+  pr [options] <run-id>       Verify a run, then pause its push and pull request
+  verify-pr <run-id>          Verify a run from a family that wrote none of it
+  status <run-id>             Show a run's gates and verdict
   help [command]              display help for command
 "
 `;

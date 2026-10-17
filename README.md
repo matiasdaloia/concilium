@@ -160,6 +160,9 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium gates` | List the actions Concilium paused for your approval (push, pull requests, writes outside `concilium/`) |
 | `concilium approve <gate-id>` | Approve one paused action and run its exact command |
 | `concilium reject <gate-id>` | Reject one paused action; it never runs |
+| `concilium pr <run-id>` | Verify a code run from a family that wrote none of it, then pause a push of its integration branch and a pull request for approval |
+| `concilium verify-pr <run-id>` | Re-run a code run's gates and adversarial tests at its integration head with a non-author family, and record the verdict |
+| `concilium status <run-id>` | Show a code run's gates and verdict; the verdict is void once the branch head moved |
 
 For detailed usage, flags, configuration, and the programmatic API, see the **[CLI documentation](packages/cli/README.md)**.
 
