@@ -151,7 +151,7 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium config set chairman <model>` | Set the chairman (`gemini`, `claude:opus`, or an OpenRouter ID) |
 | `concilium config set jurors <m1,m2,...>` | Set the jurors |
 | `concilium config set <role> <members>` | Save who plays a code-council role (`planner`, `implementer`, `adversary`, `judge`, `integrator`) or the PR `verifier`, e.g. `judge codex:gpt-5.2` |
-| `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection) and where it was set |
+| `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection), where it was set, and any broken role rule (a judge that can judge only its own family, a verifier of an author family), which stops `code`, `factory`, `pr` and `verify-pr` before any agent CLI runs |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |

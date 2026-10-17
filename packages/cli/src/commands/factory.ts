@@ -8,19 +8,22 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
 import {
+  checkRoleFamilies,
   createConciliumRuntime,
   GitWorktreeWorkspace,
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
-  parseRoleFlags,
+  parseCommandRoles,
   PlaintextSecretStore,
   runFactory,
   specAgent,
+  throwOnRoleErrors,
   type FactoryRecord,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
 import { factoryLines } from '../formatters/factory.js';
+import { printError, violationLines } from '../formatters/roles.js';
 import { REFRAME_EXIT_CODE } from './code.js';
 import { collect } from './roles.js';
 
@@ -53,8 +56,8 @@ export function registerFactoryCommand(program: Command): void {
     .option('--no-judge', 'Do not ask a judge CLI to order tied candidates in any task')
     .option('--json', 'Output the factory record as JSON to stdout')
     .action(async (specFile: string, opts: FactoryOptions) => {
-      const fail = (message: string): never => {
-        console.error(opts.json ? JSON.stringify({ error: message }) : `Error: ${message}`);
+      const fail = (err: unknown): never => {
+        printError(err, opts.json);
         process.exit(1);
       };
       const timeoutMinutes = opts.timeout === undefined ? undefined : Number(opts.timeout);
@@ -72,16 +75,13 @@ export function registerFactoryCommand(program: Command): void {
       const store = new JsonCodeRunStore(getDataDir());
       let record: FactoryRecord;
       try {
-        const roleFlags = opts.role ?? [];
-        if (opts.agents !== undefined && roleFlags.some((r) => r.split('=')[0].trim() === 'implementer')) {
-          fail('--agents and --role implementer=... set the same role; use one');
-        }
-        const { verifier, ...codeFlags } = parseRoleFlags([...(opts.agents !== undefined ? [`implementer=${opts.agents}`] : []), ...roleFlags]);
-        if (codeFlags.juror || codeFlags.chairman) fail('juror and chairman are plan-council roles; set them with `concilium run --juror-models` and `--chairman`');
+        // The role rules run before the planner does: an error stops here, a warning is printed.
+        const { verifier, ...codeFlags } = parseCommandRoles('factory', { roles: opts.role, agents: opts.agents });
         const roles = await runtime.resolveCodeRoles({ repoDir, flags: codeFlags });
+        const verifierRole = await runtime.resolveVerifier({ repoDir, flags: verifier === undefined ? {} : { verifier } });
+        for (const line of violationLines(throwOnRoleErrors(checkRoleFamilies({ roles, verifier: verifierRole })))) progress(`  ${line}`);
         const agents = roles.implementer.value.map(specAgent);
         if (agents.length === 0 || !roles.planner.value) fail('no implementer to run');
-        const verifierRole = await runtime.resolveVerifier({ repoDir, flags: verifier === undefined ? {} : { verifier } });
 
         record = await runFactory({
           spec,
@@ -102,7 +102,7 @@ export function registerFactoryCommand(program: Command): void {
           onTaskDone: (step) => progress(`  ${step.outcome === 'shipped' ? `✓ ${step.taskId}: ${step.verdict} at ${step.headSha.slice(0, 12)}` : `✗ ${step.taskId}: ${step.outcome === 'stopped' ? step.reason : step.outcome}`}`),
         });
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err));
+        return fail(err);
       }
 
       if (opts.json) console.log(JSON.stringify(record, null, 2));

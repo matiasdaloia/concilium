@@ -7,18 +7,20 @@
 import { join } from 'node:path';
 import type { Command } from 'commander';
 import {
+  checkRoleFamilies,
   createConciliumRuntime,
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
   loadFactory,
-  parseRoleFlags,
+  parseCommandRoles,
   PlaintextSecretStore,
   prStatus,
   requestPr,
   sameFamilyWarning,
   shellLine,
   shipSource,
+  throwOnRoleErrors,
   verifierSpec,
   verifyPr,
   type CodeRunRecord,
@@ -26,12 +28,13 @@ import {
 } from '@concilium/core';
 import { getConfigDir, getDataDir } from '../adapters/xdg-paths.js';
 import { factoryLines } from '../formatters/factory.js';
+import { printError, violationLines } from '../formatters/roles.js';
 import { collect } from './roles.js';
 
 const RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 function fail(err: unknown): never {
-  console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+  printError(err);
   process.exit(1);
 }
 
@@ -55,17 +58,21 @@ function verdictLines(v: PrVerdict): string[] {
   return [verdictLine(v), ...(warning ? [`Warning: ${warning}`] : []), ...v.notes.map((n) => `  note: ${n}`)];
 }
 
-/** Re-verifies the commit the run would ship, saves the verdict on the record and prints it. */
-async function verify(store: JsonCodeRunStore, record: CodeRunRecord, roleFlags: string[]): Promise<PrVerdict> {
-  const flags = parseRoleFlags(roleFlags);
-  const other = Object.keys(flags).filter((role) => role !== 'verifier');
-  if (other.length > 0) throw new Error(`only --role verifier=<cli[:model]> applies here, not ${other.join(', ')}`);
+/**
+ * Re-verifies the commit the run would ship, saves the verdict on the record and prints it. The role rules run
+ * first, against the run's author families: an error stops before any agent CLI runs.
+ */
+async function verify(command: 'pr' | 'verify-pr', store: JsonCodeRunStore, record: CodeRunRecord, roleFlags: string[]): Promise<PrVerdict> {
+  const flags = parseCommandRoles(command, { roles: roleFlags });
   const runtime = createConciliumRuntime({
     secretStore: new PlaintextSecretStore(),
     configStore: new JsonConfigStore(getConfigDir()),
     runRepository: new JsonRunRepository(getDataDir()),
   });
   const verifier = await runtime.resolveVerifier({ repoDir: record.repoDir, flags });
+  const source = shipSource(record);
+  const authors = 'blocked' in source ? undefined : source.authorFamilies;
+  for (const line of violationLines(throwOnRoleErrors(checkRoleFamilies({ verifier, authors })))) console.error(line);
   const verdict = await verifyPr({
     record, runDir: store.runDir(record.id), drivers: runtime.drivers, verifier: verifier.value, onStep: (line) => console.error(`  ${line}`),
   });
@@ -92,7 +99,7 @@ export function registerPrCommands(program: Command): void {
       const source = shipSource(record);
       if ('blocked' in source) fail(`run ${runId} has nothing to ship: ${source.blocked}`);
       try {
-        const verdict = await verify(store, record, opts.role ?? []);
+        const verdict = await verify('pr', store, record, opts.role ?? []);
         const { pr, gates, reused, superseded } = await requestPr({ record, runDir: store.runDir(runId), verdict, remote: opts.remote, base: opts.base });
         record.pr = pr;
         await store.save(record);
@@ -121,7 +128,7 @@ export function registerPrCommands(program: Command): void {
       const store = new JsonCodeRunStore(getDataDir());
       const record = await loadRun(store, runId);
       try {
-        if (!passed(await verify(store, record, opts.role ?? []))) process.exitCode = 1;
+        if (!passed(await verify('verify-pr', store, record, opts.role ?? []))) process.exitCode = 1;
       } catch (err) {
         fail(err);
       }

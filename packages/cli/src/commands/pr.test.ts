@@ -225,18 +225,25 @@ describe('concilium pr, verify-pr and status', () => {
     expect(concilium('status', runId).stdout).toContain(warning);
   }, 120_000);
 
-  it('should pass over a configured verifier of an author family and refuse other roles', () => {
+  it('should refuse a configured verifier of an author family, or another role, before verifying', () => {
     const runId = '20261017T120000-cccccc';
     writeRun(runId, false);
 
-    const result = concilium('verify-pr', runId, '--role', 'verifier=claude');
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('by codex (openai)');
-    expect(result.stdout).toContain('note: the configured verifier claude is of an author family (anthropic); codex verifies instead');
+    for (const command of ['verify-pr', 'pr']) {
+      const result = concilium(command, runId, '--role', 'verifier=claude');
+      expect(result.status).toBe(1);
+      expect(result.stderr.trim()).toBe('Error: [verifier-author-family] --role verifier: verifier claude is of the anthropic family, which wrote the code it verifies (authors: anthropic). Fix: pick a verifier of a family that wrote none of the code, or `auto`');
+      expect(result.stdout).toBe('');
+    }
+    expect(loadRun(runId).prVerdict).toBeUndefined();
 
     const other = concilium('verify-pr', runId, '--role', 'judge=codex');
     expect(other.status).toBe(1);
-    expect(other.stderr).toContain('only --role verifier=<cli[:model]> applies here, not judge');
+    expect(other.stderr).toContain('Error: [role-not-applicable] --role judge: judge does not apply to concilium verify-pr. Fix: set it with `concilium code --role` or `factory --role`');
+
+    const passes = concilium('verify-pr', runId, '--role', 'verifier=codex');
+    expect(passes.status).toBe(0);
+    expect(passes.stdout).toContain('by codex (openai)');
   }, 120_000);
 
   it("should ship a single-candidate run from the candidate's branch", () => {

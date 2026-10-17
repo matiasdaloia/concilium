@@ -7,16 +7,16 @@
 import { resolve } from 'node:path';
 import type { Command } from 'commander';
 import {
+  checkRoleFamilies,
   createConciliumRuntime,
   FACTORY_CONFIG,
   JsonConfigStore,
   JsonRunRepository,
-  parseRoleFlags,
+  parseCommandRoles,
   PlaintextSecretStore,
-  roleWarnings,
 } from '@concilium/core';
 import { getConfigDir, getDataDir } from '../adapters/xdg-paths.js';
-import { roleRows, tableLines } from '../formatters/roles.js';
+import { printError, roleRows, tableLines, violationLines } from '../formatters/roles.js';
 
 /** Collects a repeatable option. */
 export function collect(value: string, previous: string[] = []): string[] {
@@ -38,22 +38,23 @@ export function registerRolesCommand(program: Command): void {
       });
       let map: Awaited<ReturnType<typeof runtime.resolveRoleMap>>;
       try {
-        map = await runtime.resolveRoleMap({ repoDir: resolve(opts.cwd), flags: parseRoleFlags(opts.role ?? []) });
+        map = await runtime.resolveRoleMap({ repoDir: resolve(opts.cwd), flags: parseCommandRoles('roles', { roles: opts.role }) });
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error(opts.json ? JSON.stringify({ error: message }) : `Error: ${message}`);
+        printError(err, opts.json);
         process.exit(1);
       }
-      const warnings = roleWarnings(map.roles);
+      // The same rules `code`, `factory`, `pr` and `verify-pr` stop on; here they are shown, and an error exits 1.
+      const violations = checkRoleFamilies({ roles: map.roles, verifier: map.roles.verifier });
+      if (violations.some((v) => v.severity === 'error')) process.exitCode = 1;
 
       if (opts.json) {
-        console.log(JSON.stringify({ ...map, warnings }, null, 2));
+        console.log(JSON.stringify({ ...map, violations }, null, 2));
         return;
       }
       console.log();
       for (const line of tableLines(roleRows(map.roles))) console.log(line);
       console.log(`\n  Sources, highest first: flag, env (jurors and chairman only), repo (${map.factoryPath ?? `no ${FACTORY_CONFIG}`}), saved (concilium config set), default.`);
-      for (const warning of warnings) console.log(`  Warning: ${warning}`);
+      for (const line of violationLines(violations)) console.log(`  ${line}`);
       for (const note of map.notes) console.log(`  Note: ${note}`);
       console.log();
     });

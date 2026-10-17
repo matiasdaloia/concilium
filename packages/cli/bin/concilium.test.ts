@@ -177,7 +177,9 @@ describe('concilium bin (from source)', () => {
     const invalid = run();
     expect(invalid.status).toBe(1);
     expect(invalid.stdout).toBe('');
-    expect(JSON.parse(invalid.stderr.trim().split('\n').at(-1)!).error).toBe(`${factory} roles: chairman: takes one member, not a list`);
+    expect(JSON.parse(invalid.stderr.trim().split('\n').at(-1)!).error).toBe(
+      `[list-for-single-role] ${factory} roles.chairman: takes one member, not a list. Fix: give one cli[:model]; only implementer, adversary and juror take a list`,
+    );
   });
 
   it('should default the agents to the installed, signed-in CLIs without --agents', () => {

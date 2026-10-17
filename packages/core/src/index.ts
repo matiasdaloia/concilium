@@ -157,11 +157,15 @@ export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';
 export { verifyCandidates, judgeCandidate, BASE_LANE } from './services/verification-service.js';
 export type { CandidateVerification, RunVerification, VerifyInput } from './services/verification-service.js';
-export type { CodeRoleMap, CodeRoleName, ResolvedRole, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue, ShipRoleName } from './domain/roles/roles.js';
-export {
-  CODE_ROLES, FACTORY_CONFIG, ROLE_KEYWORDS, ROLE_NAMES, RolesValidationError, SHIP_ROLES, defaultCodeRoles, isListRole, parseFactoryRoles, parseRoleFlags,
-  pickRole, resolveCodeRoles, resolveVerifierRole, roleWarnings, specAgent, specFamily, validateRoles,
+export type {
+  CodeRoleMap, CodeRoleName, ResolvedRole, RoleCommand, RoleMap, RoleName, RoleSettings, RoleSource, RoleValue, ShipRoleName,
 } from './domain/roles/roles.js';
+export {
+  CODE_ROLES, FACTORY_CONFIG, ROLE_COMMANDS, ROLE_KEYWORDS, ROLE_NAMES, SHIP_ROLES, checkRoleFamilies, defaultCodeRoles, isListRole, parseCommandRoles,
+  parseFactoryRoles, parseRoleFlags, pickRole, resolveCodeRoles, resolveVerifierRole, specAgent, specFamily, validateRoles,
+} from './domain/roles/roles.js';
+export type { RoleOrigin, RoleRuleId, RoleRuleSeverity, RoleViolation } from './domain/roles/role-rules.js';
+export { formatViolation, ROLE_RULES, roleOrigin, RolesValidationError, throwOnRoleErrors } from './domain/roles/role-rules.js';
 export { createConciliumRuntime, createDrivers, NO_AGENT_CLI_MESSAGE, TERMS_OF_USE_URL } from './services/create-concilium.js';
 export type { ConciliumAdapters, ConciliumRuntime, RepoOptions } from './services/create-concilium.js';
 export { readRepoRoles } from './services/role-service.js';

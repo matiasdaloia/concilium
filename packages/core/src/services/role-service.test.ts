@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROVIDER_IDS } from '../domain/agent/providers.js';
-import { parseRoleFlags, RolesValidationError } from '../domain/roles/roles.js';
+import { RolesValidationError } from '../domain/roles/role-rules.js';
+import { parseRoleFlags } from '../domain/roles/roles.js';
 import { FakeCliDriver } from '../adapters/cli/fake-cli-driver.js';
 import { JsonConfigStore } from '../adapters/json-config-store.js';
 import { JsonRunRepository } from '../adapters/json-run-repository.js';
@@ -107,13 +108,15 @@ describe('role resolution', () => {
     expect((await rt.resolveCodeRoles({ repoDir: sub })).judge).toEqual({ value: 'auto', source: 'default' });
   });
 
-  it('should reject an invalid factory.yaml naming its path and every problem', async () => {
+  it('should reject an invalid factory.yaml naming its path, each key and every violation', async () => {
     writeFactory('roles:\n  judge: [claude, codex]\n  planer: claude\n');
     const err = await runtime().resolveCodeRoles({ repoDir: repo }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RolesValidationError);
-    expect((err as Error).message).toBe(
-      `${join(repo, '.concilium', 'factory.yaml')} roles: judge: takes one member, not a list; unknown role "planer" (use planner, implementer, adversary, judge, integrator, verifier, juror, chairman)`,
-    );
+    const path = join(repo, '.concilium', 'factory.yaml');
+    expect((err as RolesValidationError).violations.map((v) => [v.rule, v.source, v.at])).toEqual([
+      ['list-for-single-role', 'repo', `${path} roles.judge`],
+      ['unknown-role', 'repo', `${path} roles.planer`],
+    ]);
   });
 
   it('should rank jurors and the chairman as flag, env, factory.yaml, saved, default, with the source of each', async () => {

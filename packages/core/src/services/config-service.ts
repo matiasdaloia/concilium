@@ -1,5 +1,6 @@
 import type { CouncilConfig } from '../domain/council/council-config.js';
 import { OPENROUTER_API_URL } from '../domain/council/council-config.js';
+import { roleOrigin } from '../domain/roles/role-rules.js';
 import { validateRoles, type RoleSettings, type RoleSource } from '../domain/roles/roles.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { SecretStore } from '../ports/secret-store.js';
@@ -81,7 +82,7 @@ export class ConfigService {
 
   /** The saved code-council roles. */
   async savedRoles(): Promise<RoleSettings> {
-    return validateRoles((await this.configStore.getCouncilConfigPrefs()).roles, 'saved roles');
+    return validateRoles((await this.configStore.getCouncilConfigPrefs()).roles, roleOrigin.file('saved', 'saved config'));
   }
 
   /** Merge `roles` into the saved roles; roles not given keep their saved value. */

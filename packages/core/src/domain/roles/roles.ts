@@ -5,11 +5,11 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import { getProviderInfo, isProviderId, PROVIDER_IDS } from '../agent/providers.js';
+import { getProviderInfo, isProviderId } from '../agent/providers.js';
 import { parseCouncilMember } from '../council/council-members.js';
+import { FACTORY_CONFIG, roleOrigin, RolesValidationError, violation, type RoleOrigin, type RoleViolation } from './role-rules.js';
 
-/** The per-repo factory config. Only its `roles:` section is read today. */
-export const FACTORY_CONFIG = '.concilium/factory.yaml';
+export { FACTORY_CONFIG } from './role-rules.js';
 
 /** The code-council roles. Each is played by agent CLIs given as `cli[:model]`. */
 export const CODE_ROLES = ['planner', 'implementer', 'adversary', 'judge', 'integrator'] as const;
@@ -56,13 +56,6 @@ export type CodeRoleMap = {
  */
 export type RoleMap = CodeRoleMap & { verifier: ResolvedRole<string>; juror: ResolvedRole<string[]>; chairman: ResolvedRole<string> };
 
-export class RolesValidationError extends Error {
-  constructor(readonly where: string, readonly problems: string[]) {
-    super(`${where}: ${problems.join('; ')}`);
-    this.name = 'RolesValidationError';
-  }
-}
-
 export function isListRole(role: RoleName): boolean {
   return LIST_ROLES.includes(role);
 }
@@ -84,28 +77,37 @@ export function specAgent(spec: string): { provider: string; model?: string } {
   return { provider: member.cli, ...(member.model ? { model: member.model } : {}) };
 }
 
-/** The problem with one member of `role`, or null. Code roles need an agent CLI; jurors and the chairman may be OpenRouter ids. */
-function memberProblem(role: RoleName, member: unknown): string | null {
-  if (typeof member !== 'string' || !member.trim()) return `${role}: every member must be a non-empty string`;
+/** The family a member counts toward: its model family, or its provider id when that is unknown (OpenCode). */
+function familyKey(spec: string): string {
+  return specFamily(spec) ?? specAgent(spec).provider;
+}
+
+/** The violation of one member of `role`, or null. Code roles need an agent CLI; jurors and the chairman may be OpenRouter ids. */
+function memberViolation(role: RoleName, member: unknown, origin: RoleOrigin): RoleViolation | null {
+  if (typeof member !== 'string' || !member.trim()) return violation('unknown-cli', origin, role, 'every member must be a non-empty string');
   const spec = member.trim();
   const head = spec.split(':')[0];
-  if (isProviderId(head)) return spec.includes(':') && !spec.slice(head.length + 1).trim() ? `${role}: "${spec}" has an empty model` : null;
+  if (isProviderId(head)) {
+    return spec.includes(':') && !spec.slice(head.length + 1).trim() ? violation('empty-model', origin, role, `"${spec}" has an empty model`) : null;
+  }
   if (role === 'juror' || role === 'chairman') return null;
-  return `${role}: "${spec}" is not an agent CLI (use ${PROVIDER_IDS.join(', ')}, optionally with :model)`;
+  return violation('unknown-cli', origin, role, `"${spec}" is not an agent CLI`);
 }
 
 /**
  * Validates roles from one source (a `roles:` mapping, saved config or flags). Lists are trimmed; a single member
- * for a list role becomes a list of one. Throws a `RolesValidationError` naming every problem at once.
+ * for a list role becomes a list of one. Throws a `RolesValidationError` naming every violation at once.
  */
-export function validateRoles(raw: unknown, where: string): RoleSettings {
+export function validateRoles(raw: unknown, origin: RoleOrigin): RoleSettings {
   if (raw === undefined || raw === null) return {};
-  if (typeof raw !== 'object' || Array.isArray(raw)) throw new RolesValidationError(where, ['must map role names to members']);
-  const problems: string[] = [];
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new RolesValidationError([violation('roles-not-a-mapping', origin, null, 'must map role names to members')]);
+  }
+  const found: RoleViolation[] = [];
   const settings: RoleSettings = {};
   for (const [role, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!isRoleName(role)) {
-      problems.push(`unknown role "${role}" (use ${ROLE_NAMES.join(', ')})`);
+      found.push({ ...violation('unknown-role', origin, null, `unknown role "${role}"`, `use ${ROLE_NAMES.join(', ')}`), at: origin.at(role as RoleName) });
       continue;
     }
     const keyword: string | undefined = (ROLE_KEYWORDS as Record<string, string>)[role];
@@ -115,65 +117,66 @@ export function validateRoles(raw: unknown, where: string): RoleSettings {
     }
     const members = Array.isArray(value) ? value : [value];
     if (Array.isArray(value) && !isListRole(role)) {
-      problems.push(`${role}: takes one member, not a list`);
+      found.push(violation('list-for-single-role', origin, role, 'takes one member, not a list'));
       continue;
     }
     if (members.length === 0) {
-      problems.push(`${role}: needs at least one member`);
+      found.push(violation('no-members', origin, role, 'needs at least one member'));
       continue;
     }
     if (keyword !== undefined && members.includes(keyword)) {
-      problems.push(`${role}: "${keyword}" cannot be listed with other members`);
+      found.push(violation('keyword-with-members', origin, role, `"${keyword}" cannot be listed with other members`));
       continue;
     }
-    const found = members.map((m) => memberProblem(role, m)).filter((p) => p !== null);
-    if (found.length > 0) {
-      problems.push(...found);
+    const bad = members.map((m) => memberViolation(role, m, origin)).filter((v) => v !== null);
+    if (bad.length > 0) {
+      found.push(...bad);
       continue;
     }
     const specs = members.map((m) => (m as string).trim());
     if (role === 'adversary') {
-      const families = specs.map((s) => specFamily(s) ?? specAgent(s).provider);
+      const families = specs.map(familyKey);
       const twice = families.find((f, i) => families.indexOf(f) !== i);
       if (twice) {
-        problems.push(`adversary: two members of the ${twice} family (one adversary per family)`);
+        found.push(violation('adversary-family-twice', origin, role, `two members of the ${twice} family`));
         continue;
       }
     }
     settings[role] = isListRole(role) ? specs : specs[0];
   }
-  if (problems.length > 0) throw new RolesValidationError(where, problems);
+  if (found.length > 0) throw new RolesValidationError(found);
   return settings;
 }
 
 /**
- * Reads the `roles:` section of `.concilium/factory.yaml`. The other sections belong to later milestones and are
- * not read. Throws naming the file and every problem.
+ * Reads the `roles:` section of the `.concilium/factory.yaml` at `path`. The other sections belong to later
+ * milestones and are not read. Throws naming the file and every violation.
  */
-export function parseFactoryRoles(text: string): RoleSettings {
+export function parseFactoryRoles(text: string, path: string = FACTORY_CONFIG): RoleSettings {
+  const origin = roleOrigin.file('repo', path);
   let doc: unknown;
   try {
     doc = parseYaml(text);
   } catch (err) {
-    throw new RolesValidationError(FACTORY_CONFIG, [`not valid YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`]);
+    throw new RolesValidationError([violation('factory-yaml', origin, null, `not valid YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)]);
   }
   if (doc === null || doc === undefined) return {};
-  if (typeof doc !== 'object' || Array.isArray(doc)) throw new RolesValidationError(FACTORY_CONFIG, ['must be a mapping']);
-  return validateRoles((doc as Record<string, unknown>).roles, `${FACTORY_CONFIG} roles`);
+  if (typeof doc !== 'object' || Array.isArray(doc)) throw new RolesValidationError([violation('factory-yaml', origin, null, 'must be a mapping')]);
+  return validateRoles((doc as Record<string, unknown>).roles, origin);
 }
 
 /**
  * Reads `--role <role>=<members>` flags. A list role's members are split on commas and repeated flags add to the
  * list; a single role given twice is an error.
  */
-export function parseRoleFlags(flags: readonly string[], where = '--role'): RoleSettings {
-  const problems: string[] = [];
+export function parseRoleFlags(flags: readonly string[], origin: RoleOrigin = roleOrigin.flag()): RoleSettings {
+  const found: RoleViolation[] = [];
   const raw: Record<string, string | string[]> = {};
   for (const flag of flags) {
     const eq = flag.indexOf('=');
     const role = eq === -1 ? '' : flag.slice(0, eq).trim();
     if (!role) {
-      problems.push(`"${flag}" must be <role>=<member>`);
+      found.push(violation('flag-syntax', origin, null, `"${flag}" must be <role>=<member>`));
       continue;
     }
     const value = flag.slice(eq + 1).trim();
@@ -181,13 +184,63 @@ export function parseRoleFlags(flags: readonly string[], where = '--role'): Role
       const prev = raw[role];
       raw[role] = [...(Array.isArray(prev) ? prev : []), ...value.split(',').map((s) => s.trim()).filter(Boolean)];
     } else if (role in raw) {
-      problems.push(`${role}: given more than once`);
+      found.push(violation('flag-repeated', origin, role as RoleName, 'given more than once'));
     } else {
       raw[role] = value;
     }
   }
-  if (problems.length > 0) throw new RolesValidationError(where, problems);
-  return validateRoles(raw, where);
+  if (found.length > 0) throw new RolesValidationError(found);
+  return validateRoles(raw, origin);
+}
+
+/** The commands that take `--role`, and the roles each one applies. */
+export const ROLE_COMMANDS = {
+  code: CODE_ROLES,
+  factory: [...CODE_ROLES, 'verifier'],
+  pr: SHIP_ROLES,
+  'verify-pr': SHIP_ROLES,
+  roles: ROLE_NAMES,
+} as const satisfies Record<string, readonly RoleName[]>;
+export type RoleCommand = keyof typeof ROLE_COMMANDS;
+
+/** Where to set a role that does not apply to a command. */
+function whereToSet(role: RoleName): string {
+  if (role === 'juror' || role === 'chairman') return 'set jurors and the chairman with `concilium run --juror-models` and `--chairman`';
+  if (role === 'verifier') return 'set it with `concilium pr --role verifier=...` or `verify-pr --role verifier=...`';
+  return 'set it with `concilium code --role` or `factory --role`';
+}
+
+/**
+ * The role flags of `command`: its `--role` flags and `--agents` (the implementer list). Throws a
+ * `RolesValidationError` naming every violation: both `--agents` and `--role implementer`, a malformed flag, and a
+ * role the command does not apply.
+ */
+export function parseCommandRoles(command: RoleCommand, input: { roles?: readonly string[]; agents?: string }): RoleSettings {
+  const found: RoleViolation[] = [];
+  const parse = (flags: readonly string[], origin: RoleOrigin): RoleSettings => {
+    try {
+      return parseRoleFlags(flags, origin);
+    } catch (err) {
+      if (!(err instanceof RolesValidationError)) throw err;
+      found.push(...err.violations);
+      return {};
+    }
+  };
+  const roles = input.roles ?? [];
+  const flags = parse(roles, roleOrigin.flag());
+  if (input.agents !== undefined) {
+    if (roles.some((r) => r.split('=')[0].trim() === 'implementer')) {
+      found.push(violation('agents-and-implementer', roleOrigin.flag(), 'implementer', '--agents and --role implementer=... set the same role'));
+    } else {
+      Object.assign(flags, parse([`implementer=${input.agents}`], { source: 'flag', at: () => '--agents' }));
+    }
+  }
+  const applies: readonly RoleName[] = ROLE_COMMANDS[command];
+  for (const role of new Set(roles.map((r) => r.split('=')[0].trim()).filter(isRoleName))) {
+    if (!applies.includes(role)) found.push(violation('role-not-applicable', roleOrigin.flag(), role, `${role} does not apply to concilium ${command}`, whereToSet(role)));
+  }
+  if (found.length > 0) throw new RolesValidationError(found);
+  return flags;
 }
 
 /** The highest-precedence source that sets `role`, or null. */
@@ -225,13 +278,40 @@ export function defaultCodeRoles(implementers: string[]): CodeRoleMap {
   return resolveCodeRoles([], () => implementers);
 }
 
-/** What the role map lets happen that the cross-family rule warns about. Nothing here stops a run. */
-export function roleWarnings(roles: CodeRoleMap): string[] {
-  const judge = roles.judge.value;
-  if (judge === ROLE_KEYWORDS.judge) return [];
-  const family = specFamily(judge);
-  const families = [...new Set(roles.implementer.value.map((s) => specFamily(s) ?? specAgent(s).provider))];
-  if (family === null) return [`judge ${judge} is of an unknown family, so every judgment and graft pick it makes is flagged same-family`];
-  if (families.includes(family)) return [`judge ${judge} is of an implementer family (${family}), so ties among ${family} candidates are judged same-family and flagged`];
-  return [];
+/**
+ * The cross-family rules (layer 3 C4) on resolved roles. A configured judge of an unknown family, or of a family with
+ * two or more implementers (they can tie among themselves, and can be all the graft picker reads), is an error; of a
+ * family with one implementer, a warning. A configured verifier of an unknown family, or of a family that writes the
+ * code, is an error: `authors` once the code exists (`pr`, `verify-pr`), else every implementer family and a
+ * configured integrator's. `auto` is never a violation: the run picks cross-family and flags what it cannot.
+ */
+export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: ResolvedRole<string>; authors?: readonly string[] }): RoleViolation[] {
+  const { roles, verifier } = input;
+  const found: RoleViolation[] = [];
+  const implementers = roles?.implementer.value.map(familyKey) ?? [];
+  if (roles && roles.judge.value !== ROLE_KEYWORDS.judge) {
+    const { value: judge, source } = roles.judge;
+    const origin = roleOrigin.resolved(source);
+    const family = specFamily(judge);
+    const seats = implementers.filter((f) => f === family).length;
+    if (family === null) {
+      found.push(violation('unknown-family', origin, 'judge', `judge ${judge} is of an unknown model family, so no judgment it makes can be shown cross-family`));
+    } else if (seats >= 2) {
+      found.push(violation('judge-judges-itself', origin, 'judge', `judge ${judge} is of the ${family} family, which has ${seats} implementers, so it can judge a tie of ${family} candidates alone`));
+    } else if (seats === 1) {
+      found.push(violation('judge-shares-family', origin, 'judge', `judge ${judge} is of an implementer family (${family}), so ties with the ${family} candidate are judged same-family and flagged`));
+    }
+  }
+  if (verifier && verifier.value !== ROLE_KEYWORDS.verifier) {
+    const origin = roleOrigin.resolved(verifier.source);
+    const family = specFamily(verifier.value);
+    const integrator = roles && roles.integrator.value !== ROLE_KEYWORDS.integrator ? [familyKey(roles.integrator.value)] : [];
+    const authors = input.authors ?? [...new Set([...implementers, ...integrator])];
+    if (family === null) {
+      found.push(violation('unknown-family', origin, 'verifier', `verifier ${verifier.value} is of an unknown model family, so it cannot be shown to be outside the authors`));
+    } else if (authors.includes(family)) {
+      found.push(violation('verifier-author-family', origin, 'verifier', `verifier ${verifier.value} is of the ${family} family, which ${input.authors ? 'wrote' : 'can write'} the code it verifies (authors: ${authors.join(', ')})`));
+    }
+  }
+  return found;
 }
