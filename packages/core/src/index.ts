@@ -68,7 +68,10 @@ export {
   GitWorktreeWorkspace,
   DirtyWorktreeError,
   candidateBranch,
+  detachedWorktree,
   integrationBranch,
+  patchId,
+  refHead,
   BRANCH_PREFIX,
   INTEGRATION_CANDIDATE,
 } from './adapters/git-worktree-workspace.js';
@@ -125,8 +128,14 @@ export {
 export { COMMITTED_TRAIL_FILES, DecisionTrail, checkTrail, committedTrailDir, decisions } from './services/trail-service.js';
 export type { RunTrail, TrailCheck } from './services/trail-service.js';
 export {
-  ActionGate, GATE_OUTPUT_LIMIT, GATES_JSON, GATES_MD, approveGate, classifyAction, gatesMarkdown, gitPushCommand, isConciliumRef, listGates, rejectGate, shellLine,
+  ActionGate, GATE_OUTPUT_LIMIT, GATES_JSON, GATES_MD, approveGate, classifyAction, gatesMarkdown, ghPrCreateCommand, gitPushCommand, isConciliumRef, listGates, rejectGate, shellLine,
 } from './services/action-gate.js';
+export type { PrRequest, PrReview, PrVerdict, PrVerdictStatus } from './domain/code-council/shipping.js';
+export {
+  PR_BODY, VERIFICATION_REPORT, authorFamilies, decideVerdict, parseReview, pickVerifier, prBody, prTitle, reviewPrompt, verdictState, verificationMarkdown,
+} from './domain/code-council/shipping.js';
+export { prBranch, prStatus, requestPr, verifyPr } from './services/pr-service.js';
+export type { PrStatus, RequestPrInput, VerifyPrInput } from './services/pr-service.js';
 export type { ActionKind, ActionOutcome, ActionRequest, AutonomyTier, CommandResult, GateEntry, GatesFile, GateStatus } from './services/action-gate.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';

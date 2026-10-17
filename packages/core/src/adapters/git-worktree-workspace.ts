@@ -83,6 +83,37 @@ export async function commitExists(repoDir: string, sha: string): Promise<boolea
   return git(repoDir, ['cat-file', '-e', `${sha}^{commit}`]).then(() => true, () => false);
 }
 
+/** The commit `ref` points at in the repo at `repoDir`, or null when there is no such ref. */
+export async function refHead(repoDir: string, ref: string): Promise<string | null> {
+  return git(repoDir, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]).then((sha) => sha || null, () => null);
+}
+
+/** `git patch-id --stable` of `baseSha..headSha`: the same for the same change, however it was committed. Null for no change. */
+export async function patchId(repoDir: string, baseSha: string, headSha: string): Promise<string | null> {
+  const diff = await git(repoDir, ['diff', '--no-color', '--no-ext-diff', baseSha, headSha]);
+  if (!diff) return null;
+  const out = await new Promise<string>((resolve, reject) => {
+    const child = execFile('git', ['patch-id', '--stable'], { cwd: repoDir, env: gitEnv() }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+    child.stdin?.end(`${diff}\n`);
+  });
+  return out.trim().split(/\s+/)[0] || null;
+}
+
+/** A new worktree detached at `sha` in its own temp dir, outside every run's manifest. `remove` deletes it. */
+export async function detachedWorktree(repoDir: string, sha: string): Promise<{ path: string; remove: () => Promise<void> }> {
+  const parent = await mkdtemp(join(tmpdir(), 'concilium-detached-'));
+  const path = join(parent, 'worktree');
+  await git(repoDir, ['worktree', 'add', '--quiet', '--detach', path, sha]);
+  return {
+    path,
+    remove: async () => {
+      await git(repoDir, ['worktree', 'remove', '--force', path]).catch(() => undefined);
+      await rm(parent, { recursive: true, force: true });
+      await git(repoDir, ['worktree', 'prune']).catch(() => undefined);
+    },
+  };
+}
+
 function parseWorktreeList(porcelain: string): GitWorktree[] {
   const worktrees: GitWorktree[] = [];
   for (const block of porcelain.split(/\n\n+/)) {

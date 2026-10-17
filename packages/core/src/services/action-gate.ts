@@ -129,6 +129,11 @@ export function gitPushCommand(remote: string, refspec: string): string[] {
   return ['git', 'push', remote, refspec];
 }
 
+/** `gh pr create` from `head` with the body read from `bodyFile`, for a `pr` request. Without `base`, gh uses the default branch. */
+export function ghPrCreateCommand(pr: { head: string; title: string; bodyFile: string; base?: string | null; draft?: boolean }): string[] {
+  return ['gh', 'pr', 'create', '--head', pr.head, '--title', pr.title, '--body-file', pr.bodyFile, ...(pr.base ? ['--base', pr.base] : []), ...(pr.draft ? ['--draft'] : [])];
+}
+
 /** A command as one shell line, each argument quoted when it needs it. */
 export function shellLine(command: string[]): string {
   return command.map((arg) => (/^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`)).join(' ');
