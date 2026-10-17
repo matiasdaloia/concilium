@@ -77,6 +77,11 @@ async function git(cwd: string, args: string[], extraEnv?: Record<string, string
   }
 }
 
+/** The real path of the top of the git repo holding `dir`, as a run records it in `repoDir`. Throws outside a repo. */
+export async function repoRoot(dir: string): Promise<string> {
+  return realpathSync(await git(dir, ['rev-parse', '--show-toplevel']));
+}
+
 /** Whether `sha` names a commit in the repo at `repoDir`. */
 export async function commitExists(repoDir: string, sha: string): Promise<boolean> {
   if (!/^[0-9a-f]{7,64}$/.test(sha)) return false;
@@ -170,7 +175,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     if (input.baseSha && input.includeDirty) throw new Error('startRun takes a baseSha or includeDirty, not both');
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const existing = await this.readManifest(this.runDir(repoDir, input.runId));
       if (existing) return toBase(existing);
 
@@ -210,7 +215,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
       if (!manifest) throw new Error(`Run ${input.runId} has no base for ${repoDir}: call startRun first`);
 
@@ -241,7 +246,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
 
   async list(input: { repoDir: string; runId?: string }): Promise<Workspace[]> {
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const repoRunsDir = join(this.root, repoHash(repoDir));
       const runIds = input.runId ? [input.runId] : await listDirs(repoRunsDir);
       const live = new Set((await this.gitWorktrees(repoDir)).map((w) => w.path));
@@ -262,7 +267,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const runDir = this.runDir(repoDir, input.runId);
       const path = join(runDir, input.candidateId);
       if ((await this.gitWorktrees(repoDir)).some((w) => w.path === path)) await this.removeWorktree(repoDir, path);
@@ -281,7 +286,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const path = join(this.runDir(repoDir, input.runId), input.candidateId);
       if (!existsSync(path)) throw new Error(`Candidate ${input.candidateId} of run ${input.runId} has no worktree at ${path}`);
       await git(path, ['add', '--all']);
@@ -296,7 +301,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
       if (!manifest) throw new Error(`Run ${input.runId} has no base for ${repoDir}`);
       const range = `${manifest.baseSha}..${candidateBranch(input.runId, input.candidateId)}`;
@@ -316,7 +321,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const path = join(this.runDir(repoDir, input.runId), input.candidateId);
       if (!existsSync(path)) throw new Error(`Candidate ${input.candidateId} of run ${input.runId} has no worktree at ${path}`);
       await git(path, ['revert', '--no-commit', input.sha]);
@@ -329,7 +334,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
     assertId('run id', input.runId);
     assertId('candidate id', input.candidateId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
       if (!manifest) throw new Error(`Run ${input.runId} has no base for ${repoDir}`);
       const diff = await git(repoDir, ['-c', 'core.quotePath=false', 'diff', '--binary', '--no-color', '--no-ext-diff', manifest.baseSha, candidateBranch(input.runId, input.candidateId)]);
@@ -340,7 +345,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
 
   async checkPatch(input: { repoDir: string; patch: string }): Promise<PatchCheck> {
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const targetSha = await git(repoDir, ['rev-parse', '--verify', 'HEAD^{commit}']);
       // A scratch index holding HEAD: the check ignores the user's index and working tree.
       const tempDir = await mkdtemp(join(tmpdir(), 'concilium-patch-'));
@@ -362,7 +367,7 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
   async finishRun(input: { repoDir: string; runId: string }): Promise<void> {
     assertId('run id', input.runId);
     return this.serial(async () => {
-      const repoDir = await this.repoRoot(input.repoDir);
+      const repoDir = await repoRoot(input.repoDir);
       const manifest = await this.readManifest(this.runDir(repoDir, input.runId));
       if (!manifest || manifest.status === 'finished') return;
       manifest.status = 'finished';
@@ -469,10 +474,6 @@ export class GitWorktreeWorkspace implements WorkspaceManager {
 
   private async gitWorktrees(repoDir: string): Promise<GitWorktree[]> {
     return parseWorktreeList(await git(repoDir, ['worktree', 'list', '--porcelain']));
-  }
-
-  private async repoRoot(dir: string): Promise<string> {
-    return realpathSync(await git(dir, ['rev-parse', '--show-toplevel']));
   }
 
   private runDir(repoDir: string, runId: string): string {
