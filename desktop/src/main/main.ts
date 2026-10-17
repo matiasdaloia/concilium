@@ -7,8 +7,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
-import { registerIpcHandlers, cancelAllRuns } from './ipc';
-import { createLogger } from '@concilium/core';
+import { registerIpcHandlers, cancelAllRuns } from './ipc';import { createLogger } from '@concilium/core';
 
 const log = createLogger('main');
 
@@ -43,6 +42,7 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 

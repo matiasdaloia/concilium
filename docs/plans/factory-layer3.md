@@ -123,7 +123,7 @@ The project's code dates from February 2026 (first commit `v0.1.0`, 2026-02-07).
 | OpenRouter fallback list | `gpt-4o`, `claude-3.5-sonnet`, `gemini-1.5-pro`, `llama-3.1` (`openrouter-gateway.ts:9`) | 2024-era models. Older than the project itself. | Delete the fallback. Show "unavailable" instead of fake data. |
 | Gemini CLI | absent | It is one of the four subscriptions in scope. | New adapter (M1.4). |
 | `@openai/codex-sdk` ^0.98, `@opencode-ai/sdk` ^1.1.53 | pinned in core and desktop | Fast-moving pre-1.0 and 1.x SDKs. Event shapes change between minors. | Drive the installed CLIs headlessly. Keep SDKs only where they add something the CLI cannot do. |
-| Electron 40.2.1 | `desktop/package.json` | Electron ships a major roughly every 8 weeks and supports the latest three. 40 is very likely out of support by now (not verified). | Upgrade when desktop work resumes (M9). |
+| Electron 40.2.1 | `desktop/package.json` | Electron ships a major roughly every 8 weeks and supports the latest three. 40 is very likely out of support by now (not verified). | Upgrade when desktop work resumes (M9). Done in M9.1: Electron 44.9.0. |
 | ESLint 8 + `@typescript-eslint` v5 | `desktop/` | ESLint 8 end of life October 2024. No lint for core or CLI. | Flat config at the root covering all workspaces (M0.1). |
 | TypeScript `~5.7` | all packages | Pinned to an old minor. The current major was not checked here. | Upgrade in M0.1 behind a green typecheck. |
 | Node `>=18` | `engines` | Node 18 and 20 are end of life. | `>=22`, test on 24. |
