@@ -4,7 +4,20 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { ROLE_KEYWORDS, ROLE_NAMES, type RoleMap, type RoleName } from '@concilium/core';
+import { formatViolation, ROLE_KEYWORDS, ROLE_NAMES, RolesValidationError, type RoleMap, type RoleName, type RoleViolation } from '@concilium/core';
+
+/** One `Error:` or `Warning:` line per violation, with its rule, config path and fix. */
+export function violationLines(violations: readonly RoleViolation[]): string[] {
+  return violations.map((v) => `${v.severity === 'error' ? 'Error' : 'Warning'}: ${formatViolation(v)}`);
+}
+
+/** Prints `err` to stderr: one line per role violation, or `Error: <message>`; as one JSON line with `json`. */
+export function printError(err: unknown, json = false): void {
+  const violations = err instanceof RolesValidationError ? err.violations : undefined;
+  const message = err instanceof Error ? err.message : String(err);
+  if (json) console.error(JSON.stringify({ error: message, ...(violations ? { violations } : {}) }));
+  else for (const line of violations ? violationLines(violations) : [`Error: ${message}`]) console.error(line);
+}
 
 /** What each role's keyword stands for. */
 const KEYWORDS: Partial<Record<RoleName, string>> = {

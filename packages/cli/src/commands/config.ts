@@ -1,7 +1,8 @@
 import { createInterface } from 'node:readline';
 import type { Command } from 'commander';
-import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, SHIP_ROLES, type RoleName } from '@concilium/core';
+import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, roleOrigin, SHIP_ROLES, type RoleName } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
+import { printError } from '../formatters/roles.js';
 
 /** The roles `config set` saves: the code council's and shipping's. */
 const SAVED_ROLES: readonly RoleName[] = [...CODE_ROLES, ...SHIP_ROLES];
@@ -106,12 +107,12 @@ export function registerConfigCommand(program: Command): void {
             process.exit(1);
           }
           try {
-            const roles = parseRoleFlags([`${key}=${value}`], 'config set');
+            const roles = parseRoleFlags([`${key}=${value}`], roleOrigin.flag('config set'));
             await configService.saveRoles(roles);
             const saved = roles[key as RoleName]!;
             console.log(`Role ${key} set to: ${Array.isArray(saved) ? saved.join(', ') : saved}`);
           } catch (err) {
-            console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+            printError(err);
             process.exit(1);
           }
         }

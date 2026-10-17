@@ -14,13 +14,14 @@ import {
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
+  checkRoleFamilies,
   newRunId,
-  parseRoleFlags,
+  parseCommandRoles,
   PlaintextSecretStore,
-  roleWarnings,
   runCodeCandidates,
   specAgent,
   TASK_TYPES,
+  throwOnRoleErrors,
   VERIFY_CONFIG,
   warningDissent,
   type CandidateVerification,
@@ -31,9 +32,10 @@ import {
   type GateVerdict,
   type Graft,
   type Judgment,
+  type RoleViolation,
 } from '@concilium/core';
 import { getConfigDir, getDataDir, getWorktreeRoot } from '../adapters/xdg-paths.js';
-import { roleRows, tableLines } from '../formatters/roles.js';
+import { printError, roleRows, tableLines, violationLines } from '../formatters/roles.js';
 import { collect } from './roles.js';
 
 /** The exit code of a run that ended in `reframe-needed`: it finished, but needs the task restated before a patch. */
@@ -54,9 +56,9 @@ interface CodeOptions {
   json?: boolean;
 }
 
-/** The role table and its warnings. */
-function roleLines(roles: CodeRoleMap): string[] {
-  return ['Roles:', ...tableLines(roleRows(roles), '  '), ...roleWarnings(roles).map((w) => `Warning: ${w}`)];
+/** The role table and the warnings of the role rules. */
+function roleLines(roles: CodeRoleMap, warnings: readonly RoleViolation[]): string[] {
+  return ['Roles:', ...tableLines(roleRows(roles), '  '), ...violationLines(warnings)];
 }
 
 function formatDuration(ms: number): string {
@@ -260,7 +262,8 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
   printDissent(record);
   console.log(`  Base ${record.baseSha}${record.snapshotRef ? ` (dirty-tree snapshot of ${record.headSha})` : ''}`);
   for (const line of frameLines(record)) console.log(`  ${line}`);
-  for (const line of roleLines(record.roles)) console.log(`  ${line}`);
+  const warnings = checkRoleFamilies({ roles: record.roles }).filter((v) => v.severity === 'warning');
+  for (const line of roleLines(record.roles, warnings)) console.log(`  ${line}`);
   console.log();
   printTable(summaryRows(record.candidates));
   printVerification(record);
@@ -310,8 +313,8 @@ export function registerCodeCommand(program: Command): void {
     .option('--no-trail-commit', 'Keep the decision trail (decisions.tsv, dissent.json, synthesis.md) in the run directory only, instead of committing it under .concilium/runs/<run-id>/ as the last commit of the integration branch')
     .option('--json', 'Output the run record as JSON to stdout')
     .action(async (taskParts: string[], opts: CodeOptions) => {
-      const fail = (message: string): never => {
-        console.error(opts.json ? JSON.stringify({ error: message }) : `Error: ${message}`);
+      const fail = (err: unknown): never => {
+        printError(err, opts.json);
         process.exit(1);
       };
 
@@ -334,17 +337,14 @@ export function registerCodeCommand(program: Command): void {
       let record: CodeRunRecord;
       let savedTo: string | null = null;
       try {
-        const roleFlags = opts.role ?? [];
-        if (opts.agents !== undefined && roleFlags.some((r) => r.split('=')[0].trim() === 'implementer')) {
-          fail('--agents and --role implementer=... set the same role; use one');
-        }
-        const flags = parseRoleFlags([...(opts.agents !== undefined ? [`implementer=${opts.agents}`] : []), ...roleFlags]);
-        if (flags.juror || flags.chairman) fail('juror and chairman are plan-council roles; set them with `concilium run --juror-models` and `--chairman`');
-        if (flags.verifier) fail('verifier is a shipping role; set it with `concilium pr --role verifier=...` or `verify-pr --role verifier=...`');
+        // The role rules run before any agent CLI does: an error stops here, a warning is printed with the roles.
+        const flags = parseCommandRoles('code', { roles: opts.role, agents: opts.agents });
         const roles = await runtime.resolveCodeRoles({ repoDir: resolve(opts.cwd), flags });
+        const verifier = await runtime.resolveVerifier({ repoDir: resolve(opts.cwd) });
+        const warnings = throwOnRoleErrors(checkRoleFamilies({ roles, verifier }));
         const agents = roles.implementer.value.map(specAgent);
         if (agents.length === 0) fail('no implementer to run');
-        for (const line of roleLines(roles)) progress(`  ${line}`);
+        for (const line of roleLines(roles, warnings)) progress(`  ${line}`);
 
         const store = new JsonCodeRunStore(getDataDir());
         const runId = newRunId();
@@ -383,7 +383,7 @@ export function registerCodeCommand(program: Command): void {
           return null;
         });
       } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err));
+        return fail(err);
       }
 
       if (record.reframe) progress(`  ✗ reframe needed: ${record.reframe.questions.length} questions${record.reframe.reportPath ? ` in ${record.reframe.reportPath}` : ''}`);

@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { parseDecisions, type CodeRunRecord, type LedgerRow, type LedgerStats } from '@concilium/core';
+import { parseDecisions, type CodeRunRecord, type LedgerRow, type LedgerStats, type RoleViolation } from '@concilium/core';
 
 const cliRoot = fileURLToPath(new URL('../..', import.meta.url));
 const tsxLoader = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
@@ -37,6 +37,8 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 const framerLog = join(sandbox, 'framer.log');
+/** Every run of a fake agent CLI, detection included, one line each. */
+const spawnLog = join(sandbox, 'spawn.log');
 const RUBRIC = [
   { name: 'validates', description: 'sum rejects non-numbers, shown by a test.', weight: 3, evidence: 'gate' },
   { name: 'suite', description: 'The existing tests pass.', weight: 2, evidence: 'gate' },
@@ -68,6 +70,7 @@ function fakeAgentCli(cli: 'claude' | 'codex'): string {
   return `#!${process.execPath}
 const fs = require('node:fs');
 const args = process.argv.slice(2).join(' ');
+fs.appendFileSync(${JSON.stringify(spawnLog)}, ${JSON.stringify(cli)} + ' ' + args + '\\n');
 if (args === '--version') { console.log('1.0.0'); process.exit(0); }
 if (args === 'auth status') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max' })); process.exit(0); }
 if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
@@ -522,7 +525,7 @@ describe('roles', () => {
     // Without --role, factory.yaml's judge applies; the map and the cross-family warning come before the first candidate.
     const summary = cli('code', '--no-synthesis', '--agents', 'claude,codex', TASK);
     expect(summary.status).toBe(0);
-    const warning = 'Warning: judge codex is of an implementer family (openai), so ties among openai candidates are judged same-family and flagged';
+    const warning = 'Warning: [judge-shares-family] .concilium/factory.yaml roles.judge: judge codex is of an implementer family (openai), so ties with the openai candidate are judged same-family and flagged. Fix: ';
     expect(summary.stderr).toMatch(/Roles:\n\s+Role\s+Members\s+Source\n\s+planner\s+claude:claude-opus-5-5\s+repo\n\s+implementer\s+claude, codex\s+flag\n/);
     expect(summary.stderr).toMatch(/judge\s+codex\s+repo\n/);
     expect(summary.stderr).toContain(warning);
@@ -532,25 +535,45 @@ describe('roles', () => {
     expect(summary.stdout).toContain('Judge codex on claude, codex: ');
   }, 120_000);
 
-  it('should exit 1 before touching the repo on an invalid factory.yaml, a bad --role, or --agents with --role implementer', () => {
+  it('should exit 1 before spawning any agent CLI on an invalid factory.yaml, a bad --role, or a broken cross-family rule', () => {
     const branches = git(rolesRepo, 'branch', '--list', 'concilium/*');
+    const spawns = () => (existsSync(spawnLog) ? readFileSync(spawnLog, 'utf8') : '');
+    const before = spawns();
     const run = (...args: string[]) => {
       const result = cli('code', '--json', ...args, 't');
       expect(result.status).toBe(1);
       expect(result.stdout).toBe('');
-      return JSON.parse(result.stderr.trim().split('\n').at(-1)!).error as string;
+      const { violations } = JSON.parse(result.stderr.trim().split('\n').at(-1)!) as { violations: RoleViolation[] };
+      return violations.map((v) => [v.rule, v.at]);
     };
-    expect(run('--role', 'judge=nope')).toBe('--role: judge: "nope" is not an agent CLI (use claude, codex, gemini, opencode, optionally with :model)');
-    expect(run('--agents', 'claude', '--role', 'implementer=codex')).toBe('--agents and --role implementer=... set the same role; use one');
-    expect(run('--role', 'juror=claude')).toContain('juror and chairman are plan-council roles');
-    expect(run('--role', 'verifier=gemini')).toContain('verifier is a shipping role');
+    expect(run('--role', 'judge=nope')).toEqual([['unknown-cli', '--role judge']]);
+    expect(run('--agents', 'claude', '--role', 'implementer=codex')).toEqual([['agents-and-implementer', '--role implementer']]);
+    expect(run('--role', 'juror=claude', '--role', 'verifier=gemini')).toEqual([['role-not-applicable', '--role juror'], ['role-not-applicable', '--role verifier']]);
+    expect(run('--agents', 'claude,claude:claude-opus-5-5', '--role', 'judge=claude')).toEqual([['judge-judges-itself', '--role judge']]);
+    expect(run('--agents', 'claude,codex', '--role', 'judge=opencode')).toEqual([['unknown-family', '--role judge']]);
 
-    writeFileSync(factory, 'roles:\n  judge: [claude, codex]\n');
     try {
-      expect(run('--agents', 'claude')).toBe(`${factory} roles: judge: takes one member, not a list`);
+      // No --agents: past the factory.yaml, detection would spawn every CLI.
+      writeFileSync(factory, 'roles:\n  judge: [claude, codex]\n');
+      expect(run()).toEqual([['list-for-single-role', `${factory} roles.judge`]]);
+      const text = cli('code', 't');
+      expect(text.status).toBe(1);
+      expect(text.stderr.trim()).toBe(`Error: [list-for-single-role] ${factory} roles.judge: takes one member, not a list. Fix: give one cli[:model]; only implementer, adversary and juror take a list`);
+      writeFileSync(factory, 'roles: [\n');
+      expect(run()).toEqual([['factory-yaml', factory]]);
+      writeFileSync(factory, 'roles:\n  verifier: codex\n');
+      expect(run('--agents', 'claude,codex')).toEqual([['verifier-author-family', '.concilium/factory.yaml roles.verifier']]);
+      expect(spawns()).toBe(before);
+
+      // `concilium roles` shows the same violations and exits 1 on an error.
+      const shown = cli('roles');
+      expect(shown.status).toBe(1);
+      expect(shown.stdout).toMatch(/verifier\s+codex\s+repo\n/);
+      expect(shown.stdout).toContain('Error: [verifier-author-family] .concilium/factory.yaml roles.verifier: verifier codex is of the openai family, which can write the code it verifies (authors: anthropic, openai). Fix: ');
+      writeFileSync(factory, 'roles:\n  judge: [claude, codex]\n');
       const roles = cli('roles', '--json');
       expect(roles.status).toBe(1);
-      expect(JSON.parse(roles.stderr.trim().split('\n').at(-1)!).error).toBe(`${factory} roles: judge: takes one member, not a list`);
+      expect(JSON.parse(roles.stderr.trim().split('\n').at(-1)!).violations).toEqual([expect.objectContaining({ rule: 'list-for-single-role', source: 'repo', at: `${factory} roles.judge` })]);
     } finally {
       git(rolesRepo, 'checkout', '--', '.concilium/factory.yaml');
     }
@@ -568,7 +591,7 @@ describe('roles', () => {
       mkdirSync(join(rolesRepo, 'sub'), { recursive: true });
       const json = cli('roles', '--json', '--cwd', join(rolesRepo, 'sub'), '--role', 'adversary=gemini');
       expect(json.status).toBe(0);
-      const map = JSON.parse(json.stdout) as { roles: Record<string, { value: unknown; source: string }>; factoryPath: string; warnings: string[] };
+      const map = JSON.parse(json.stdout) as { roles: Record<string, { value: unknown; source: string }>; factoryPath: string; violations: RoleViolation[] };
       expect(map.factoryPath).toBe(factory);
       expect(map.roles).toEqual({
         planner: { value: 'claude:claude-opus-5-5', source: 'repo' },
@@ -580,7 +603,7 @@ describe('roles', () => {
         juror: { value: ['claude', 'codex'], source: 'default' },
         chairman: { value: 'codex', source: 'default' },
       });
-      expect(map.warnings).toEqual(['judge codex is of an implementer family (openai), so ties among openai candidates are judged same-family and flagged']);
+      expect(map.violations).toEqual([expect.objectContaining({ rule: 'judge-shares-family', severity: 'warning', source: 'repo', at: '.concilium/factory.yaml roles.judge' })]);
 
       const table = cli('roles');
       expect(table.status).toBe(0);
@@ -588,11 +611,11 @@ describe('roles', () => {
       expect(table.stdout).toMatch(/chairman\s+codex\s+default\n/);
       expect(table.stdout).toMatch(/verifier\s+gemini\s+saved\n/);
       expect(table.stdout).toContain(`repo (${factory})`);
-      expect(table.stdout).toContain('Warning: judge codex is of an implementer family (openai)');
+      expect(table.stdout).toContain('Warning: [judge-shares-family] .concilium/factory.yaml roles.judge: judge codex is of an implementer family (openai)');
 
       const bad = cli('config', 'set', 'judge', 'claude,codex');
       expect(bad.status).toBe(1);
-      expect(bad.stderr).toContain('config set: judge: "claude,codex" is not an agent CLI');
+      expect(bad.stderr).toContain('Error: [unknown-cli] config set judge: "claude,codex" is not an agent CLI. Fix: ');
     } finally {
       rmSync(join(sandbox, 'config', 'concilium'), { recursive: true, force: true });
     }
