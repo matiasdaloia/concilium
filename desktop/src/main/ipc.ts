@@ -99,8 +99,8 @@ export function registerIpcHandlers(
   ipcMain.handle("storage:listRuns", () => runRepository.list());
   ipcMain.handle("storage:loadAllRuns", () => runRepository.loadAll());
   ipcMain.handle("storage:loadRun", (_, runId: string) => runRepository.load(runId));
-  ipcMain.handle("clipboard:copy", (_, text: string) => {
-    clipboard.writeText(text);
+  ipcMain.handle("clipboard:copy", async (_, text: string) => {
+    await clipboard.writeText(text);
   });
 
   // Model discovery
