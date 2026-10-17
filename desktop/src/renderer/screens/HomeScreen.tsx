@@ -199,8 +199,9 @@ export default function HomeScreen({
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files) {
-        setImages((prev) => [...prev, ...Array.from(e.target.files!)]);
+      const files = e.target.files;
+      if (files) {
+        setImages((prev) => [...prev, ...Array.from(files)]);
       }
     },
     [],
