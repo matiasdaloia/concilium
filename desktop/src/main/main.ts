@@ -7,7 +7,8 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { config as loadEnv } from 'dotenv';
-import { registerIpcHandlers, cancelAllRuns } from './ipc';import { createLogger } from '@concilium/core';
+import { registerIpcHandlers, cancelAllRuns } from './ipc';
+import { watchSmokeTest } from './smoke-test';import { createLogger } from '@concilium/core';
 
 const log = createLogger('main');
 
@@ -59,6 +60,10 @@ const createWindow = () => {
   );
 
   registerIpcHandlers(mainWindow, resolvedProjectCwd);
+
+  if (app.commandLine.hasSwitch('smoke-test')) {
+    watchSmokeTest(mainWindow);
+  }
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
