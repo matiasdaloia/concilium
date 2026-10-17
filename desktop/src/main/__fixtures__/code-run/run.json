@@ -1,0 +1,710 @@
+{
+  "version": 1,
+  "kind": "code",
+  "id": "20261017T113941-c4b9de",
+  "status": "done",
+  "dissent": {
+    "path": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/dissent.json",
+    "records": [
+      {
+        "id": "dissent-1",
+        "source": "same-family-judge",
+        "summary": "claude named the grafts, and is of the base's or a donor's family",
+        "evidence": [
+          {
+            "kind": "judgment",
+            "ref": "claude"
+          }
+        ],
+        "acceptanceClause": null,
+        "resolution": "accepted-risk",
+        "resolutionReason": "no CLI outside the candidates' families (openai, anthropic) is usable, so claude names the grafts"
+      }
+    ]
+  },
+  "createdAt": "2026-10-17T11:39:41.304Z",
+  "finishedAt": "2026-10-17T11:39:41.750Z",
+  "task": "sum must reject non-numbers",
+  "repoDir": "/tmp/concilium-run-fixture-0LAVbT/repo",
+  "headSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+  "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+  "taskType": {
+    "type": "feature",
+    "source": "classifier",
+    "reason": "no keyword matched, feature is the default"
+  },
+  "roles": {
+    "planner": {
+      "value": "claude",
+      "source": "default"
+    },
+    "implementer": {
+      "value": [
+        "claude",
+        "codex"
+      ],
+      "source": "flag"
+    },
+    "adversary": {
+      "value": "same-as-implementer",
+      "source": "default"
+    },
+    "judge": {
+      "value": "auto",
+      "source": "default"
+    },
+    "integrator": {
+      "value": "winner",
+      "source": "default"
+    }
+  },
+  "rubric": {
+    "criteria": [
+      {
+        "name": "validates",
+        "description": "sum rejects non-numbers, shown by a test.",
+        "weight": 3,
+        "evidence": "gate"
+      },
+      {
+        "name": "suite",
+        "description": "The existing tests pass.",
+        "weight": 2,
+        "evidence": "gate"
+      },
+      {
+        "name": "small",
+        "description": "Only sum.js and its test change.",
+        "weight": 1,
+        "evidence": "judgment"
+      }
+    ],
+    "source": "framer",
+    "framer": "claude",
+    "frozenAt": "2026-10-17T11:39:41.327Z",
+    "sha256": "72bede41a0d4e6eef487097a536593f989d2387ea109ee8f7f9a2272826359da"
+  },
+  "candidates": [
+    {
+      "candidateId": "claude",
+      "provider": "claude",
+      "model": null,
+      "status": "ok",
+      "branch": "concilium/20261017T113941-c4b9de/claude",
+      "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude",
+      "headSha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+      "committed": true,
+      "diffStat": {
+        "commits": 1,
+        "filesChanged": 2,
+        "insertions": 3,
+        "deletions": 1
+      },
+      "durationMs": 24,
+      "usage": {
+        "inputTokens": 0,
+        "outputTokens": 0
+      },
+      "errors": [],
+      "brief": {
+        "version": 1,
+        "task": "sum must reject non-numbers\n\n## Playbook: feature\nFollow these steps in order. In your final message, list every step as done, or as skipped with the reason.\n1. Name the data shape first: the types and the data the feature reads and writes.\n2. Find the blocking steps, the independent pieces and the shared state, and pick the smallest decomposition.\n3. Build it in small, ordered commits, each with its tests.\n4. Verify it through the surface a user touches (the command, endpoint or screen), not only through unit tests.\n\n## Verification expected\n- Tests for the new behavior.\n- The existing tests still pass.\n- The feature exercised through its real entry point.",
+        "mode": "code",
+        "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude",
+        "constraints": [
+          "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude, a git worktree of the project on branch concilium/20261017T113941-c4b9de/claude. Make every change inside this directory.",
+          "You do not need to commit: Concilium commits what you leave in the working tree when you finish. Do not push, and do not create or switch branches."
+        ],
+        "allowedActions": [
+          "read",
+          "write",
+          "shell"
+        ]
+      },
+      "finalText": "1. done: validated a\n2. done: added sum.test.js\n3. done: ran the tests\n4. skipped: nothing else",
+      "verification": {
+        "status": "ISSUES",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+        "install": null,
+        "gates": [
+          {
+            "name": "lint",
+            "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+            "outcome": "fail",
+            "exitCode": 1,
+            "durationMs": 14,
+            "output": "var in sum.js\n",
+            "truncated": false,
+            "verdict": "new-failure"
+          },
+          {
+            "name": "test",
+            "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+            "outcome": "pass",
+            "exitCode": 0,
+            "durationMs": 14,
+            "output": "",
+            "truncated": false,
+            "verdict": "pass"
+          }
+        ],
+        "newFailures": [
+          "lint"
+        ],
+        "integrity": [],
+        "disqualified": false,
+        "penalties": 0,
+        "errors": []
+      },
+      "report": {
+        "branch": "concilium/20261017T113941-c4b9de/claude",
+        "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "headSha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+        "evidence": [
+          {
+            "kind": "agent",
+            "ok": true,
+            "detail": "the agent finished"
+          },
+          {
+            "kind": "gate",
+            "ok": false,
+            "detail": "lint: fail, passes on the base",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1"
+          },
+          {
+            "kind": "gate",
+            "ok": true,
+            "detail": "test: pass",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1"
+          },
+          {
+            "kind": "survival",
+            "ok": true,
+            "detail": "survived 0/0 adversarial tests by other families"
+          },
+          {
+            "kind": "playbook",
+            "ok": true,
+            "detail": "every playbook step listed as done or skipped"
+          }
+        ],
+        "status": "ISSUES",
+        "reason": "lint: fail, passes on the base"
+      }
+    },
+    {
+      "candidateId": "codex",
+      "provider": "codex",
+      "model": null,
+      "status": "ok",
+      "branch": "concilium/20261017T113941-c4b9de/codex",
+      "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex",
+      "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+      "committed": true,
+      "diffStat": {
+        "commits": 1,
+        "filesChanged": 1,
+        "insertions": 4,
+        "deletions": 1
+      },
+      "durationMs": 35,
+      "usage": {
+        "inputTokens": 1,
+        "outputTokens": 1
+      },
+      "errors": [],
+      "brief": {
+        "version": 1,
+        "task": "sum must reject non-numbers\n\n## Playbook: feature\nFollow these steps in order. In your final message, list every step as done, or as skipped with the reason.\n1. Name the data shape first: the types and the data the feature reads and writes.\n2. Find the blocking steps, the independent pieces and the shared state, and pick the smallest decomposition.\n3. Build it in small, ordered commits, each with its tests.\n4. Verify it through the surface a user touches (the command, endpoint or screen), not only through unit tests.\n\n## Verification expected\n- Tests for the new behavior.\n- The existing tests still pass.\n- The feature exercised through its real entry point.",
+        "mode": "code",
+        "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex",
+        "constraints": [
+          "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex, a git worktree of the project on branch concilium/20261017T113941-c4b9de/codex. Make every change inside this directory.",
+          "You do not need to commit: Concilium commits what you leave in the working tree when you finish. Do not push, and do not create or switch branches."
+        ],
+        "allowedActions": [
+          "read",
+          "write",
+          "shell"
+        ]
+      },
+      "finalText": "1. done: validated both\n2. done\n3. done: ran the tests\n4. skipped: nothing else",
+      "verification": {
+        "status": "PASS",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+        "install": null,
+        "gates": [
+          {
+            "name": "lint",
+            "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+            "outcome": "pass",
+            "exitCode": 0,
+            "durationMs": 12,
+            "output": "",
+            "truncated": false,
+            "verdict": "pass"
+          },
+          {
+            "name": "test",
+            "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+            "outcome": "pass",
+            "exitCode": 0,
+            "durationMs": 12,
+            "output": "",
+            "truncated": false,
+            "verdict": "pass"
+          }
+        ],
+        "newFailures": [],
+        "integrity": [],
+        "disqualified": false,
+        "penalties": 0,
+        "errors": []
+      },
+      "report": {
+        "branch": "concilium/20261017T113941-c4b9de/codex",
+        "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+        "evidence": [
+          {
+            "kind": "agent",
+            "ok": true,
+            "detail": "the agent finished"
+          },
+          {
+            "kind": "gate",
+            "ok": true,
+            "detail": "lint: pass",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05"
+          },
+          {
+            "kind": "gate",
+            "ok": true,
+            "detail": "test: pass",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05"
+          },
+          {
+            "kind": "survival",
+            "ok": true,
+            "detail": "survived 1/1 adversarial tests by other families"
+          },
+          {
+            "kind": "playbook",
+            "ok": true,
+            "detail": "every playbook step listed as done or skipped"
+          }
+        ],
+        "status": "PASS",
+        "reason": "every check passed"
+      }
+    }
+  ],
+  "verification": {
+    "plan": {
+      "source": "verify.yaml",
+      "gates": [
+        {
+          "name": "lint",
+          "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
+          "timeoutMs": 600000
+        },
+        {
+          "name": "test",
+          "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+          "timeoutMs": 600000
+        }
+      ],
+      "install": null,
+      "notes": []
+    },
+    "baseline": {
+      "lane": "base",
+      "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+      "install": null,
+      "gates": [
+        {
+          "name": "lint",
+          "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
+          "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+          "outcome": "pass",
+          "exitCode": 0,
+          "durationMs": 13,
+          "output": "",
+          "truncated": false
+        },
+        {
+          "name": "test",
+          "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+          "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+          "outcome": "pass",
+          "exitCode": 0,
+          "durationMs": 12,
+          "output": "",
+          "truncated": false
+        }
+      ]
+    },
+    "errors": []
+  },
+  "adversarial": {
+    "testCommand": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+    "adversaries": [
+      {
+        "family": "anthropic",
+        "provider": "claude",
+        "model": null,
+        "lane": "adv-anthropic",
+        "branch": "concilium/20261017T113941-c4b9de/adv-anthropic",
+        "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic",
+        "headSha": "a94895bafa8f2b547a2cee48fef0125dca371449",
+        "status": "ok",
+        "durationMs": 24,
+        "usage": {
+          "inputTokens": 0,
+          "outputTokens": 0
+        },
+        "errors": [],
+        "notes": [],
+        "peers": [
+          "codex"
+        ],
+        "brief": {
+          "version": 1,
+          "task": "You are an adversary reviewing 1 candidate solutions to a feature task. The task:\n\nsum must reject non-numbers\n\nWrite tests that a correct solution passes and that fail on the code in your directory, which is the project before any candidate changed it.\nAim them at what the task asks for and at the weak spots in the candidates' diffs: edge cases they miss, inputs they mishandle.\nEvery test enforces one requirement of the task: quote the sentence or phrase of the task it checks as its specClause.\nDo not change the project's code. Add new test files only, in the project's test style, where `\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js` runs them.\nWhen you are done, write concilium-adversarial.json at the root of your directory, listing at most 5 tests:\n{\"tests\": [{\"files\": [\"path/to/new.test.js\"], \"specClause\": \"the part of the task this test enforces\"}]}",
+          "mode": "code",
+          "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic",
+          "constraints": [
+            "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
+            "Candidate diff, read-only: /tmp/concilium-adversary-mGrslb/candidate-2.patch"
+          ],
+          "allowedActions": [
+            "read",
+            "write",
+            "shell"
+          ]
+        },
+        "finalText": "Wrote a test"
+      },
+      {
+        "family": "openai",
+        "provider": "codex",
+        "model": null,
+        "lane": "adv-openai",
+        "branch": "concilium/20261017T113941-c4b9de/adv-openai",
+        "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai",
+        "headSha": "fa8a9174ab4c2693504e7dc0ec42cb51f237cb19",
+        "status": "ok",
+        "durationMs": 34,
+        "usage": {
+          "inputTokens": 1,
+          "outputTokens": 1
+        },
+        "errors": [],
+        "notes": [],
+        "peers": [
+          "claude"
+        ],
+        "brief": {
+          "version": 1,
+          "task": "You are an adversary reviewing 1 candidate solutions to a feature task. The task:\n\nsum must reject non-numbers\n\nWrite tests that a correct solution passes and that fail on the code in your directory, which is the project before any candidate changed it.\nAim them at what the task asks for and at the weak spots in the candidates' diffs: edge cases they miss, inputs they mishandle.\nEvery test enforces one requirement of the task: quote the sentence or phrase of the task it checks as its specClause.\nDo not change the project's code. Add new test files only, in the project's test style, where `\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js` runs them.\nWhen you are done, write concilium-adversarial.json at the root of your directory, listing at most 5 tests:\n{\"tests\": [{\"files\": [\"path/to/new.test.js\"], \"specClause\": \"the part of the task this test enforces\"}]}",
+          "mode": "code",
+          "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai",
+          "constraints": [
+            "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
+            "Candidate diff, read-only: /tmp/concilium-adversary-mGrslb/candidate-1.patch"
+          ],
+          "allowedActions": [
+            "read",
+            "write",
+            "shell"
+          ]
+        },
+        "finalText": "Wrote a test"
+      }
+    ],
+    "tests": [
+      {
+        "id": "anthropic-1",
+        "author": "anthropic",
+        "files": [
+          "claude-adv.test.js"
+        ],
+        "specClause": "sum rejects non-numbers",
+        "validity": "evidence"
+      },
+      {
+        "id": "openai-1",
+        "author": "openai",
+        "files": [
+          "codex-adv.test.js"
+        ],
+        "specClause": "sum rejects non-numbers",
+        "validity": "own-family-only"
+      }
+    ],
+    "matrix": {
+      "anthropic-1": {
+        "base": "fail",
+        "claude": "pass",
+        "codex": "pass"
+      },
+      "openai-1": {
+        "base": "fail",
+        "claude": "fail",
+        "codex": "pass"
+      }
+    },
+    "survival": {
+      "claude": {
+        "counted": 0,
+        "survived": 0,
+        "failed": []
+      },
+      "codex": {
+        "counted": 1,
+        "survived": 1,
+        "failed": []
+      }
+    },
+    "runs": [
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "outcome": "fail",
+        "exitCode": 1,
+        "durationMs": 15,
+        "output": "claude-adv.test.js: no TypeError\n",
+        "truncated": false,
+        "testId": "anthropic-1",
+        "lane": "base"
+      },
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+        "outcome": "pass",
+        "exitCode": 0,
+        "durationMs": 12,
+        "output": "",
+        "truncated": false,
+        "testId": "anthropic-1",
+        "lane": "claude"
+      },
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+        "outcome": "pass",
+        "exitCode": 0,
+        "durationMs": 13,
+        "output": "",
+        "truncated": false,
+        "testId": "anthropic-1",
+        "lane": "codex"
+      },
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "outcome": "fail",
+        "exitCode": 1,
+        "durationMs": 13,
+        "output": "codex-adv.test.js: no TypeError\n",
+        "truncated": false,
+        "testId": "openai-1",
+        "lane": "base"
+      },
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
+        "outcome": "fail",
+        "exitCode": 1,
+        "durationMs": 13,
+        "output": "codex-adv.test.js: no TypeError\n",
+        "truncated": false,
+        "testId": "openai-1",
+        "lane": "claude"
+      },
+      {
+        "name": "test",
+        "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+        "outcome": "pass",
+        "exitCode": 0,
+        "durationMs": 11,
+        "output": "",
+        "truncated": false,
+        "testId": "openai-1",
+        "lane": "codex"
+      }
+    ]
+  },
+  "ranking": {
+    "order": [
+      {
+        "candidateId": "codex",
+        "status": "PASS",
+        "key": {
+          "disqualified": false,
+          "newFailures": 0,
+          "survived": 1,
+          "counted": 1,
+          "penalties": 0
+        },
+        "size": {
+          "lines": 5,
+          "files": 1
+        },
+        "rank": 1,
+        "judgeTotal": null
+      },
+      {
+        "candidateId": "claude",
+        "status": "ISSUES",
+        "key": {
+          "disqualified": false,
+          "newFailures": 1,
+          "survived": 0,
+          "counted": 0,
+          "penalties": 0
+        },
+        "size": {
+          "lines": 4,
+          "files": 2
+        },
+        "rank": 2,
+        "judgeTotal": null
+      }
+    ],
+    "winner": "codex",
+    "reason": "best on the evidence",
+    "judgments": []
+  },
+  "synthesis": {
+    "base": {
+      "candidateId": "codex",
+      "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
+      "reason": "best on the evidence"
+    },
+    "branch": "concilium/20261017T113941-c4b9de/integration",
+    "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration",
+    "headSha": "415972a7b57fe74341feef51e5de6fd192daf598",
+    "picker": {
+      "provider": "claude",
+      "sameFamily": true,
+      "sameFamilyReason": "no CLI outside the candidates' families (openai, anthropic) is usable, so claude names the grafts"
+    },
+    "notes": [],
+    "grafts": [
+      {
+        "id": "graft-1",
+        "candidateId": "claude",
+        "files": [
+          "sum.test.js"
+        ],
+        "hunk": null,
+        "instruction": "Take its sum.test.js.",
+        "why": "The base has no test.",
+        "status": "applied",
+        "commitSha": "415972a7b57fe74341feef51e5de6fd192daf598",
+        "revertSha": null,
+        "reason": "",
+        "evidence": [],
+        "integrator": {
+          "provider": "codex",
+          "model": null,
+          "status": "ok",
+          "durationMs": 16,
+          "errors": [],
+          "finalText": "Folded the test in",
+          "brief": {
+            "version": 1,
+            "task": "You are integrating one idea from another solution into the solution in your directory, which solves the task below.\nFold the idea in by hand so the result stays coherent. Do not copy the other solution wholesale, and change nothing the idea does not need.\n\nTask:\nsum must reject non-numbers\n\nGraft graft-1:\nInstruction: Take its sum.test.js.\nWhy: The base has no test.\nSource files: sum.test.js\n\nKeep the existing tests passing; never delete, skip or weaken a test to get there. When you finish, say in one line what you changed.",
+            "mode": "code",
+            "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration",
+            "constraints": [
+              "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration, a git worktree on branch concilium/20261017T113941-c4b9de/integration. Make every change inside this directory.",
+              "You do not need to commit: Concilium commits what you leave in the working tree. Do not push, and do not create or switch branches.",
+              "Source solution diff, read-only: /tmp/concilium-graft-vo0qio/source.patch"
+            ],
+            "allowedActions": [
+              "read",
+              "write",
+              "shell"
+            ]
+          }
+        }
+      }
+    ],
+    "dropouts": [],
+    "checks": {
+      "sha": "415972a7b57fe74341feef51e5de6fd192daf598",
+      "gates": {
+        "lint": "pass",
+        "test": "pass"
+      },
+      "tests": {
+        "anthropic-1": "pass"
+      }
+    },
+    "patchPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/result.patch",
+    "synthesisPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/synthesis.md",
+    "mergeable": true,
+    "mergeCheck": {
+      "applies": true,
+      "targetSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+      "target": "HEAD",
+      "output": ""
+    }
+  },
+  "trail": {
+    "decisionsPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/decisions.tsv",
+    "eventsPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/events.jsonl",
+    "rows": 13,
+    "commitSha": "f4db80168e8b1e77eb799eae2b175023395c1e19",
+    "errors": []
+  },
+  "prVerdict": {
+    "verdict": "PASS",
+    "reason": "every gate and valid adversarial test passes at 415972a7b57f and the review says PASS",
+    "notes": [],
+    "verifier": {
+      "provider": "claude",
+      "model": null,
+      "configured": false,
+      "sameFamily": true,
+      "family": "anthropic",
+      "sameFamilyReason": "no installed, signed-in CLI outside the author families (openai, anthropic); claude (anthropic) verified"
+    },
+    "authorFamilies": [
+      "openai",
+      "anthropic"
+    ],
+    "branch": "concilium/20261017T113941-c4b9de/integration",
+    "branchHead": "f4db80168e8b1e77eb799eae2b175023395c1e19",
+    "headSha": "415972a7b57fe74341feef51e5de6fd192daf598",
+    "trailSha": "f4db80168e8b1e77eb799eae2b175023395c1e19",
+    "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+    "patchId": "5f38b8860268c928490f8a556c7e8d45cb3fa678",
+    "gates": {
+      "lint": "pass",
+      "test": "pass"
+    },
+    "tests": {
+      "anthropic-1": "pass"
+    },
+    "review": {
+      "status": "PASS",
+      "text": "VERDICT: PASS\nThe validation and its test match the task."
+    },
+    "verifiedAt": "2026-10-17T11:39:41.947Z",
+    "reportPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/verification.md"
+  }
+}

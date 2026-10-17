@@ -112,7 +112,7 @@ export type { JudgeChoice, JudgePack, JudgeScore, Judgment } from './domain/code
 export { MAX_SCORE, JudgeValidationError, judgePrompt, parseJudgeAnswer, pickJudge } from './domain/code-council/judging.js';
 export type { Graft, GraftEvidence, GraftIdea, GraftPack, Synthesis, SynthesisChecks } from './domain/code-council/synthesis.js';
 export {
-  MAX_GRAFTS_PER_CANDIDATE, RESULT_PATCH, SYNTHESIS_REPORT, graftPrompt, integratorBrief, parseGraftAnswer, synthesisMarkdown,
+  MAX_GRAFTS_PER_CANDIDATE, RESULT_PATCH, SYNTHESIS_REPORT, graftPrompt, integratorBrief, parseGraftAnswer, rankingMarkdown, synthesisMarkdown,
 } from './domain/code-council/synthesis.js';
 export { JUDGE_DIFF_LIMIT, judgeTie, rankRun, reportCandidate, usableClis } from './services/ranking-service.js';
 export { skippedSynthesis, synthesize } from './services/synthesis-service.js';

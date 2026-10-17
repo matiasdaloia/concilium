@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "runId": "20261017T113941-c4b9de",
+  "records": [
+    {
+      "id": "dissent-1",
+      "source": "same-family-judge",
+      "summary": "claude named the grafts, and is of the base's or a donor's family",
+      "evidence": [
+        {
+          "kind": "judgment",
+          "ref": "claude"
+        }
+      ],
+      "acceptanceClause": null,
+      "resolution": "accepted-risk",
+      "resolutionReason": "no CLI outside the candidates' families (openai, anthropic) is usable, so claude names the grafts"
+    }
+  ]
+}

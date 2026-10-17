@@ -8,6 +8,7 @@
 // in throwaway HOME and XDG dirs, and exits with the app's exit code.
 // The app gets an empty PATH, so the agent detection the home screen runs
 // finds no real agent CLI. Linux only; needs xvfb-run.
+// `-- --open-run <dir>` also opens that code-run directory; the app prints its rendered ranking to stdout.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,11 +22,20 @@ if (!existsSync(binary)) {
   process.exit(1);
 }
 
+// npm runs this from desktop/; a relative --open-run is relative to where npm was started.
+const args = process.argv.slice(2);
+const openRunAt = args.indexOf('--open-run');
+if (openRunAt !== -1 && !args[openRunAt + 1]) {
+  console.error('--open-run needs a run directory');
+  process.exit(1);
+}
+const openRun = openRunAt === -1 ? [] : [`--open-run=${path.resolve(process.env.INIT_CWD ?? process.cwd(), args[openRunAt + 1])}`];
+
 const home = mkdtempSync(path.join(tmpdir(), 'concilium-smoke-'));
 try {
   const emptyBin = path.join(home, 'bin');
   mkdirSync(emptyBin);
-  const appArgs = ['env', `PATH=${emptyBin}`, binary, '--smoke-test', `--cwd=${home}`];
+  const appArgs = ['env', `PATH=${emptyBin}`, binary, '--smoke-test', `--cwd=${home}`, ...openRun];
   const result = spawnSync('xvfb-run', ['-a', ...appArgs], {
     cwd: home,
     stdio: 'inherit',

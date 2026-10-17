@@ -1,0 +1,26 @@
+{
+  "criteria": [
+    {
+      "name": "validates",
+      "description": "sum rejects non-numbers, shown by a test.",
+      "weight": 3,
+      "evidence": "gate"
+    },
+    {
+      "name": "suite",
+      "description": "The existing tests pass.",
+      "weight": 2,
+      "evidence": "gate"
+    },
+    {
+      "name": "small",
+      "description": "Only sum.js and its test change.",
+      "weight": 1,
+      "evidence": "judgment"
+    }
+  ],
+  "source": "framer",
+  "framer": "claude",
+  "frozenAt": "2026-10-17T11:39:41.327Z",
+  "sha256": "72bede41a0d4e6eef487097a536593f989d2387ea109ee8f7f9a2272826359da"
+}
