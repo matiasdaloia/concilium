@@ -15,15 +15,19 @@ export const FACTORY_CONFIG = '.concilium/factory.yaml';
 export const CODE_ROLES = ['planner', 'implementer', 'adversary', 'judge', 'integrator'] as const;
 export type CodeRoleName = (typeof CODE_ROLES)[number];
 
-/** Every role: the code council's, then the plan council's jurors and chairman (which may also be OpenRouter ids). */
-export const ROLE_NAMES = [...CODE_ROLES, 'juror', 'chairman'] as const;
+/** The roles of shipping a run (`concilium pr`, `verify-pr`), resolved when they run, not recorded on the run. */
+export const SHIP_ROLES = ['verifier'] as const;
+export type ShipRoleName = (typeof SHIP_ROLES)[number];
+
+/** Every role: the code council's, shipping's, then the plan council's jurors and chairman (which may also be OpenRouter ids). */
+export const ROLE_NAMES = [...CODE_ROLES, ...SHIP_ROLES, 'juror', 'chairman'] as const;
 export type RoleName = (typeof ROLE_NAMES)[number];
 
 /** Roles played by a list of members; the others take one. */
 const LIST_ROLES: readonly RoleName[] = ['implementer', 'adversary', 'juror'];
 
 /** Per role, the word that names its built-in behavior instead of a member. */
-export const ROLE_KEYWORDS = { adversary: 'same-as-implementer', judge: 'auto', integrator: 'winner' } as const;
+export const ROLE_KEYWORDS = { adversary: 'same-as-implementer', judge: 'auto', integrator: 'winner', verifier: 'auto' } as const;
 
 export type RoleValue = string | string[];
 /** Configured roles from one source. A list role holds a list, unless set to its keyword. */
@@ -46,7 +50,11 @@ export type CodeRoleMap = {
   integrator: ResolvedRole<string>;
 };
 
-export type RoleMap = CodeRoleMap & { juror: ResolvedRole<string[]>; chairman: ResolvedRole<string> };
+/**
+ * Every role. `verifier` re-verifies a run before its PR; default `auto`: the first usable CLI outside the author
+ * families. A configured verifier outside them goes first.
+ */
+export type RoleMap = CodeRoleMap & { verifier: ResolvedRole<string>; juror: ResolvedRole<string[]>; chairman: ResolvedRole<string> };
 
 export class RolesValidationError extends Error {
   constructor(readonly where: string, readonly problems: string[]) {
@@ -205,6 +213,11 @@ export function resolveCodeRoles(layers: readonly (readonly [RoleSource, RoleSet
     judge: pick<string>('judge') ?? { value: ROLE_KEYWORDS.judge, source: 'default' },
     integrator: pick<string>('integrator') ?? { value: ROLE_KEYWORDS.integrator, source: 'default' },
   };
+}
+
+/** The verifier from the configured layers, highest first, or `auto`. */
+export function resolveVerifierRole(layers: readonly (readonly [RoleSource, RoleSettings])[]): ResolvedRole<string> {
+  return (pickRole('verifier', layers) as ResolvedRole<string> | null) ?? { value: ROLE_KEYWORDS.verifier, source: 'default' };
 }
 
 /** The defaults a code run uses when it is given only its candidates. */

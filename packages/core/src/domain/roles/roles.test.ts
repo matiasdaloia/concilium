@@ -45,6 +45,8 @@ describe('validateRoles', () => {
       chairman: 'google/gemini-3-pro',
     });
     expect(validateRoles({ adversary: 'same-as-implementer', judge: 'auto' }, 'x')).toEqual({ adversary: 'same-as-implementer', judge: 'auto' });
+    expect(validateRoles({ verifier: 'auto' }, 'x')).toEqual({ verifier: 'auto' });
+    expect(validateRoles({ verifier: 'gemini:gemini-3-pro' }, 'x')).toEqual({ verifier: 'gemini:gemini-3-pro' });
     expect(validateRoles(undefined, 'x')).toEqual({});
   });
 
@@ -59,7 +61,7 @@ describe('validateRoles', () => {
       juror: ['claude', 3],
     }, 'roles'));
     expect(found).toEqual([
-      'unknown role "planer" (use planner, implementer, adversary, judge, integrator, juror, chairman)',
+      'unknown role "planer" (use planner, implementer, adversary, judge, integrator, verifier, juror, chairman)',
       'planner: takes one member, not a list',
       'judge: "openai/gpt-5.2" is not an agent CLI (use claude, codex, gemini, opencode, optionally with :model)',
       'integrator: "codex:" has an empty model',
@@ -72,6 +74,9 @@ describe('validateRoles', () => {
   it('should refuse a keyword listed with members, and a keyword of another role', () => {
     expect(problems(() => validateRoles({ adversary: ['same-as-implementer', 'codex'] }, 'x'))).toEqual(['adversary: "same-as-implementer" cannot be listed with other members']);
     expect(problems(() => validateRoles({ planner: 'winner' }, 'x'))).toEqual([expect.stringContaining('planner: "winner" is not an agent CLI')]);
+    // The verifier is an agent CLI, never an OpenRouter id, and takes one member.
+    expect(problems(() => validateRoles({ verifier: 'openai/gpt-5.2' }, 'x'))).toEqual([expect.stringContaining('verifier: "openai/gpt-5.2" is not an agent CLI')]);
+    expect(problems(() => validateRoles({ verifier: ['codex', 'gemini'] }, 'x'))).toEqual(['verifier: takes one member, not a list']);
     expect(problems(() => validateRoles(['claude'], 'x'))).toEqual(['must map role names to members']);
   });
 });

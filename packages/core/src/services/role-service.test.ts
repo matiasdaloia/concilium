@@ -112,7 +112,7 @@ describe('role resolution', () => {
     const err = await runtime().resolveCodeRoles({ repoDir: repo }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(RolesValidationError);
     expect((err as Error).message).toBe(
-      `${join(repo, '.concilium', 'factory.yaml')} roles: judge: takes one member, not a list; unknown role "planer" (use planner, implementer, adversary, judge, integrator, juror, chairman)`,
+      `${join(repo, '.concilium', 'factory.yaml')} roles: judge: takes one member, not a list; unknown role "planer" (use planner, implementer, adversary, judge, integrator, verifier, juror, chairman)`,
     );
   });
 
@@ -138,6 +138,18 @@ describe('role resolution', () => {
 
     const flags = parseRoleFlags(['juror=claude', 'chairman=codex']);
     expect((await rt.resolveRoleMap({ repoDir: repo, flags })).roles).toMatchObject({ juror: { value: ['claude'], source: 'flag' }, chairman: { value: 'codex', source: 'flag' } });
+  });
+
+  it('should take the verifier from flags, then factory.yaml, then saved config, else auto, without detecting', async () => {
+    installed = [];
+    const rt = runtime();
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'auto', source: 'default' });
+    await rt.configService.saveRoles({ verifier: 'claude' });
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'claude', source: 'saved' });
+    writeFactory('roles:\n  verifier: codex:gpt-5.2\n');
+    expect(await rt.resolveVerifier({ repoDir: repo })).toEqual({ value: 'codex:gpt-5.2', source: 'repo' });
+    expect(await rt.resolveVerifier({ repoDir: repo, flags: parseRoleFlags(['verifier=gemini']) })).toEqual({ value: 'gemini', source: 'flag' });
+    expect((await rt.resolveRoleMap({ repoDir: repo })).roles.verifier).toEqual({ value: 'codex:gpt-5.2', source: 'repo' });
   });
 
   it('should show the role map without an agent CLI, with a note instead of failing', async () => {

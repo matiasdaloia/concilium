@@ -8,7 +8,9 @@ import type { AgentInstance } from '../domain/agent/agent-config.js';
 import { PROVIDER_IDS, type AgentProviderType } from '../domain/agent/providers.js';
 import type { CouncilConfig } from '../domain/council/council-config.js';
 import { parseCouncilMember, resolveCouncil } from '../domain/council/council-members.js';
-import { pickRole, resolveCodeRoles, type CodeRoleMap, type RoleMap, type RoleSettings } from '../domain/roles/roles.js';
+import {
+  pickRole, resolveCodeRoles, resolveVerifierRole, type CodeRoleMap, type ResolvedRole, type RoleMap, type RoleSettings,
+} from '../domain/roles/roles.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
 import type { CliDetection, HeadlessCliDriver } from '../ports/headless-cli-driver.js';
@@ -81,6 +83,8 @@ export interface ConciliumRuntime extends ConciliumAdapters {
    * `factory.yaml` it read. Never rejects for a missing agent CLI: that is a note.
    */
   resolveRoleMap(input: { repoDir: string; flags?: RoleSettings }): Promise<{ roles: RoleMap; factoryPath: string | null; notes: string[] }>;
+  /** The verifier `concilium pr` and `verify-pr` prefer: flag, the repo's `factory.yaml` (read now), saved, else `auto`. */
+  resolveVerifier(input: { repoDir: string; flags?: RoleSettings }): Promise<ResolvedRole<string>>;
 }
 
 /** Where to look for `.concilium/factory.yaml`, whose `juror` and `chairman` roles rank between env vars and saved config. */
@@ -152,6 +156,7 @@ export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRu
       return {
         roles: {
           ...code,
+          verifier: resolveVerifierRole(await roleLayers(flags, repo)),
           juror: { value: council.config.councilModels, source: council.sources.councilModels },
           chairman: { value: council.config.chairmanModel, source: council.sources.chairmanModel },
         },
@@ -159,11 +164,18 @@ export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRu
         notes,
       };
     },
+    async resolveVerifier({ repoDir, flags = {} }) {
+      return resolveVerifierRole(await roleLayers(flags, (await readRepoRoles(repoDir)).roles));
+    },
   };
+
+  async function roleLayers(flags: RoleSettings, repo: RoleSettings) {
+    return [['flag', flags], ['repo', repo], ['saved', await configService.savedRoles()]] as const;
+  }
 
   /** `detected` stands in for detection, which `defaultAgentInstances` runs only when no source names the implementers. */
   async function codeRolesWith(flags: RoleSettings, repo: RoleSettings, detected?: string[]): Promise<CodeRoleMap> {
-    const layers = [['flag', flags], ['repo', repo], ['saved', await configService.savedRoles()]] as const;
+    const layers = await roleLayers(flags, repo);
     const implementers = detected ?? (pickRole('implementer', layers) ? [] : (await runtime.defaultAgentInstances()).map((a) => a.provider));
     return resolveCodeRoles(layers, () => implementers);
   }

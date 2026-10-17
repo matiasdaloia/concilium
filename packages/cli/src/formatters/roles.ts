@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { ROLE_NAMES, type RoleMap } from '@concilium/core';
+import { ROLE_KEYWORDS, ROLE_NAMES, type RoleMap, type RoleName } from '@concilium/core';
 
-/** What each role keyword stands for. */
-const KEYWORDS: Record<string, string> = {
-  'same-as-implementer': 'one per implementer family, the first candidate of each',
-  auto: 'a usable CLI of another family than the candidates it reads',
-  winner: "the base's CLI and model",
+/** What each role's keyword stands for. */
+const KEYWORDS: Partial<Record<RoleName, string>> = {
+  adversary: 'one per implementer family, the first candidate of each',
+  judge: 'a usable CLI of another family than the candidates it reads',
+  integrator: "the base's CLI and model",
+  verifier: 'a usable CLI of another family than the authors, else a flagged same-family one',
 };
 
 /** A `Role`, `Members`, `Source` table of the roles in `roles`, in role order. */
@@ -22,7 +23,8 @@ export function roleRows(roles: Partial<RoleMap>): string[][] {
       if (!resolved) return [];
       const { value, source } = resolved;
       const members = Array.isArray(value) ? value.join(', ') : value;
-      const meaning = typeof value === 'string' && KEYWORDS[value] ? ` (${KEYWORDS[value]})` : '';
+      const keyword = (ROLE_KEYWORDS as Partial<Record<RoleName, string>>)[role];
+      const meaning = value === keyword && KEYWORDS[role] ? ` (${KEYWORDS[role]})` : '';
       return [[role, `${members || '(none)'}${meaning}`, source]];
     }),
   ];

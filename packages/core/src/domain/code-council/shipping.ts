@@ -5,6 +5,7 @@
  */
 
 import { getProviderInfo } from '../agent/providers.js';
+import { ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
 import type { SurvivalCell } from '../verification/adversarial.js';
 import type { StepResult } from '../verification/gates.js';
 import { blockingDissent, warningDissent, type Dissent } from './dissent.js';
@@ -16,25 +17,50 @@ export const VERIFICATION_REPORT = 'verification.md';
 /** The pull request body, written to the run directory; the `pr` gate's command reads it. */
 export const PR_BODY = 'pr-body.md';
 
+/** Where the decision trail is committed. A shipped commit never touches it. */
+export const TRAIL_PATH_PREFIX = '.concilium/runs/';
+
 /**
  * C8 "green is not safe". `PASS+NOTES`: nothing failed, but a gate that also fails on the base or the review left
- * notes. `BLOCKED`: no verdict could be reached, for instance no CLI outside the author families is usable.
+ * notes. `BLOCKED`: no verdict could be reached, for instance no agent CLI is usable at all.
  */
 export type PrVerdictStatus = 'PASS' | 'PASS+NOTES' | 'FAIL' | 'BLOCKED';
 
 export type PrReview = { status: 'PASS' | 'NOTES' | 'FAIL'; text: string };
 
-/** An independent verdict on the integration branch, keyed to its head, its base and its patch-id. */
+/**
+ * The CLI that verified. `sameFamily`: no usable CLI was outside the author families, so one of them (or one of an
+ * unknown family) verified; the verdict says so everywhere and the PR is always a draft.
+ */
+export type Verifier = {
+  provider: string;
+  model: string | null;
+  /** Set by `--role verifier=`, `factory.yaml` or saved config, rather than picked. */
+  configured: boolean;
+} & ({ sameFamily: false; family: string } | { sameFamily: true; family: string | null; sameFamilyReason: string });
+
+/** Where a run ships from: its integration branch, or the branch of its only candidate. */
+export type ShipSource = { kind: 'integration' | 'candidate'; branch: string; authorFamilies: string[] };
+
+/** An independent verdict on the commit a PR would ship, keyed to it, its base and its patch-id. */
 export type PrVerdict = {
   verdict: PrVerdictStatus;
   reason: string;
   notes: string[];
-  /** The CLI that verified, of a family that wrote none of the integration commits. */
-  verifier: { provider: string; family: string } | null;
-  /** The families of the base candidate, of every graft's donor and of every graft's integrator. */
+  verifier: Verifier | null;
+  /** The families of the base candidate, of every graft's donor and of every graft's integrator; or of the only candidate. */
   authorFamilies: string[];
-  branch: string;
+  /** The branch it ships from (`ShipSource`), or null when there is none. */
+  branch: string | null;
+  /** The branch's head when it was verified. A new commit on the branch voids the verdict. */
+  branchHead: string | null;
+  /**
+   * The commit verified, and the only one `concilium pr` pushes: the branch head, or its parent when the head is the
+   * trail commit. Null when nothing may be pushed.
+   */
   headSha: string | null;
+  /** The trail commit left out of `headSha`, or null. */
+  trailSha: string | null;
   baseSha: string;
   /** `git patch-id --stable` of `baseSha..headSha`. */
   patchId: string | null;
@@ -50,14 +76,16 @@ export type PrVerdict = {
 /** The pull request asked for: its two paused gates, the pushed branch and the body file. */
 export type PrRequest = {
   remote: string;
-  /** The branch the integration branch is pushed to: `concilium/<run-id>`. */
+  /** The remote branch the verified commit is pushed to: `concilium/<run-id>`. */
   remoteBranch: string;
+  /** The verified commit the push gate pushes, whatever the branch holds by then. */
+  sha: string;
   /** The PR's base branch, or null for the remote's default branch. */
   base: string | null;
   title: string;
   bodyPath: string;
-  /** Opened as a draft: the verdict was neither PASS nor PASS+NOTES. */
-  draft: boolean;
+  /** Why the PR is opened as a draft (`draftReason`), or null when it is not. */
+  draftReason: string | null;
   pushGate: string;
   prGate: string;
   requestedAt: string;
@@ -78,12 +106,83 @@ export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: 
 }
 
 /**
- * The first usable CLI of a known family outside `authors`. Unlike the judge, never a same-family fallback:
- * null means the verdict is BLOCKED.
+ * The integration branch when there is one; else, for a run with a single candidate, that candidate's branch, written
+ * by its family alone. Otherwise there is nothing to ship.
  */
-export function pickVerifier(authors: string[], usable: { provider: string; family: string | null }[]): { provider: string; family: string } | null {
-  const other = usable.find((u) => u.family !== null && !authors.includes(u.family));
-  return other ? { provider: other.provider, family: other.family! } : null;
+export function shipSource(record: {
+  synthesis?: Synthesis;
+  candidates: { candidateId: string; provider: string; branch: string; headSha: string | null }[];
+}): ShipSource | { blocked: string } {
+  if (record.synthesis?.branch) {
+    return { kind: 'integration', branch: record.synthesis.branch, authorFamilies: authorFamilies(record.synthesis, record.candidates) };
+  }
+  if (record.candidates.length !== 1) return { blocked: 'the run has no integration branch' };
+  const only = record.candidates[0];
+  if (!only.headSha) return { blocked: `the only candidate, ${only.candidateId}, has no head` };
+  return { kind: 'candidate', branch: only.branch, authorFamilies: [familyOf(only.provider)] };
+}
+
+/** A path of the decision trail, which a shipped commit must not touch. */
+export function isTrailPath(path: string): boolean {
+  return path.startsWith(TRAIL_PATH_PREFIX);
+}
+
+/**
+ * The verifier, preferring a family outside `authors`: the configured one (`cli[:model]`, or `auto`/null for none)
+ * when its CLI is usable and outside them, else the first usable CLI of a known family outside them. With none, the
+ * configured one or the first usable CLI, flagged `sameFamily`. Null only when no CLI is usable. The notes say why a
+ * configured verifier was passed over.
+ */
+export function pickVerifier(
+  authors: string[],
+  usable: { provider: string; family: string | null }[],
+  configured: string | null = null,
+): { verifier: Verifier | null; notes: string[] } {
+  const spec = configured && configured !== ROLE_KEYWORDS.verifier ? specAgent(configured) : null;
+  const mine = spec ? usable.find((u) => u.provider === spec.provider) : undefined;
+  const outside = (u: { family: string | null }): u is { provider: string; family: string } => u.family !== null && !authors.includes(u.family);
+  const notes: string[] = [];
+  if (mine && outside(mine)) {
+    return { verifier: { provider: mine.provider, model: spec!.model ?? null, configured: true, sameFamily: false, family: mine.family }, notes };
+  }
+  if (spec && !mine) notes.push(`the configured verifier ${configured} is not installed and signed in`);
+  const other = usable.find(outside);
+  if (other) {
+    if (mine) notes.push(`the configured verifier ${configured} is of an author family (${mine.family ?? 'unknown'}); ${other.provider} verifies instead`);
+    return { verifier: { provider: other.provider, model: null, configured: false, sameFamily: false, family: other.family }, notes };
+  }
+  const fallback = mine ?? usable[0];
+  if (!fallback) return { verifier: null, notes };
+  const sameFamilyReason =
+    `no installed, signed-in CLI outside the author families (${authors.join(', ')}); ${fallback.provider} (${fallback.family ?? 'unknown family'}) verified`;
+  return {
+    verifier: { provider: fallback.provider, model: fallback === mine ? spec!.model ?? null : null, configured: fallback === mine, sameFamily: true, family: fallback.family, sameFamilyReason },
+    notes,
+  };
+}
+
+/** `cli[:model]` of a verifier, for the gateway. */
+export function verifierSpec(v: Verifier): string {
+  return v.model ? `${v.provider}:${v.model}` : v.provider;
+}
+
+function verifierLabel(v: Verifier | null): string {
+  if (!v) return 'no verifier';
+  return `${verifierSpec(v)} (${v.family ?? 'unknown family'})${v.sameFamily ? ', SAME FAMILY as the authors' : ''}`;
+}
+
+/** Why a PR from this verdict is a draft, or null: a verdict that is not a pass, or a same-family verifier. */
+export function draftReason(v: PrVerdict): string | null {
+  const reasons = [
+    ...(v.verdict === 'PASS' || v.verdict === 'PASS+NOTES' ? [] : [`the verdict is ${v.verdict}`]),
+    ...(v.verifier?.sameFamily ? ['the verifier is of an author family'] : []),
+  ];
+  return reasons.length ? reasons.join('; ') : null;
+}
+
+/** The warning every report of a same-family verdict carries, or null. */
+export function sameFamilyWarning(v: PrVerdict): string | null {
+  return v.verifier?.sameFamily ? `same-family verification: ${v.verifier.sameFamilyReason}. The pull request is a draft.` : null;
 }
 
 /** The read-only review: the task, the gate results and the diff, and one verdict line first. */
@@ -147,21 +246,28 @@ export function decideVerdict(input: {
     : { verdict: 'PASS', reason: `every gate and valid adversarial test passes at ${at} and the review says PASS`, notes };
 }
 
-/** A verdict holds only for the head it verified: a newer local head, or a remote head known locally, voids it. */
+/**
+ * A verdict holds only for what it verified: the local branch at another head than `branchHead`, or a remote head
+ * known locally other than the shipped `headSha`, voids it.
+ */
 export function verdictState(verdict: PrVerdict, heads: { local: string | null; remote: string | null }): { valid: boolean; reason: string } {
   const at = verdict.headSha?.slice(0, 12) ?? 'no head';
-  if (!verdict.headSha) return { valid: false, reason: 'the verdict has no head' };
-  if (heads.local !== verdict.headSha) {
-    return { valid: false, reason: `void: ${verdict.branch} is at ${heads.local?.slice(0, 12) ?? 'nothing'}, the verdict is for ${at}; run verify-pr again` };
+  if (!verdict.headSha) return { valid: false, reason: 'the verdict has no commit to ship' };
+  if (heads.local !== verdict.branchHead) {
+    return {
+      valid: false,
+      reason: `void: ${verdict.branch} is at ${heads.local?.slice(0, 12) ?? 'nothing'}, the verdict is for ${verdict.branchHead?.slice(0, 12) ?? 'nothing'}; run verify-pr again`,
+    };
   }
   if (heads.remote !== null && heads.remote !== verdict.headSha) {
     return { valid: false, reason: `void: the pushed branch is at ${heads.remote.slice(0, 12)}, the verdict is for ${at}; run verify-pr again` };
   }
-  return { valid: true, reason: `for head ${at}` };
+  return { valid: true, reason: `for commit ${at}` };
 }
 
 /** `verification.md`: the verdict, what it is keyed to, who verified and what ran. */
 export function verificationMarkdown(v: PrVerdict, run: { id: string; task: string }): string {
+  const warning = sameFamilyWarning(v);
   const lines = [
     `# Verification of run ${run.id}`,
     '',
@@ -170,12 +276,14 @@ export function verificationMarkdown(v: PrVerdict, run: { id: string; task: stri
     `## Verdict: ${v.verdict}`,
     '',
     v.reason,
+    ...(warning ? ['', `**Warning: ${warning}**`] : []),
     '',
-    `- branch: ${v.branch}`,
-    `- head: ${v.headSha ?? 'none'}`,
+    `- branch: ${v.branch ?? 'none'} at ${v.branchHead ?? 'nothing'}`,
+    `- head: ${v.headSha ?? 'none'} (the commit verified and pushed)`,
+    ...(v.trailSha ? [`- trail commit left out: ${v.trailSha}`] : []),
     `- base: ${v.baseSha}`,
     `- patch-id: ${v.patchId ?? 'none'}`,
-    `- verifier: ${v.verifier ? `${v.verifier.provider} (${v.verifier.family})` : 'none'}`,
+    `- verifier: ${verifierLabel(v.verifier)}`,
     `- author families: ${v.authorFamilies.join(', ') || 'none'}`,
     `- verified: ${v.verifiedAt}`,
     '',
@@ -200,20 +308,19 @@ export function prTitle(task: string): string {
   return line.length > 72 ? `${line.slice(0, 71)}…` : line;
 }
 
-/** The PR body: the verdict, `synthesis.md`, a dissent summary and pointers to the decision trail. */
-export function prBody(input: {
-  runId: string;
-  synthesisMd: string | null;
-  dissent: Dissent[];
-  verdict: PrVerdict;
-  trail: { commitSha: string | null; dir: string } | null;
-}): string {
+/**
+ * The PR body: the verdict, `synthesis.md`, a dissent summary and a pointer to the decision trail, which stays out
+ * of the pull request.
+ */
+export function prBody(input: { runId: string; synthesisMd: string | null; dissent: Dissent[]; verdict: PrVerdict; trailDir: string }): string {
   const { verdict: v } = input;
   const open = input.dissent.filter((d) => d.resolution === 'open');
+  const warning = sameFamilyWarning(v);
   const lines = [
     `Concilium run \`${input.runId}\`.`,
     '',
-    `**Verdict: ${v.verdict}** at \`${v.headSha ?? 'none'}\` (base \`${v.baseSha}\`, patch-id \`${v.patchId ?? 'none'}\`) by ${v.verifier ? `${v.verifier.provider} (${v.verifier.family})` : 'no verifier'}: ${v.reason}`,
+    `**Verdict: ${v.verdict}** at \`${v.headSha ?? 'none'}\` (base \`${v.baseSha}\`, patch-id \`${v.patchId ?? 'none'}\`) by ${verifierLabel(v.verifier)}: ${v.reason}`,
+    ...(warning ? ['', `> **Warning: ${warning}**`] : []),
     '',
     'A commit after that head voids the verdict. Merging is manual.',
     '',
@@ -224,9 +331,9 @@ export function prBody(input: {
     '',
     '## Decision trail',
     '',
-    input.trail?.commitSha
-      ? `\`${input.trail.dir}/decisions.tsv\`, \`dissent.json\` and \`synthesis.md\` in commit \`${input.trail.commitSha}\`.`
-      : 'Not committed on the branch.',
+    v.trailSha
+      ? `\`${input.trailDir}/decisions.tsv\`, \`dissent.json\` and \`synthesis.md\` are in commit \`${v.trailSha}\` on \`${v.branch}\`, left out of this pull request, and in the run directory.`
+      : 'In the run directory; not part of this pull request.',
   ];
   if (input.synthesisMd) lines.push('', '---', '', input.synthesisMd.trim());
   return `${lines.join('\n')}\n`;

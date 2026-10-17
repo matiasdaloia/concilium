@@ -66,18 +66,27 @@ function concilium(...args: string[]): { status: number | null; stdout: string; 
   return spawnSync(process.execPath, ['--import', tsxLoader, binPath, ...args], { cwd: sandbox, env, encoding: 'utf8' });
 }
 
+const TEST_GATE = {
+  plan: { source: 'detected', gates: [{ name: 'test', command: 'node test.js', timeoutMs: 60_000 }], install: null, notes: [] },
+  errors: [],
+};
+
 /**
  * A run record whose integration branch is the `claude` candidate and a second commit: with `codexGraft`, a graft
- * from `codex` folded in by `claude`, else the trail commit. Its `test` gate passes. Written where `concilium` reads code runs.
+ * from `codex` folded in by `claude`, else the trail commit under `.concilium/runs/<run-id>/`. Its `test` gate
+ * passes. Written where `concilium` reads code runs.
  */
-function writeRun(runId: string, codexGraft: boolean): CodeRunRecord {
+function writeRun(runId: string, codexGraft: boolean): { record: CodeRunRecord; shipSha: string } {
   const baseSha = git(repo, 'rev-parse', 'main');
   const branch = `concilium/${runId}/integration`;
   const worktree = join(sandbox, `${runId}-wt`);
   git(repo, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
   writeFileSync(join(worktree, 'sum.js'), 'module.exports = (a, b) => Number(a) + Number(b);\n');
   git(worktree, 'commit', '-q', '-am', 'claude candidate');
-  writeFileSync(join(worktree, 'second.txt'), 'second\n');
+  const candidateSha = git(worktree, 'rev-parse', 'HEAD');
+  const second = codexGraft ? 'second.txt' : `.concilium/runs/${runId}/decisions.tsv`;
+  mkdirSync(join(worktree, second, '..'), { recursive: true });
+  writeFileSync(join(worktree, second), 'second\n');
   git(worktree, 'add', '.');
   git(worktree, 'commit', '-q', '-m', codexGraft ? 'graft-1' : 'decision trail');
   const secondSha = git(worktree, 'rev-parse', 'HEAD');
@@ -87,25 +96,25 @@ function writeRun(runId: string, codexGraft: boolean): CodeRunRecord {
   const record = {
     version: 1, kind: 'code', id: runId, status: 'done', task: 'make sum accept numeric strings', repoDir: repo, headSha: baseSha, baseSha,
     dissent: { path: null, records: [] },
-    candidates: [{ candidateId: 'claude', provider: 'claude' }, { candidateId: 'codex', provider: 'codex' }],
-    verification: {
-      plan: { source: 'detected', gates: [{ name: 'test', command: 'node test.js', timeoutMs: 60_000 }], install: null, notes: [] },
-      baseline: { lane: 'base', sha: baseSha, install: null, gates: [{ name: 'test', outcome: 'pass' }] },
-      errors: [],
-    },
+    candidates: [
+      { candidateId: 'claude', provider: 'claude', branch: `concilium/${runId}/claude`, headSha: candidateSha },
+      { candidateId: 'codex', provider: 'codex', branch: `concilium/${runId}/codex`, headSha: candidateSha },
+    ],
+    verification: { ...TEST_GATE, baseline: { lane: 'base', sha: baseSha, install: null, gates: [{ name: 'test', outcome: 'pass' }] } },
     synthesis: {
       base: { candidateId: 'claude', headSha: baseSha, reason: 'best' }, branch, worktree, headSha: secondSha, picker: null, notes: [],
       grafts: codexGraft ? [{ id: 'graft-1', candidateId: 'codex', commitSha: secondSha, status: 'applied', integrator: { provider: 'claude' } }] : [],
       dropouts: [], checks: null, patchPath: null, synthesisPath, mergeable: true, mergeCheck: null,
     },
-    trail: { decisionsPath: '', eventsPath: '', rows: 0, commitSha: secondSha, errors: [] },
+    trail: { decisionsPath: '', eventsPath: '', rows: 0, commitSha: codexGraft ? null : secondSha, errors: [] },
   } as unknown as CodeRunRecord;
   writeFileSync(join(runsDir, runId, 'run.json'), JSON.stringify(record, null, 2));
-  return record;
+  return { record, shipSha: codexGraft ? secondSha : candidateSha };
 }
 
 const loadRun = (runId: string) => JSON.parse(readFileSync(join(runsDir, runId, 'run.json'), 'utf8')) as CodeRunRecord;
 const remoteBranches = () => git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/');
+const remoteHead = (branch: string) => git(remote, 'rev-parse', `refs/heads/${branch}`);
 
 beforeAll(() => {
   writeFileSync(join(sandbox, '.gitconfig'), '[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n');
@@ -127,32 +136,49 @@ beforeAll(() => {
 afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
 
 describe('concilium pr, verify-pr and status', () => {
-  it('should verify from another family, push and open nothing without approval, and void the verdict after a new commit', () => {
+  it('should verify from another family, push only the verified commit without the trail after approval, and void the verdict after a new commit', () => {
     const runId = '20261017T100000-aaaaaa';
-    const record = writeRun(runId, false);
+    const { record, shipSha } = writeRun(runId, false);
+    const branchHead = git(repo, 'rev-parse', record.synthesis!.branch!);
 
     const pr = concilium('pr', runId, '--base', 'main');
     expect(pr.status).toBe(0);
     const verdict = loadRun(runId).prVerdict!;
-    const head = git(repo, 'rev-parse', record.synthesis!.branch!);
-    expect(verdict).toMatchObject({ verdict: 'PASS', verifier: { provider: 'codex', family: 'openai' }, authorFamilies: ['anthropic'], headSha: head, baseSha: record.baseSha });
-    expect(verdict.authorFamilies).not.toContain(verdict.verifier!.family);
+    expect(verdict).toMatchObject({
+      verdict: 'PASS', verifier: { provider: 'codex', family: 'openai', sameFamily: false }, authorFamilies: ['anthropic'],
+      branchHead, headSha: shipSha, trailSha: branchHead, baseSha: record.baseSha,
+    });
     expect(readFileSync(reviewLog, 'utf8')).toBe('codex You are reviewing a change before it becomes a pull request. You did not write it.\n');
-    expect(pr.stdout).toContain(`Verdict: PASS at ${head.slice(0, 12)} (base ${record.baseSha.slice(0, 12)}, patch-id ${verdict.patchId!.slice(0, 12)}) by codex (openai)`);
+    expect(pr.stdout).toContain(`Verdict: PASS at ${shipSha.slice(0, 12)} (base ${record.baseSha.slice(0, 12)}, patch-id ${verdict.patchId!.slice(0, 12)}) by codex (openai)`);
+    expect(pr.stdout).not.toContain('Warning');
+    expect(pr.stdout).toContain(`The push sends ${shipSha.slice(0, 12)} exactly:`);
     expect(pr.stdout).toContain(`Approve in order:\n  concilium approve ${runId}-g1\n  concilium approve ${runId}-g2\n`);
     expect(existsSync(join(runsDir, runId, 'verification.md'))).toBe(true);
     // Nothing left the machine.
     expect(remoteBranches()).toBe('');
     expect(existsSync(ghLog)).toBe(false);
 
+    // Asked again for the same commit: the same two gates, no new ones.
+    const again = concilium('pr', runId, '--base', 'main');
+    expect(again.status).toBe(0);
+    expect(again.stdout).toContain(`Already paused for ${shipSha.slice(0, 12)}; no new gates:\n  ${runId}-g1  pending  push`);
+    expect(JSON.parse(readFileSync(join(runsDir, runId, 'gates.json'), 'utf8')).gates).toHaveLength(2);
+
     const pending = concilium('status', runId);
     expect(pending.status).toBe(0);
-    expect(pending.stdout).toContain(`Verdict: PASS at ${head.slice(0, 12)}`);
+    expect(pending.stdout).toContain(`Verdict: PASS at ${shipSha.slice(0, 12)}`);
     expect(pending.stdout).toContain('\n  valid\n');
-    expect(pending.stdout).toContain(`  ${runId}-g1  pending  push  git push origin refs/heads/${record.synthesis!.branch}:refs/heads/concilium/${runId}`);
+    expect(pending.stdout).toContain(`  ${runId}-g1  pending  push  git push origin ${shipSha}:refs/heads/concilium/${runId}`);
 
+    // The branch moves before the approval: the push still sends the verified commit, which has no trail file.
+    writeFileSync(join(record.synthesis!.worktree!, 'late.txt'), 'late\n');
+    git(record.synthesis!.worktree!, 'add', '.');
+    git(record.synthesis!.worktree!, 'commit', '-q', '-m', 'late commit');
+    const late = git(repo, 'rev-parse', record.synthesis!.branch!);
     expect(concilium('approve', `${runId}-g1`).status).toBe(0);
     expect(remoteBranches()).toBe(`refs/heads/concilium/${runId}`);
+    expect(remoteHead(`concilium/${runId}`)).toBe(shipSha);
+    expect(git(remote, 'ls-tree', '-r', '--name-only', `concilium/${runId}`)).toBe('sum.js\ntest.js');
     expect(existsSync(ghLog)).toBe(false);
     expect(concilium('approve', `${runId}-g2`).status).toBe(0);
     const bodyPath = join(runsDir, runId, 'pr-body.md');
@@ -161,39 +187,87 @@ describe('concilium pr, verify-pr and status', () => {
       cwd: repo,
     });
     const body = readFileSync(bodyPath, 'utf8');
-    expect(body).toContain(`**Verdict: PASS** at \`${head}\``);
+    expect(body).toContain(`**Verdict: PASS** at \`${shipSha}\``);
     expect(body).toContain(`# Synthesis of run ${runId}`);
-    expect(body).toContain(`in commit \`${record.trail!.commitSha}\``);
+    expect(body).toContain(`are in commit \`${branchHead}\` on \`${record.synthesis!.branch}\`, left out of this pull request`);
 
-    const pushed = concilium('status', runId);
-    expect(pushed.stdout).toContain(`Pushed branch: origin/concilium/${runId} at ${head.slice(0, 12)}`);
-    expect(pushed.stdout).toContain('\n  valid\n');
-
-    writeFileSync(join(record.synthesis!.worktree!, 'late.txt'), 'late\n');
-    git(record.synthesis!.worktree!, 'add', '.');
-    git(record.synthesis!.worktree!, 'commit', '-q', '-m', 'late commit');
-    const late = git(repo, 'rev-parse', record.synthesis!.branch!);
+    git(repo, 'fetch', '-q', 'origin');
     const stale = concilium('status', runId);
-    expect(stale.stdout).toContain(`void: ${record.synthesis!.branch} is at ${late.slice(0, 12)}, the verdict is for ${head.slice(0, 12)}; run verify-pr again`);
+    expect(stale.stdout).toContain(`Pushed branch: origin/concilium/${runId} at ${shipSha.slice(0, 12)}`);
+    expect(stale.stdout).toContain(`void: ${record.synthesis!.branch} is at ${late.slice(0, 12)}, the verdict is for ${branchHead.slice(0, 12)}; run verify-pr again`);
 
-    const again = concilium('verify-pr', runId);
-    expect(again.status).toBe(0);
-    expect(loadRun(runId).prVerdict!.headSha).toBe(late);
-    // The pushed branch is still at the old head, so the new verdict does not hold for it either.
-    expect(concilium('status', runId).stdout).toContain(`void: the pushed branch is at ${head.slice(0, 12)}`);
+    // The trail commit is no longer at the head, so the branch cannot ship without it.
+    const blocked = concilium('verify-pr', runId);
+    expect(blocked.status).toBe(1);
+    expect(blocked.stdout).toContain(`Verdict: BLOCKED at no commit`);
+    expect(blocked.stdout).toContain(`would ship decision-trail files (.concilium/runs/${runId}/decisions.tsv)`);
+  }, 180_000);
+
+  it('should verify from an author family when no other is usable, flag it everywhere, and open only a draft', () => {
+    const runId = '20261017T110000-bbbbbb';
+    const { shipSha } = writeRun(runId, true);
+    const warning = 'Warning: same-family verification: no installed, signed-in CLI outside the author families (anthropic, openai); claude (anthropic) verified. The pull request is a draft.';
+
+    const verify = concilium('verify-pr', runId);
+    expect(verify.status).toBe(0);
+    expect(verify.stdout).toContain(`Verdict: PASS at ${shipSha.slice(0, 12)}`);
+    expect(verify.stdout).toContain('by claude (anthropic), same family:');
+    expect(verify.stdout).toContain(warning);
+    expect(loadRun(runId).prVerdict).toMatchObject({ verdict: 'PASS', verifier: { provider: 'claude', sameFamily: true } });
+
+    const pr = concilium('pr', runId, '--base', 'main');
+    expect(pr.status).toBe(0);
+    expect(pr.stdout).toContain(warning);
+    expect(pr.stdout).toContain('(a draft: the verifier is of an author family)');
+    expect(pr.stdout).toMatch(new RegExp(`${runId}-g2  pending  pr  gh pr create .* --base main --draft\\n`));
+    expect(readFileSync(join(runsDir, runId, 'pr-body.md'), 'utf8')).toContain('> **Warning: same-family verification:');
+    expect(readFileSync(join(runsDir, runId, 'verification.md'), 'utf8')).toContain('- verifier: claude (anthropic), SAME FAMILY as the authors');
+    expect(concilium('status', runId).stdout).toContain(warning);
   }, 120_000);
 
-  it('should be BLOCKED and exit 1 when every usable CLI is of an author family', () => {
-    const runId = '20261017T110000-bbbbbb';
-    writeRun(runId, true);
+  it('should pass over a configured verifier of an author family and refuse other roles', () => {
+    const runId = '20261017T120000-cccccc';
+    writeRun(runId, false);
 
-    const result = concilium('verify-pr', runId);
+    const result = concilium('verify-pr', runId, '--role', 'verifier=claude');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('by codex (openai)');
+    expect(result.stdout).toContain('note: the configured verifier claude is of an author family (anthropic); codex verifies instead');
 
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('Verdict: BLOCKED');
-    expect(result.stdout).toContain('no installed, signed-in CLI outside the author families (anthropic, openai) can verify');
-    expect(loadRun(runId).prVerdict).toMatchObject({ verdict: 'BLOCKED', verifier: null });
-  }, 60_000);
+    const other = concilium('verify-pr', runId, '--role', 'judge=codex');
+    expect(other.status).toBe(1);
+    expect(other.stderr).toContain('only --role verifier=<cli[:model]> applies here, not judge');
+  }, 120_000);
+
+  it("should ship a single-candidate run from the candidate's branch", () => {
+    const runId = '20261017T130000-dddddd';
+    const baseSha = git(repo, 'rev-parse', 'main');
+    const branch = `concilium/${runId}/codex`;
+    const worktree = join(sandbox, `${runId}-wt`);
+    git(repo, 'worktree', 'add', '-q', '-b', branch, worktree, baseSha);
+    writeFileSync(join(worktree, 'sum.js'), 'module.exports = (a, b) => Number(a) + Number(b);\n');
+    git(worktree, 'commit', '-q', '-am', 'codex candidate');
+    const head = git(worktree, 'rev-parse', 'HEAD');
+    mkdirSync(join(runsDir, runId), { recursive: true });
+    const record = {
+      version: 1, kind: 'code', id: runId, status: 'done', task: 'make sum accept numeric strings', repoDir: repo, headSha: baseSha, baseSha,
+      dissent: { path: null, records: [] },
+      candidates: [{ candidateId: 'codex', provider: 'codex', branch, headSha: head }],
+      verification: { ...TEST_GATE, baseline: { lane: 'base', sha: baseSha, install: null, gates: [{ name: 'test', outcome: 'pass' }] } },
+      synthesis: {
+        base: null, branch: null, worktree: null, headSha: null, picker: null, notes: [], grafts: [], dropouts: [], checks: null,
+        patchPath: null, synthesisPath: null, mergeable: false, mergeCheck: null, skipped: 'fewer than 2 candidates',
+      },
+    };
+    writeFileSync(join(runsDir, runId, 'run.json'), JSON.stringify(record, null, 2));
+
+    const pr = concilium('pr', runId);
+    expect(pr.status).toBe(0);
+    expect(loadRun(runId).prVerdict).toMatchObject({ verdict: 'PASS', branch, headSha: head, authorFamilies: ['openai'], verifier: { provider: 'claude', sameFamily: false } });
+    expect(concilium('approve', `${runId}-g1`).status).toBe(0);
+    expect(remoteHead(`concilium/${runId}`)).toBe(head);
+    expect(concilium('status', runId).stdout).toContain(`Run ${runId}: ${branch} at ${head.slice(0, 12)}`);
+  }, 120_000);
 
   it('should refuse an unknown or invalid run id', () => {
     expect(concilium('status', 'no-such-run')).toMatchObject({ status: 1, stderr: expect.stringContaining('no code run no-such-run') });

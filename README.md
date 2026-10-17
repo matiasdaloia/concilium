@@ -150,7 +150,7 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium config set api-key` | Set the optional OpenRouter API key |
 | `concilium config set chairman <model>` | Set the chairman (`gemini`, `claude:opus`, or an OpenRouter ID) |
 | `concilium config set jurors <m1,m2,...>` | Set the jurors |
-| `concilium config set <role> <members>` | Save who plays a code-council role (`planner`, `implementer`, `adversary`, `judge`, `integrator`), e.g. `judge codex:gpt-5.2` |
+| `concilium config set <role> <members>` | Save who plays a code-council role (`planner`, `implementer`, `adversary`, `judge`, `integrator`) or the PR `verifier`, e.g. `judge codex:gpt-5.2` |
 | `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection) and where it was set |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
@@ -160,8 +160,8 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium gates` | List the actions Concilium paused for your approval (push, pull requests, writes outside `concilium/`) |
 | `concilium approve <gate-id>` | Approve one paused action and run its exact command |
 | `concilium reject <gate-id>` | Reject one paused action; it never runs |
-| `concilium pr <run-id>` | Verify a code run from a family that wrote none of it, then pause a push of its integration branch and a pull request for approval |
-| `concilium verify-pr <run-id>` | Re-run a code run's gates and adversarial tests at its integration head with a non-author family, and record the verdict |
+| `concilium pr <run-id>` | Verify the commit a code run would ship (its integration branch without the trail commit, or its only candidate), then pause a push of exactly that SHA and a pull request for approval; same-family verification forces a draft |
+| `concilium verify-pr <run-id>` | Re-run a code run's gates and adversarial tests at that commit with a non-author family (an author family, flagged, only when no other is usable), and record the verdict |
 | `concilium status <run-id>` | Show a code run's gates and verdict; the verdict is void once the branch head moved |
 
 For detailed usage, flags, configuration, and the programmatic API, see the **[CLI documentation](packages/cli/README.md)**.

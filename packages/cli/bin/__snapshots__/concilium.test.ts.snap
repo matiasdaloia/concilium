@@ -3,7 +3,7 @@
 exports[`concilium bin (from source) > should print stable code --help output 1`] = `
 "Usage: concilium code [options] [task...]
 
-Have agent CLIs write code, one git worktree each
+Have agent CLIs write code, one worktree each
 
 Arguments:
   task                   The coding task
@@ -84,25 +84,25 @@ exports[`concilium bin (from source) > should print stable top-level --help outp
 Multi-LLM deliberation platform with peer review and synthesis
 
 Options:
-  -V, --version               output the version number
-  -h, --help                  display help for command
+  -V, --version                 output the version number
+  -h, --help                    display help for command
 
 Commands:
-  run [options] [prompt...]   Run a deliberation pipeline
-  code [options] [task...]    Have agent CLIs write code, one git worktree each
-  history [options] [run-id]  List or view past deliberation runs
-  config                      Manage configuration
-  models [options]            List available models
-  doctor [options]            Check installed agent CLIs and how they sign in
-  roles [options]             Show who plays each role and where it was set
-  gc [options]                Remove worktrees and branches of finished runs
-  trail                       Audit the decision trail of a code run
-  gates [options]             List paused actions from each run's gates.md
-  approve <gate-id>           Approve one paused action and run its command
-  reject <gate-id>            Reject one paused action; its command never runs
-  pr [options] <run-id>       Verify a run, then pause its push and pull request
-  verify-pr <run-id>          Verify a run from a family that wrote none of it
-  status <run-id>             Show a run's gates and verdict
-  help [command]              display help for command
+  run [options] [prompt...]     Run a deliberation pipeline
+  code [options] [task...]      Have agent CLIs write code, one worktree each
+  history [options] [run-id]    List or view past deliberation runs
+  config                        Manage configuration
+  models [options]              List available models
+  doctor [options]              Check installed agent CLIs and how they sign in
+  roles [options]               Show who plays each role and where it was set
+  gc [options]                  Remove worktrees and branches of finished runs
+  trail                         Audit the decision trail of a code run
+  gates [options]               List paused actions from each run's gates.md
+  approve <gate-id>             Approve one paused action and run its command
+  reject <gate-id>              Reject one paused action; its command never runs
+  pr [options] <run-id>         Verify a run, then pause its push and its PR
+  verify-pr [options] <run-id>  Verify the commit a run would ship
+  status <run-id>               Show a run's gates and verdict
+  help [command]                display help for command
 "
 `;

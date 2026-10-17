@@ -543,6 +543,7 @@ describe('roles', () => {
     expect(run('--role', 'judge=nope')).toBe('--role: judge: "nope" is not an agent CLI (use claude, codex, gemini, opencode, optionally with :model)');
     expect(run('--agents', 'claude', '--role', 'implementer=codex')).toBe('--agents and --role implementer=... set the same role; use one');
     expect(run('--role', 'juror=claude')).toContain('juror and chairman are plan-council roles');
+    expect(run('--role', 'verifier=gemini')).toContain('verifier is a shipping role');
 
     writeFileSync(factory, 'roles:\n  judge: [claude, codex]\n');
     try {
@@ -561,6 +562,9 @@ describe('roles', () => {
     expect(configSet.status).toBe(0);
     expect(configSet.stdout).toContain('Role integrator set to: claude:claude-opus-5-5');
     try {
+      const verifierSet = cli('config', 'set', 'verifier', 'gemini');
+      expect(verifierSet.status).toBe(0);
+      expect(verifierSet.stdout).toContain('Role verifier set to: gemini');
       mkdirSync(join(rolesRepo, 'sub'), { recursive: true });
       const json = cli('roles', '--json', '--cwd', join(rolesRepo, 'sub'), '--role', 'adversary=gemini');
       expect(json.status).toBe(0);
@@ -572,6 +576,7 @@ describe('roles', () => {
         adversary: { value: ['gemini'], source: 'flag' },
         judge: { value: 'codex', source: 'repo' },
         integrator: { value: 'claude:claude-opus-5-5', source: 'saved' },
+        verifier: { value: 'gemini', source: 'saved' },
         juror: { value: ['claude', 'codex'], source: 'default' },
         chairman: { value: 'codex', source: 'default' },
       });
@@ -581,6 +586,7 @@ describe('roles', () => {
       expect(table.status).toBe(0);
       expect(table.stdout).toMatch(/judge\s+codex\s+repo\n/);
       expect(table.stdout).toMatch(/chairman\s+codex\s+default\n/);
+      expect(table.stdout).toMatch(/verifier\s+gemini\s+saved\n/);
       expect(table.stdout).toContain(`repo (${factory})`);
       expect(table.stdout).toContain('Warning: judge codex is of an implementer family (openai)');
 

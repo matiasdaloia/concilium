@@ -295,7 +295,7 @@ function printSummary(record: CodeRunRecord, savedTo: string | null): void {
 export function registerCodeCommand(program: Command): void {
   program
     .command('code')
-    .description('Have agent CLIs write code, one git worktree each')
+    .description('Have agent CLIs write code, one worktree each')
     .argument('[task...]', 'The coding task')
     .option('--agents <list>', 'Candidate agents, the implementer role (e.g. "claude,codex" or "claude:opus,codex:gpt-5.2-codex"); default: the installed, signed-in agent CLIs (see `concilium doctor`)')
     .option('--role <role=members>', 'Who plays a role: planner, implementer, adversary, judge or integrator, as cli[:model] (e.g. "judge=codex:gpt-5.2", "adversary=claude,gemini"); repeatable, and beats .concilium/factory.yaml and saved config (see `concilium roles`)', collect)
@@ -340,6 +340,7 @@ export function registerCodeCommand(program: Command): void {
         }
         const flags = parseRoleFlags([...(opts.agents !== undefined ? [`implementer=${opts.agents}`] : []), ...roleFlags]);
         if (flags.juror || flags.chairman) fail('juror and chairman are plan-council roles; set them with `concilium run --juror-models` and `--chairman`');
+        if (flags.verifier) fail('verifier is a shipping role; set it with `concilium pr --role verifier=...` or `verify-pr --role verifier=...`');
         const roles = await runtime.resolveCodeRoles({ repoDir: resolve(opts.cwd), flags });
         const agents = roles.implementer.value.map(specAgent);
         if (agents.length === 0) fail('no implementer to run');

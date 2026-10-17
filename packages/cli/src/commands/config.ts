@@ -1,7 +1,10 @@
 import { createInterface } from 'node:readline';
 import type { Command } from 'commander';
-import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, type CodeRoleName } from '@concilium/core';
+import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, SHIP_ROLES, type RoleName } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
+
+/** The roles `config set` saves: the code council's and shipping's. */
+const SAVED_ROLES: readonly RoleName[] = [...CODE_ROLES, ...SHIP_ROLES];
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stderr });
@@ -56,7 +59,7 @@ export function registerConfigCommand(program: Command): void {
   config
     .command('set')
     .description('Set a configuration value')
-    .argument('<key>', `Configuration key (api-key, chairman, jurors, or a code role: ${CODE_ROLES.join(', ')})`)
+    .argument('<key>', `Configuration key (api-key, chairman, jurors, or a role: ${SAVED_ROLES.join(', ')})`)
     .argument('[value]', 'Value to set')
     .action(async (key: string, value?: string) => {
       const secretStore = new PlaintextSecretStore();
@@ -94,18 +97,18 @@ export function registerConfigCommand(program: Command): void {
           break;
         }
         default: {
-          if (!(CODE_ROLES as readonly string[]).includes(key)) {
-            console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors, ${CODE_ROLES.join(', ')}`);
+          if (!(SAVED_ROLES as readonly string[]).includes(key)) {
+            console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors, ${SAVED_ROLES.join(', ')}`);
             process.exit(1);
           }
           if (!value) {
-            console.error(`Usage: concilium config set ${key} <cli[:model]${isListRole(key as CodeRoleName) ? ',...' : ''}>`);
+            console.error(`Usage: concilium config set ${key} <cli[:model]${isListRole(key as RoleName) ? ',...' : ''}>`);
             process.exit(1);
           }
           try {
             const roles = parseRoleFlags([`${key}=${value}`], 'config set');
             await configService.saveRoles(roles);
-            const saved = roles[key as CodeRoleName]!;
+            const saved = roles[key as RoleName]!;
             console.log(`Role ${key} set to: ${Array.isArray(saved) ? saved.join(', ') : saved}`);
           } catch (err) {
             console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
