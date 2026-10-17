@@ -583,6 +583,7 @@ Verification rule for every milestone. Unit tests alone do not pass a milestone.
 
 - Upgrade Electron and the lint toolchain. Render code-council run directories read-only (candidates, matrix, dissent, trail). No new orchestration in the desktop.
 - *Acceptance.* The desktop opens a run directory produced by the CLI and shows the same ranking as `synthesis.md`.
+- *Done in M9.2.* `synthesis.md` had no ranking until then (only the base), so it gained a `## Ranking` table (`rankingMarkdown`). The desktop reads a run directory read-only (Open run, or `--open-run <dir>`) into a `RunView`: candidates, ranking, survival matrix, dissent, decision trail, synthesis, verdict and the reports; files it cannot read become notes. `run-dir.test.ts` checks that the rendered ranking rows of a fixture run written by the CLI equal its `synthesis.md` table, and `npm run smoke -w concilium -- --open-run <dir>` prints the ranking the window rendered, from the DOM, in the same form.
 
 ### Milestone order at a glance
 

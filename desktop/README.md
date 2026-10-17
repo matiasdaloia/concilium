@@ -41,6 +41,11 @@ All commands are run from the monorepo root using `-w concilium`:
 | `npm run lint -w concilium` | Run ESLint |
 | `npm run test -w concilium` | Run tests (Vitest) |
 | `npm run test:watch -w concilium` | Run tests in watch mode |
+| `npm run smoke -w concilium` | Start the packaged app under `xvfb-run` with `--smoke-test` and quit (Linux); add `-- --open-run <run-dir>` to also open a code run and print its ranking |
+
+## Code runs
+
+**Open run** on the home screen opens a run directory that `concilium code` wrote (by default under `~/.local/share/concilium/runs/<run-id>`), read-only: the ranking, the candidates, the survival matrix, the dissent, the synthesis, the verdict from `concilium verify-pr` when there is one, the decision trail and the markdown reports. Start the app with `--open-run <run-dir>` to open one at once. The desktop reads only `run.json`, `synthesis.md`, `dissent.json`, `decisions.tsv`, `verification.md` and `reframe.md` inside that directory, and never starts a code run itself. A file it cannot read, or a record newer than it knows, is listed as a note above the run.
 
 ## Project structure
 
@@ -50,9 +55,11 @@ desktop/
 │   ├── main/              # Electron main process
 │   │   ├── main.ts        # App entry point
 │   │   ├── ipc.ts         # IPC handler registration
+│   │   ├── run-dir.ts     # Reads a code-run directory (run-view.ts parses it)
 │   │   ├── services/      # Process spawning, CLI parsers, runner
 │   │   └── adapters/      # Electron-specific port implementations
 │   ├── preload/           # Preload scripts (contextBridge)
+│   ├── shared/            # Types shared by main and renderer (RunView)
 │   └── renderer/          # React frontend
 │       ├── App.tsx        # Root component and routing
 │       ├── screens/       # Page-level components

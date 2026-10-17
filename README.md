@@ -312,6 +312,7 @@ npm run publish:all         # Publish both (core first)
 npm run start -w concilium              # Start Electron dev server
 npm run package -w concilium            # Package the app
 npm run smoke -w concilium              # Open the packaged app under xvfb-run and quit (Linux)
+npm run smoke -w concilium -- --open-run <run-dir>  # Also open a code run and print its ranking
 npm run make -w concilium               # Create distributables
 npm run test -w concilium               # Run desktop tests
 ```
