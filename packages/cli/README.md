@@ -455,7 +455,26 @@ roles:
   chairman: gemini
 ```
 
-An unknown role, a list for a single-member role, a member that is not an agent CLI (for a code role or the verifier), an empty model or two adversaries of one family is an error naming the file and every problem, and `code`, `run` and `roles` exit 1 before running anything. A judge of an implementer family (or of an unknown family, such as OpenCode) is allowed, with a warning: its judgments of ties among its family and its graft picks are flagged same-family.
+`code`, `factory`, `pr` and `verify-pr` check the roles against the rules below before any agent CLI runs, and `roles` shows the result. Each problem is one line naming the rule, where the value was set and how to fix it, for example `Error: [judge-judges-itself] --role judge: judge claude is of the anthropic family, which has 2 implementers, so it can judge a tie of anthropic candidates alone. Fix: pick a judge of a family with at most one implementer, or auto`. An error exits 1 (with `--json`, stderr holds `{ "error", "violations" }`); a warning is printed and the command goes on. `auto` never breaks a rule: the run picks across families and flags what it cannot.
+
+| Rule | Severity | When |
+|------|----------|------|
+| `factory-yaml` | error | `.concilium/factory.yaml` is not YAML or not a mapping |
+| `roles-not-a-mapping` | error | `roles:` is not a mapping of role names |
+| `unknown-role` | error | A role that does not exist |
+| `list-for-single-role` | error | A list for a role other than `implementer`, `adversary`, `juror` |
+| `no-members` | error | An empty list |
+| `keyword-with-members` | error | A keyword (`same-as-implementer`) listed with members |
+| `unknown-cli` | error | A member that is not an agent CLI (jurors and the chairman may be OpenRouter ids) |
+| `empty-model` | error | `cli:` with nothing after the colon |
+| `adversary-family-twice` | error | Two adversaries of one model family |
+| `flag-syntax`, `flag-repeated` | error | A `--role` without `=`, or a single-member role given twice |
+| `agents-and-implementer` | error | Both `--agents` and `--role implementer=` |
+| `role-not-applicable` | error | A role the command does not take: `code` takes the code roles, `factory` those and `verifier`, `pr` and `verify-pr` only `verifier` |
+| `judge-judges-itself` | error | A judge of a family with two or more implementers: a tie among them, or a graft pick over them alone, is judged by that family only |
+| `judge-shares-family` | warning | A judge of a family with one implementer: ties with that candidate are judged same-family and flagged |
+| `unknown-family` | error | A judge or verifier of an unknown model family (OpenCode): it cannot be shown to be cross-family |
+| `verifier-author-family` | error | A verifier of a family that writes the code: an implementer's or a configured integrator's (`code`, `factory`, `roles`), or the run's author families (`pr`, `verify-pr`) |
 
 ```
 concilium roles [options]
@@ -465,7 +484,7 @@ concilium roles [options]
 |------|-------------|
 | `--cwd <path>` | Directory of the repo whose `.concilium/factory.yaml` applies (default: current directory) |
 | `--role <role=members>` | Set a role for this preview, as `code --role` does (repeatable) |
-| `--json` | Output as JSON: `roles` (each with `value` and `source`), `factoryPath`, `warnings`, `notes` |
+| `--json` | Output as JSON: `roles` (each with `value` and `source`), `factoryPath`, `violations` (each with `rule`, `severity`, `role`, `source`, `at`, `message`, `hint`), `notes` |
 
 **Examples:**
 
@@ -577,7 +596,7 @@ concilium pr <run-id> [options]
 
 ### `concilium verify-pr`
 
-Verify the commit a code run would ship, preferring a model family that wrote none of it. The commit is the branch head (see [`concilium pr`](#concilium-pr)), or its parent when the head is the run's decision trail commit and touches only `.concilium/runs/`: the trail stays on the branch and in the run directory, never in the pull request. A commit that would still carry `.concilium/runs/` files (for example a commit after the trail commit) is `BLOCKED` with nothing to push. The author families are the base candidate's, and each committed graft's donor and integrator, or the single candidate's. The verifier is the configured `verifier` role (`--role verifier=`, `factory.yaml`, `config set verifier`) when its CLI is installed, signed in and of a family outside them, else the first installed, signed-in agent CLI (in `claude`, `codex`, `gemini`, `opencode` order) of a known family outside them. When there is none, an author-family CLI verifies (the configured one first): the verdict records `sameFamily: true` with the reason, `verification.md`, the PR body, `pr` and `status` say so, and the pull request is always a draft. It is `BLOCKED` only when no agent CLI is usable at all. In a fresh worktree detached at the commit, it re-runs the run's gates and its valid adversarial tests (`evidence` and `regression-guard`), then the verifier CLI reviews the diff read-only and answers `PASS`, `NOTES` or `FAIL`. The verdict is `FAIL` when a gate that passes on the base, a valid test or the review fails; `PASS+NOTES` when a gate fails on the base too or the review has notes; `BLOCKED` when the review gives no verdict; `PASS` otherwise. It is keyed to the commit's SHA, the base SHA and the `git patch-id` of the diff, saved as `prVerdict` in the run record (with the branch head it read and the trail commit it left out) and written to `verification.md` in the run directory. It exits 1 unless the verdict is `PASS` or `PASS+NOTES`.
+Verify the commit a code run would ship, preferring a model family that wrote none of it. The commit is the branch head (see [`concilium pr`](#concilium-pr)), or its parent when the head is the run's decision trail commit and touches only `.concilium/runs/`: the trail stays on the branch and in the run directory, never in the pull request. A commit that would still carry `.concilium/runs/` files (for example a commit after the trail commit) is `BLOCKED` with nothing to push. The author families are the base candidate's, and each committed graft's donor and integrator, or the single candidate's. A configured `verifier` role (`--role verifier=`, `factory.yaml`, `config set verifier`) of an author family or of an unknown family is refused before anything runs (see the [role rules](#concilium-roles)). The verifier is the configured one when its CLI is installed and signed in, else the first installed, signed-in agent CLI (in `claude`, `codex`, `gemini`, `opencode` order) of a known family outside them. When there is none, an author-family CLI verifies (the configured one first): the verdict records `sameFamily: true` with the reason, `verification.md`, the PR body, `pr` and `status` say so, and the pull request is always a draft. It is `BLOCKED` only when no agent CLI is usable at all. In a fresh worktree detached at the commit, it re-runs the run's gates and its valid adversarial tests (`evidence` and `regression-guard`), then the verifier CLI reviews the diff read-only and answers `PASS`, `NOTES` or `FAIL`. The verdict is `FAIL` when a gate that passes on the base, a valid test or the review fails; `PASS+NOTES` when a gate fails on the base too or the review has notes; `BLOCKED` when the review gives no verdict; `PASS` otherwise. It is keyed to the commit's SHA, the base SHA and the `git patch-id` of the diff, saved as `prVerdict` in the run record (with the branch head it read and the trail commit it left out) and written to `verification.md` in the run directory. It exits 1 unless the verdict is `PASS` or `PASS+NOTES`.
 
 ```
 concilium verify-pr <run-id> [options]
