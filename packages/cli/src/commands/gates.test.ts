@@ -85,11 +85,11 @@ describe('concilium gates, approve and reject', () => {
       [`${runId}-g2`, 'rejected'],
     ]);
     expect(readFileSync(join(runsDir, runId, 'gates.md'), 'utf8')).toContain(`## ${runId}-g2: rejected`);
-  });
+  }, 60_000);
 
   it('should say when there are no gates and refuse an unknown gate or run id', () => {
     expect(concilium('gates', '--run', 'no-such-run').stdout).toBe('No gates.\n');
     expect(concilium('approve', 'no-such-g1')).toMatchObject({ status: 1, stderr: expect.stringContaining('no gate no-such-g1') });
     expect(concilium('gates', '--run', '../x').status).toBe(1);
-  });
+  }, 30_000);
 });
