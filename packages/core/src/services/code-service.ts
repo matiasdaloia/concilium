@@ -19,7 +19,7 @@ import type { GateResult } from '../domain/verification/gates.js';
 import type { DriverUsage } from '../domain/driver/normalized-event.js';
 import type { ReportStatus } from '../domain/driver/report.js';
 import { testGate } from '../domain/verification/adversarial.js';
-import { getProviderInfo } from '../domain/agent/providers.js';
+import { familyKey } from '../domain/agent/providers.js';
 import { defaultCodeRoles, ROLE_KEYWORDS, specAgent, type CodeRoleMap } from '../domain/roles/roles.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
 import type { DiffStat, WorkspaceManager } from '../ports/workspace.js';
@@ -286,13 +286,13 @@ function attack(
     baseTestOutcome: testOutcome(verification.baseline?.gates),
     candidates: candidates.flatMap((c) => (c.worktree && c.headSha ? [{
       candidateId: c.candidateId, provider: c.provider, ...(c.model ? { model: c.model } : {}),
-      family: getProviderInfo(c.provider)?.family ?? c.provider, worktree: c.worktree, headSha: c.headSha,
+      family: familyKey(c.provider, c.model), worktree: c.worktree, headSha: c.headSha,
       testOutcome: testOutcome(c.verification?.gates),
     }] : [])),
     ...(Array.isArray(roles.adversary.value) ? {
       adversaries: roles.adversary.value.map((spec) => {
         const agent = specAgent(spec);
-        return { ...agent, family: getProviderInfo(agent.provider)?.family ?? agent.provider };
+        return { ...agent, family: familyKey(agent.provider, agent.model) };
       }),
     } : {}),
     drivers: input.drivers, workspace: input.workspace, timeoutMs, signal,
@@ -422,7 +422,7 @@ export async function runCodeCandidates(input: CodeRunInput): Promise<CodeRunRec
       ? detectDivergence({
         candidates: ranking.order.map((e) => {
           const c = candidates.find((c) => c.candidateId === e.candidateId)!;
-          return { candidateId: e.candidateId, family: getProviderInfo(c.provider)?.family ?? c.provider, contends: contends(e), newFailures: c.verification?.newFailures ?? [] };
+          return { candidateId: e.candidateId, family: familyKey(c.provider, c.model), contends: contends(e), newFailures: c.verification?.newFailures ?? [] };
         }),
         tests: adversarial?.tests ?? [], matrix: adversarial?.matrix ?? {}, judgments: ranking.judgments,
       })

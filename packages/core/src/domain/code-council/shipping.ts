@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getProviderInfo } from '../agent/providers.js';
+import { agentFamily, familyKey } from '../agent/providers.js';
 import { ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
 import type { SurvivalCell } from '../verification/adversarial.js';
 import type { StepResult } from '../verification/gates.js';
@@ -91,18 +91,17 @@ export type PrRequest = {
   requestedAt: string;
 };
 
-function familyOf(provider: string): string {
-  return getProviderInfo(provider)?.family ?? provider;
-}
-
 /** Who wrote the integration commits: the base candidate, and each committed graft's donor and integrator. */
-export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: string; provider: string }[]): string[] {
-  const providerOf = (id: string) => candidates.find((c) => c.candidateId === id)?.provider ?? id;
-  const providers = [
-    ...(synthesis.base ? [providerOf(synthesis.base.candidateId)] : []),
-    ...synthesis.grafts.filter((g) => g.commitSha).flatMap((g) => [providerOf(g.candidateId), g.integrator.provider]),
+export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: string; provider: string; model?: string | null }[]): string[] {
+  const familyOf = (id: string) => {
+    const c = candidates.find((c) => c.candidateId === id);
+    return c ? familyKey(c.provider, c.model) : id;
+  };
+  const families = [
+    ...(synthesis.base ? [familyOf(synthesis.base.candidateId)] : []),
+    ...synthesis.grafts.filter((g) => g.commitSha).flatMap((g) => [familyOf(g.candidateId), familyKey(g.integrator.provider, g.integrator.model)]),
   ];
-  return [...new Set(providers.map(familyOf))];
+  return [...new Set(families)];
 }
 
 /**
@@ -111,7 +110,7 @@ export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: 
  */
 export function shipSource(record: {
   synthesis?: Synthesis;
-  candidates: { candidateId: string; provider: string; branch: string; headSha: string | null }[];
+  candidates: { candidateId: string; provider: string; model?: string | null; branch: string; headSha: string | null }[];
 }): ShipSource | { blocked: string } {
   if (record.synthesis?.branch) {
     return { kind: 'integration', branch: record.synthesis.branch, authorFamilies: authorFamilies(record.synthesis, record.candidates) };
@@ -119,7 +118,7 @@ export function shipSource(record: {
   if (record.candidates.length !== 1) return { blocked: 'the run has no integration branch' };
   const only = record.candidates[0];
   if (!only.headSha) return { blocked: `the only candidate, ${only.candidateId}, has no head` };
-  return { kind: 'candidate', branch: only.branch, authorFamilies: [familyOf(only.provider)] };
+  return { kind: 'candidate', branch: only.branch, authorFamilies: [familyKey(only.provider, only.model)] };
 }
 
 /** A path of the decision trail, which a shipped commit must not touch. */
@@ -139,7 +138,7 @@ export function pickVerifier(
   configured: string | null = null,
 ): { verifier: Verifier | null; notes: string[] } {
   const spec = configured && configured !== ROLE_KEYWORDS.verifier ? specAgent(configured) : null;
-  const mine = spec ? usable.find((u) => u.provider === spec.provider) : undefined;
+  const mine = spec && usable.some((u) => u.provider === spec.provider) ? { provider: spec.provider, family: agentFamily(spec.provider, spec.model) } : undefined;
   const outside = (u: { family: string | null }): u is { provider: string; family: string } => u.family !== null && !authors.includes(u.family);
   const notes: string[] = [];
   if (mine && outside(mine)) {

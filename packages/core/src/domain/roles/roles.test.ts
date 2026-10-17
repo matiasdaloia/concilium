@@ -204,6 +204,24 @@ describe('checkRoleFamilies', () => {
     expect(checkRoleFamilies({ verifier: { value: 'claude', source: 'flag' }, authors: ['openai'] })).toEqual([]);
     expect(rules(checkRoleFamilies({ verifier: { value: 'opencode', source: 'flag' }, authors: ['openai'] }))).toEqual([['unknown-family', '--role verifier']]);
   });
+
+  it("should take an OpenCode member's family from its model id, and keep an unknown vendor unknown", () => {
+    const verifier = (value: string) => checkRoleFamilies({ verifier: { value, source: 'flag' }, authors: ['openai'] });
+    expect(verifier('opencode:google/gemini-2.5-pro')).toEqual([]);
+    expect(verifier('opencode:openrouter/anthropic/claude-opus-4.6')).toEqual([]);
+    expect(rules(verifier('opencode:openrouter/openai/gpt-5.2'))).toEqual([['verifier-author-family', '--role verifier']]);
+    expect(rules(verifier('opencode:mistral/devstral-2'))).toEqual([['unknown-family', '--role verifier']]);
+    // An OpenCode implementer on an OpenAI model is an openai seat: two of them leave codex judging itself.
+    const openai = defaultCodeRoles(['codex', 'opencode:openai/gpt-5.2', 'claude']);
+    expect(rules(checkRoleFamilies({ roles: { ...openai, judge: { value: 'codex', source: 'flag' } } }))).toEqual([['judge-judges-itself', '--role judge']]);
+    expect(rules(checkRoleFamilies({ roles: roles({ judge: { value: 'opencode:google/gemini-2.5-pro', source: 'flag' } }) }))).toEqual([]);
+  });
+
+  it('should count an OpenCode adversary toward the family of its model', () => {
+    expect(rules(violations(() => validateRoles({ adversary: ['gemini', 'opencode:openrouter/google/gemini-3-pro-preview'] }, FILE))))
+      .toEqual([['adversary-family-twice', '/r/.concilium/factory.yaml roles.adversary']]);
+    expect(validateRoles({ adversary: ['gemini', 'opencode:mistral/devstral-2'] }, FILE)).toEqual({ adversary: ['gemini', 'opencode:mistral/devstral-2'] });
+  });
 });
 
 describe('resolveCodeRoles', () => {

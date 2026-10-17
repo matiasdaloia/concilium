@@ -11,7 +11,8 @@
  * Each id has a headless CLI driver in `adapters/cli/cli-drivers.ts`.
  *
  * `family` is the model family the CLI runs on its own login, used to seat a chairman
- * from another family than the jurors. OpenCode routes to any provider, so it has none.
+ * from another family than the jurors. OpenCode routes to any provider, so it has none: its family comes
+ * from the model id (`agentFamily`).
  * `models` is the fixed model list offered for CLIs that cannot list their models
  * (`supportsDiscovery: false`); an empty `defaultModel` means the CLI's own default.
  */
@@ -54,4 +55,27 @@ export function isProviderId(value: unknown): value is AgentProviderType {
 
 export function getProviderInfo(id: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.id === id);
+}
+
+/** Model vendors whose family is known: the families of the CLIs above. Any other vendor is an unknown family. */
+export const VENDOR_FAMILY: Readonly<Record<string, string>> = { anthropic: 'anthropic', openai: 'openai', google: 'google' };
+
+/**
+ * The model family an agent runs on, or null when it is unknown. Every family check uses it: the judge, the
+ * adversaries, the verifier, the role rules and the ledger. A CLI with a family (`claude`, `codex`, `gemini`) has
+ * it whatever the model. OpenCode's comes from its model id: `<vendor>/<model>` (`google/gemini-2.5-pro`), or
+ * `<provider>/<vendor>/<model>` through a router (`openrouter/anthropic/claude-sonnet-4.5`), for a vendor in
+ * `VENDOR_FAMILY`; any other vendor, or no model, is unknown.
+ */
+export function agentFamily(provider: string, model?: string | null): string | null {
+  const family = getProviderInfo(provider)?.family ?? null;
+  if (family !== null || !model) return family;
+  const [first, second, ...rest] = model.trim().split('/');
+  if (second === undefined) return null;
+  return VENDOR_FAMILY[first] ?? (rest.length > 0 ? VENDOR_FAMILY[second] ?? null : null);
+}
+
+/** The family an agent counts toward: its model family, or its provider id when that is unknown. */
+export function familyKey(provider: string, model?: string | null): string {
+  return agentFamily(provider, model) ?? provider;
 }

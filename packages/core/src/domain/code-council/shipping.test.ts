@@ -71,6 +71,13 @@ describe('authorFamilies', () => {
     expect(authorFamilies(synthesis([graft('codex', 'gemini', null)]), candidates)).toEqual(['anthropic']);
     expect(authorFamilies(synthesis([graft('opencode', 'claude', 'f'.repeat(40))]), candidates)).toEqual(['anthropic', 'opencode']);
   });
+
+  it("should take an OpenCode author's family from its model id", () => {
+    const routed = [...candidates, { candidateId: 'opencode-2', provider: 'opencode', model: 'openrouter/google/gemini-3-pro-preview' }];
+    expect(authorFamilies(synthesis([graft('opencode-2', 'claude', 'f'.repeat(40))]), routed)).toEqual(['anthropic', 'google']);
+    const only = { candidateId: 'opencode', provider: 'opencode', model: 'openai/gpt-5.2', branch: 'concilium/r/opencode', headSha: HEAD };
+    expect(shipSource({ candidates: [only] })).toEqual({ kind: 'candidate', branch: 'concilium/r/opencode', authorFamilies: ['openai'] });
+  });
 });
 
 describe('pickVerifier', () => {
@@ -108,6 +115,13 @@ describe('pickVerifier', () => {
     // A configured verifier is the fallback when it is usable; an unknown family never counts as another family.
     expect(pickVerifier(['anthropic', 'openai', 'google'], usable, 'codex:gpt-5.2').verifier).toMatchObject({ provider: 'codex', model: 'gpt-5.2', configured: true, sameFamily: true });
     expect(pickVerifier(['anthropic'], [{ provider: 'opencode', family: null }]).verifier).toMatchObject({ provider: 'opencode', family: null, sameFamily: true });
+  });
+
+  it("should take a configured OpenCode verifier's family from its model id", () => {
+    expect(pickVerifier(['anthropic'], usable, 'opencode:openrouter/google/gemini-3-pro-preview').verifier).toEqual({
+      provider: 'opencode', model: 'openrouter/google/gemini-3-pro-preview', configured: true, sameFamily: false, family: 'google',
+    });
+    expect(pickVerifier(['anthropic'], usable, 'opencode:anthropic/claude-opus-4.6')).toMatchObject({ verifier: { provider: 'codex', configured: false } });
   });
 
   it('should find no verifier only when no CLI is usable', () => {

@@ -5,7 +5,7 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import { getProviderInfo, isProviderId } from '../agent/providers.js';
+import { agentFamily, familyKey, isProviderId } from '../agent/providers.js';
 import { parseCouncilMember } from '../council/council-members.js';
 import { FACTORY_CONFIG, roleOrigin, RolesValidationError, violation, type RoleOrigin, type RoleViolation } from './role-rules.js';
 
@@ -64,10 +64,10 @@ function isRoleName(value: string): value is RoleName {
   return (ROLE_NAMES as readonly string[]).includes(value);
 }
 
-/** The model family of an agent CLI spec, or null when it is unknown (OpenCode). */
+/** The model family of an agent CLI spec (`agentFamily`), or null when it is unknown (OpenCode without a known vendor). */
 export function specFamily(spec: string): string | null {
   const member = parseCouncilMember(spec);
-  return member.kind === 'cli' ? getProviderInfo(member.cli)?.family ?? null : null;
+  return member.kind === 'cli' ? agentFamily(member.cli, member.model) : null;
 }
 
 /** `codex:gpt-5.2` → `{ provider: 'codex', model: 'gpt-5.2' }`. */
@@ -77,9 +77,10 @@ export function specAgent(spec: string): { provider: string; model?: string } {
   return { provider: member.cli, ...(member.model ? { model: member.model } : {}) };
 }
 
-/** The family a member counts toward: its model family, or its provider id when that is unknown (OpenCode). */
-function familyKey(spec: string): string {
-  return specFamily(spec) ?? specAgent(spec).provider;
+/** The family a member counts toward: its model family, or its provider id when that is unknown. */
+function specFamilyKey(spec: string): string {
+  const agent = specAgent(spec);
+  return familyKey(agent.provider, agent.model);
 }
 
 /** The violation of one member of `role`, or null. Code roles need an agent CLI; jurors and the chairman may be OpenRouter ids. */
@@ -135,7 +136,7 @@ export function validateRoles(raw: unknown, origin: RoleOrigin): RoleSettings {
     }
     const specs = members.map((m) => (m as string).trim());
     if (role === 'adversary') {
-      const families = specs.map(familyKey);
+      const families = specs.map(specFamilyKey);
       const twice = families.find((f, i) => families.indexOf(f) !== i);
       if (twice) {
         found.push(violation('adversary-family-twice', origin, role, `two members of the ${twice} family`));
@@ -288,7 +289,7 @@ export function defaultCodeRoles(implementers: string[]): CodeRoleMap {
 export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: ResolvedRole<string>; authors?: readonly string[] }): RoleViolation[] {
   const { roles, verifier } = input;
   const found: RoleViolation[] = [];
-  const implementers = roles?.implementer.value.map(familyKey) ?? [];
+  const implementers = roles?.implementer.value.map(specFamilyKey) ?? [];
   if (roles && roles.judge.value !== ROLE_KEYWORDS.judge) {
     const { value: judge, source } = roles.judge;
     const origin = roleOrigin.resolved(source);
@@ -305,7 +306,7 @@ export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: Resol
   if (verifier && verifier.value !== ROLE_KEYWORDS.verifier) {
     const origin = roleOrigin.resolved(verifier.source);
     const family = specFamily(verifier.value);
-    const integrator = roles && roles.integrator.value !== ROLE_KEYWORDS.integrator ? [familyKey(roles.integrator.value)] : [];
+    const integrator = roles && roles.integrator.value !== ROLE_KEYWORDS.integrator ? [specFamilyKey(roles.integrator.value)] : [];
     const authors = input.authors ?? [...new Set([...implementers, ...integrator])];
     if (family === null) {
       found.push(violation('unknown-family', origin, 'verifier', `verifier ${verifier.value} is of an unknown model family, so it cannot be shown to be outside the authors`));

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getProviderInfo, PROVIDER_IDS } from '../agent/providers.js';
+import { getProviderInfo, PROVIDER_IDS, VENDOR_FAMILY } from '../agent/providers.js';
 import type { RoleName, RoleSource } from './roles.js';
 
 /** The per-repo factory config. Only its `roles:` section is read today. */
@@ -33,7 +33,10 @@ export const ROLE_RULES = {
   'role-not-applicable': { severity: 'error', hint: 'set the role where it applies' },
   'judge-judges-itself': { severity: 'error', hint: 'pick a judge of a family with at most one implementer, or `auto`' },
   'judge-shares-family': { severity: 'warning', hint: 'pick a judge of a family no implementer has, or `auto`, to judge every tie cross-family' },
-  'unknown-family': { severity: 'error', hint: `use ${KNOWN_FAMILY_CLIS.join(', ')} (a known model family), or \`auto\`` },
+  'unknown-family': {
+    severity: 'error',
+    hint: `use ${KNOWN_FAMILY_CLIS.join(', ')}, or opencode:[<provider>/]<vendor>/<model> with a vendor of ${Object.keys(VENDOR_FAMILY).join(', ')} (a known model family), or \`auto\``,
+  },
   'verifier-author-family': { severity: 'error', hint: 'pick a verifier of a family that wrote none of the code, or `auto`' },
 } as const satisfies Record<string, { severity: 'error' | 'warning'; hint: string }>;
 

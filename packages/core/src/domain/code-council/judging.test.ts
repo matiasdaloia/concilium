@@ -15,9 +15,14 @@ describe('configuredJudge', () => {
     expect(configuredJudge('codex:gpt-5.2', ['anthropic', 'openai'])).toEqual({
       provider: 'codex:gpt-5.2', sameFamily: true, sameFamilyReason: 'the configured judge codex:gpt-5.2 is of one of the families it reads (anthropic, openai)',
     });
-    expect(configuredJudge('opencode:openai/gpt-5.2', ['anthropic'])).toEqual({
-      provider: 'opencode:openai/gpt-5.2', sameFamily: true, sameFamilyReason: 'the configured judge opencode:openai/gpt-5.2 is of an unknown family',
+    expect(configuredJudge('opencode:mistral/devstral-2', ['anthropic'])).toEqual({
+      provider: 'opencode:mistral/devstral-2', sameFamily: true, sameFamilyReason: 'the configured judge opencode:mistral/devstral-2 is of an unknown family',
     });
+  });
+
+  it("should take an OpenCode judge's family from its model id", () => {
+    expect(configuredJudge('opencode:openai/gpt-5.2', ['anthropic'])).toEqual({ provider: 'opencode:openai/gpt-5.2', sameFamily: false, sameFamilyReason: null });
+    expect(configuredJudge('opencode:openrouter/anthropic/claude-opus-4.6', ['anthropic'])).toMatchObject({ sameFamily: true });
   });
 });
 

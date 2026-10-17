@@ -25,6 +25,8 @@ describe('parseCouncilMember', () => {
     expect(memberFamily(parseCouncilMember('gemini'))).toBe('google');
     expect(memberFamily(parseCouncilMember('opencode'))).toBeNull();
     expect(memberFamily(parseCouncilMember('opencode:openai/gpt-5.2'))).toBe('openai');
+    expect(memberFamily(parseCouncilMember('opencode:openrouter/google/gemini-3-pro-preview'))).toBe('google');
+    expect(memberFamily(parseCouncilMember('opencode:mistral/devstral-2'))).toBeNull();
     expect(memberFamily(parseCouncilMember('google/gemini-3-pro-preview'))).toBe('google');
   });
 });

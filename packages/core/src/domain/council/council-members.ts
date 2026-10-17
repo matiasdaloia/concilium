@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getProviderInfo, isProviderId, PROVIDERS, type AgentProviderType } from '../agent/providers.js';
+import { agentFamily, getProviderInfo, isProviderId, PROVIDERS, VENDOR_FAMILY, type AgentProviderType } from '../agent/providers.js';
 
 /**
  * A juror or chairman. `claude`, `codex:gpt-5.2` or `opencode:openai/gpt-5.2` run through that agent CLI
@@ -23,17 +23,14 @@ export function parseCouncilMember(spec: string): CouncilMember {
   return { kind: 'cli', cli: head, ...(model && { model }) };
 }
 
-const OPENROUTER_VENDOR_FAMILY: Record<string, string> = { anthropic: 'anthropic', openai: 'openai', google: 'google' };
-
-/** The model family a member runs on, or null when it is unknown (OpenCode without a model). */
+/**
+ * The model family a member runs on. An agent CLI's is `agentFamily` (null when unknown: OpenCode without a known
+ * vendor); an OpenRouter model's is its vendor's.
+ */
 export function memberFamily(member: CouncilMember): string | null {
-  if (member.kind === 'openrouter') {
-    const vendor = member.model.split('/')[0];
-    return OPENROUTER_VENDOR_FAMILY[vendor] ?? vendor;
-  }
-  const family = getProviderInfo(member.cli)?.family ?? null;
-  if (family || !member.model?.includes('/')) return family;
-  return memberFamily({ kind: 'openrouter', model: member.model });
+  if (member.kind === 'cli') return agentFamily(member.cli, member.model);
+  const vendor = member.model.split('/')[0];
+  return VENDOR_FAMILY[vendor] ?? vendor;
 }
 
 /** Ties for the chairman seat go to the first CLI here (Gemini was the chairman of the OpenRouter defaults). */

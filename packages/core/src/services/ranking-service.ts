@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { PROVIDER_IDS, getProviderInfo } from '../domain/agent/providers.js';
+import { PROVIDER_IDS, agentFamily, familyKey } from '../domain/agent/providers.js';
 import { missingPlaybookSteps } from '../domain/code-council/framing.js';
 import { configuredJudge, judgePrompt, parseJudgeAnswer, pickJudge, type JudgePack, type Judgment } from '../domain/code-council/judging.js';
 import { PLAYBOOKS, type TaskType } from '../domain/code-council/playbooks.js';
@@ -77,7 +77,7 @@ export function reportCandidate(candidate: CodeCandidate, ctx: { baseSha: string
 export async function usableClis(drivers: ReadonlyMap<string, HeadlessCliDriver>): Promise<{ provider: string; family: string | null }[]> {
   const found = await Promise.all(PROVIDER_IDS.map(async (provider) => {
     const d = await drivers.get(provider)?.detect().catch(() => undefined);
-    return d?.installed && d.auth !== 'none' ? { provider, family: getProviderInfo(provider)?.family ?? null } : null;
+    return d?.installed && d.auth !== 'none' ? { provider, family: agentFamily(provider) } : null;
   }));
   return found.filter((u) => u !== null);
 }
@@ -115,7 +115,7 @@ export async function judgeTie(input: JudgeTieInput): Promise<Judgment> {
     return blocked(`the rubric does not match its frozen sha256 ${input.rubric.sha256.slice(0, 12)} (its criteria hash to ${actual.slice(0, 12)})`);
   }
 
-  const families = [...new Set(input.tied.map((t) => getProviderInfo(t.candidate.provider)?.family ?? t.candidate.provider))];
+  const families = [...new Set(input.tied.map((t) => familyKey(t.candidate.provider, t.candidate.model)))];
   const choice = input.judgeSpec ? configuredJudge(input.judgeSpec, families) : pickJudge(families, await usableClis(input.drivers));
   if (!choice) return blocked('no agent CLI is installed and signed in to judge');
   judgment.judge = choice.provider;

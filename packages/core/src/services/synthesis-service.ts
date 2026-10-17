@@ -7,7 +7,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getProviderInfo } from '../domain/agent/providers.js';
+import { familyKey } from '../domain/agent/providers.js';
 import { configuredJudge, pickJudge } from '../domain/code-council/judging.js';
 import type { TaskType } from '../domain/code-council/playbooks.js';
 import type { Ranking } from '../domain/code-council/ranking.js';
@@ -86,7 +86,7 @@ function errorMessage(err: unknown): string {
 }
 
 function familyOf(c: CodeCandidate): string {
-  return getProviderInfo(c.provider)?.family ?? c.provider;
+  return familyKey(c.provider, c.model);
 }
 
 function emptySynthesis(): Synthesis {

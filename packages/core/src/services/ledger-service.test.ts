@@ -86,6 +86,15 @@ describe('ledgerRows', () => {
     expect(rows[5].evidence.verification).toBeNull();
   });
 
+  it("should take an OpenCode runner's family from its model id", () => {
+    const routed = {
+      ...RECORD,
+      candidates: RECORD.candidates.map((c) => (c.candidateId === 'opencode' ? { ...c, model: 'openrouter/anthropic/claude-opus-4.6' } : c)),
+    } as CodeRunRecord;
+    const row = ledgerRows(routed).find((r) => r.role === 'implementer' && r.candidateId === 'opencode');
+    expect(row?.runner).toEqual({ spec: 'opencode:openrouter/anthropic/claude-opus-4.6', provider: 'opencode', model: 'openrouter/anthropic/claude-opus-4.6', family: 'anthropic' });
+  });
+
   it('should give one row per runner for the planner, adversaries, judge, integrator and verifier', () => {
     const rows = ledgerRows(RECORD).filter((r) => r.role !== 'implementer');
 

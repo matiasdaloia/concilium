@@ -5,6 +5,9 @@ export {
   PROVIDER_IDS,
   isProviderId,
   getProviderInfo,
+  agentFamily,
+  familyKey,
+  VENDOR_FAMILY,
 } from './domain/agent/providers.js';
 export type { ProviderInfo } from './domain/agent/providers.js';
 export type { AgentResult } from './domain/agent/agent-result.js';
