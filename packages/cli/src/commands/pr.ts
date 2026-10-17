@@ -11,6 +11,7 @@ import {
   JsonCodeRunStore,
   JsonConfigStore,
   JsonRunRepository,
+  loadFactory,
   parseRoleFlags,
   PlaintextSecretStore,
   prStatus,
@@ -24,6 +25,7 @@ import {
   type PrVerdict,
 } from '@concilium/core';
 import { getConfigDir, getDataDir } from '../adapters/xdg-paths.js';
+import { factoryLines } from '../formatters/factory.js';
 import { collect } from './roles.js';
 
 const RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -128,9 +130,15 @@ export function registerPrCommands(program: Command): void {
   program
     .command('status')
     .description("Show a run's gates and verdict")
-    .argument('<run-id>', 'The code run')
+    .argument('<run-id>', 'The code run, or a factory run: its tasks, runs and verdicts')
     .action(async (runId: string) => {
       const store = new JsonCodeRunStore(getDataDir());
+      if (!RUN_ID.test(runId)) fail(`invalid run id "${runId}"`);
+      const factory = await loadFactory(store.runDir(runId)).catch(fail);
+      if (factory) {
+        for (const line of factoryLines(factory, store.runDir(runId))) console.log(line);
+        return;
+      }
       const record = await loadRun(store, runId);
       try {
         const status = await prStatus(record, join(getDataDir(), 'runs'));

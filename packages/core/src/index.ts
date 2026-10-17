@@ -137,6 +137,13 @@ export {
 } from './domain/code-council/shipping.js';
 export { prBranch, prStatus, requestPr, verifyPr } from './services/pr-service.js';
 export type { PrStatus, RequestPrInput, VerifyPrInput } from './services/pr-service.js';
+export type { FactoryRecord, FactoryStatus, FactoryStep, FactoryTask, TaskRun } from './domain/code-council/factory.js';
+export {
+  FACTORY_RECORD, TASKS_FILE, TASKS_REPORT, TaskListValidationError, parseTaskAnswer, parseTaskList, planPrompt, specHash, taskBrief, taskOrder,
+  tasksMarkdown, unshippable, verdictStop,
+} from './domain/code-council/factory.js';
+export { loadFactory, runFactory } from './services/factory-service.js';
+export type { FactoryCodeOptions, FactoryInput } from './services/factory-service.js';
 export type { ActionKind, ActionOutcome, ActionRequest, AutonomyTier, CommandResult, GateEntry, GatesFile, GateStatus } from './services/action-gate.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';

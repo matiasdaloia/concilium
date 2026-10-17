@@ -150,6 +150,27 @@ describe('GitWorktreeWorkspace', () => {
     expect(await manager.list({ repoDir: repo, runId: 'r1' })).toEqual([]);
   });
 
+  it('should pin a given base commit instead of HEAD, even on a dirty tree, and refuse one that is not a commit', async () => {
+    const first = git(repo, 'rev-parse', 'HEAD');
+    git(repo, 'branch', 'stacked');
+    git(repo, 'switch', '-q', 'stacked');
+    writeFileSync(join(repo, 'a.txt'), 'stacked\n');
+    git(repo, 'commit', '-q', '-am', 'stacked work');
+    const stacked = git(repo, 'rev-parse', 'HEAD');
+    git(repo, 'switch', '-q', 'main');
+    writeFileSync(join(repo, 'a.txt'), 'edited\n');
+
+    const base = await manager.startRun({ repoDir: repo, runId: 'r1', baseSha: stacked });
+    const ws = await manager.create({ repoDir: repo, runId: 'r1', candidateId: 'a' });
+
+    expect(base).toMatchObject({ headSha: first, baseSha: stacked });
+    expect(base.snapshotRef).toBeUndefined();
+    expect(readFileSync(join(ws.path, 'a.txt'), 'utf8')).toBe('stacked\n');
+    expect(git(repo, 'status', '--porcelain')).toBe(' M a.txt');
+    await expect(manager.startRun({ repoDir: repo, runId: 'r2', baseSha: 'deadbeef' })).rejects.toThrow(/deadbeef/);
+    await expect(manager.startRun({ repoDir: repo, runId: 'r3', baseSha: stacked, includeDirty: true })).rejects.toThrow(/not both/);
+  });
+
   it('should refuse a dirty tree without includeDirty', async () => {
     writeFileSync(join(repo, 'a.txt'), 'edited\n');
 

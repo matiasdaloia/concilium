@@ -589,7 +589,7 @@ concilium verify-pr <run-id> [options]
 
 ### `concilium status`
 
-Show a code run's gates and its verdict. The verdict is void when the branch head differs from the head it verified, or when the pushed branch, as this repo last saw it (`<remote>/concilium/<run-id>`, read locally, with no network call), is at another commit than the one verified. Run `concilium verify-pr` again after a new commit.
+Show a code run's gates and its verdict. The verdict is void when the branch head differs from the head it verified, or when the pushed branch, as this repo last saw it (`<remote>/concilium/<run-id>`, read locally, with no network call), is at another commit than the one verified. Run `concilium verify-pr` again after a new commit. Given a factory id (see [`concilium factory`](#concilium-factory)), it prints the factory's summary instead.
 
 ```
 concilium status <run-id>
@@ -603,6 +603,35 @@ concilium approve 20261016T141015-a1b2c3-g1   # the push
 concilium approve 20261016T141015-a1b2c3-g2   # the pull request
 concilium status 20261016T141015-a1b2c3
 concilium verify-pr 20261016T141015-a1b2c3 --role verifier=gemini
+```
+
+### `concilium factory`
+
+Turn a spec into a stack of verified branches. The planner role (by default the first implementer's CLI, with its model) reads the spec file in one read-only run and answers a task list: each task has an `id`, a `title`, a `type` (`bugfix`, `feature`, `refactor`, `perf`, `prototype`), `acceptance` lines and `depends_on`. The list is rejected, with every problem named and before any code runs, when it is empty, a task has no acceptance line, an id is used twice, a type is unknown, or a dependency is unknown or part of a cycle. The tasks are saved as `tasks.json` and `tasks.md` in the factory's run directory (`$XDG_DATA_HOME/concilium/runs/<factory-id>/`), in dependency order (otherwise in the planner's order).
+
+Then each task gets one `concilium code` run, one at a time, with the gates, synthesis and the decision trail always on: its candidates are briefed with the task's title and acceptance lines, and its type picks the playbook. The first task starts from `HEAD`; each later task starts from the commit the task before it shipped, so the integration branches stack locally. The checkout is never touched, and uncommitted changes are not included. Each task's commit is verified at its own head as `concilium verify-pr` does (the verdict is saved on that run). The chain stops at the first task that ends in `reframe-needed`, whose candidates all failed, that has nothing to ship, or whose verdict is not `PASS` or `PASS+NOTES`; the tasks after it are `not run`. `factory.json` records the spec's path and sha256, the planner, the tasks, and per task its run id, base, verified head and verdict; it is rewritten after every task.
+
+It never pushes or opens a pull request. The summary prints, in order, the `concilium pr` command of each shipped task, each one based on the branch of the one before it (`--base concilium/<run-id>`). It exits 0 when every task shipped, 2 when a task ended in `reframe-needed`, and 1 otherwise.
+
+```
+concilium factory <spec> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <path>` | Directory of the git repo to work on (default: current directory) |
+| `--agents <list>` | Candidate agents for every task, the implementer role (default: the installed, signed-in agent CLIs) |
+| `--role <role=members>` | Who plays a role: `planner` (splits the spec), `implementer`, `adversary`, `judge`, `integrator` or `verifier`, as `cli[:model]`; repeatable |
+| `--timeout <minutes>` | Wall-clock limit per candidate and per adversary in minutes, in every task |
+| `--no-adversarial` | Skip the adversarial round in every task |
+| `--no-judge` | Do not ask a judge CLI to order tied candidates in any task |
+| `--json` | Output the factory record as JSON to stdout |
+
+**Examples:**
+
+```bash
+concilium factory spec.md --role planner=claude --role verifier=gemini
+concilium status 20261017T092657-640fda
 ```
 
 ## Configuration
