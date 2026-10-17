@@ -48,6 +48,8 @@ export type FactoryInput = {
   planner: string;
   /** The verifier role (`cli[:model]`), or `auto`/absent to pick one per task. */
   verifier?: string;
+  /** The `allow-same-family-verifier` opt-in for every task's verdict (`VerifyPrInput.allowSameFamily`). */
+  allowSameFamilyVerifier?: boolean;
   code: FactoryCodeOptions;
   /** The run directory for an id: the factory's own (`factory.json`, `tasks.json`, `tasks.md`) and each task run's. */
   runDir: (id: string) => string;
@@ -112,6 +114,8 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
   await saveFactory(dir, record);
 
   let baseSha = startSha;
+  // A stacked task merges into the task before it, so `mergeable` is checked there, never against the checkout.
+  let mergeTarget = { sha: startSha, label: 'the factory base' };
   for (const task of tasks) {
     if (record.stoppedAt) {
       record.steps.push({ taskId: task.id, outcome: 'not-run', reason: `task ${record.stoppedAt} stopped the chain` });
@@ -127,13 +131,13 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
     try {
       const runDir = input.runDir(runId);
       run = await runCodeCandidates({
-        ...input.code, task: taskBrief(task), type: task.type, repoDir, runId, baseSha, verify: true, synthesis: { runDir }, trail: { runDir },
+        ...input.code, task: taskBrief(task), type: task.type, repoDir, runId, baseSha, verify: true, synthesis: { runDir, mergeTarget }, trail: { runDir },
       });
       await input.saveRun(run);
       const blocked = unshippable(run);
       if (blocked) step = stop(blocked, run, null);
       else {
-        const verdict = await verifyPr({ record: run, runDir, drivers: input.code.drivers, verifier: input.verifier, signal: input.code.signal, onStep: input.onVerifyStep });
+        const verdict = await verifyPr({ record: run, runDir, drivers: input.code.drivers, verifier: input.verifier, allowSameFamily: input.allowSameFamilyVerifier, signal: input.code.signal, onStep: input.onVerifyStep });
         run.prVerdict = verdict;
         await input.saveRun(run);
         const failed = verdictStop(verdict);
@@ -149,8 +153,10 @@ export async function runFactory(input: FactoryInput): Promise<FactoryRecord> {
       step = stop(`the run failed: ${errorMessage(err)}`, run, null);
     }
     record.steps.push(step);
-    if (step.outcome === 'shipped') baseSha = step.headSha;
-    else record.stoppedAt = task.id;
+    if (step.outcome === 'shipped') {
+      baseSha = step.headSha;
+      mergeTarget = { sha: step.headSha, label: `task ${task.id}'s head` };
+    } else record.stoppedAt = task.id;
     log.info(`factory ${id}: task ${task.id} ${step.outcome}${step.outcome === 'stopped' ? ` (${step.reason})` : ''}`);
     input.onTaskDone?.(step, run);
     await saveFactory(dir, record);

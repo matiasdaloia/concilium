@@ -20,6 +20,8 @@ const binPath = join(cliRoot, 'bin', 'concilium.ts');
 const sandbox = mkdtempSync(join(tmpdir(), 'concilium-factory-test-'));
 const binDir = join(sandbox, 'bin');
 const reviewLog = join(sandbox, 'review.log');
+/** One JSON line per agent CLI run: which CLI, whether it was a read-only council run (a prompt file), its argv. */
+const argvLog = join(sandbox, 'argv.log');
 const env: NodeJS.ProcessEnv = {
   // Only the fake agent CLIs and git: a real claude or codex can never start.
   PATH: binDir,
@@ -42,7 +44,8 @@ const TASKS = [
  * A fake agent CLI, installed and signed in. Asked to plan (`You are planning`), `claude` answers TASKS; asked to
  * review, each logs its name and passes; asked for grafts, it names none; any other read-only prompt (the rubric)
  * fails, so the playbook rubric is used. As a candidate it writes `mul.js` and its test, or, where `mul.js` already
- * exists (a base stacked on the first task), `square.js` and a test that needs `mul.js`. Codex writes a bigger diff,
+ * exists (a base stacked on the first task), `square.js`, a test that needs `mul.js` and a line in `mul.js`, so that
+ * patch does not apply without the first task. Codex writes a bigger diff,
  * so claude wins each task on the smallest diff and codex, another family, verifies.
  */
 function fakeAgentCli(cli: 'claude' | 'codex'): string {
@@ -53,6 +56,7 @@ if (args === '--version') { console.log('1.0.0'); process.exit(0); }
 if (args === 'auth status') { console.log(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai', subscriptionType: 'max' })); process.exit(0); }
 if (args === 'login status') { console.log('Logged in using ChatGPT'); process.exit(0); }
 const claude = ${JSON.stringify(cli)} === 'claude';
+fs.appendFileSync(${JSON.stringify(argvLog)}, JSON.stringify({ cli: ${JSON.stringify(cli)}, council: fs.existsSync('council-prompt.md'), argv: process.argv.slice(2) }) + '\\n');
 function say(text) {
   if (claude) console.log(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text }));
   else {
@@ -73,6 +77,7 @@ if (fs.existsSync('council-prompt.md')) {
 }
 const pad = claude ? '' : '// a longer change\\n// by codex\\n';
 if (fs.existsSync('mul.js')) {
+  fs.appendFileSync('mul.js', '// square.js builds on this\\n');
   fs.writeFileSync('square.js', pad + "const mul = require('./mul.js');\\nmodule.exports = (x) => mul(x, x);\\n");
   if (claude) fs.writeFileSync('square.test.js', "if (require('./square.js')(4) !== 16) throw new Error('square');\\n");
 } else {
@@ -128,12 +133,31 @@ describe('concilium factory', () => {
     expect(first).toMatchObject({ taskId: 'mul', baseSha: head, branch: `concilium/${first.runId}/integration`, verdict: 'PASS' });
     expect(second).toMatchObject({ taskId: 'square', baseSha: first.headSha, branch: `concilium/${second.runId}/integration`, verdict: 'PASS' });
     git(repo, 'merge-base', '--is-ancestor', first.headSha, second.headSha);
-    for (const step of [first, second]) {
+    const targets = [{ sha: head, label: 'the factory base' }, { sha: first.headSha, label: "task mul's head" }];
+    for (const [i, step] of [first, second].entries()) {
       const run = JSON.parse(readFileSync(join(runsDir, step.runId, 'run.json'), 'utf8')) as CodeRunRecord;
       expect(run.prVerdict).toMatchObject({ verdict: 'PASS', headSha: step.headSha, gates: { test: 'pass' }, verifier: { provider: 'codex', sameFamily: false } });
       expect(git(repo, 'rev-parse', `${step.branch}~1`)).toBe(step.headSha); // the trail commit sits on top
+      // Mergeable into what it stacks on (task 1: the factory base, task 2: task 1's head), not the checkout's HEAD.
+      expect(run.synthesis).toMatchObject({ mergeable: true, mergeCheck: { applies: true, targetSha: targets[i].sha, target: targets[i].label } });
+      expect(readFileSync(join(runsDir, step.runId, 'synthesis.md'), 'utf8')).toContain(`- Mergeable: yes, \`git apply --check\` against ${targets[i].label} at \`${targets[i].sha}\``);
     }
+    // Against the checkout's HEAD, which lacks mul.js, the second task's patch does not apply.
+    const applyToHead = spawnSync('git', ['apply', '--check', join(runsDir, second.runId, 'result.patch')], { cwd: repo, env: { ...env, PATH: process.env.PATH }, encoding: 'utf8' });
+    expect(applyToHead.status).not.toBe(0);
+    expect(applyToHead.stderr).toContain('mul.js');
     expect(readFileSync(reviewLog, 'utf8')).toBe('codex\ncodex\n');
+
+    // The planner, rubric, graft picker and verifier runs skip the user's hooks and plugins through each CLI's
+    // own flags; the candidates keep the user's setup.
+    const calls = readFileSync(argvLog, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { cli: string; council: boolean; argv: string[] });
+    const isolated = { claude: ['--safe-mode'], codex: ['--ignore-user-config', '--disable=hooks', '--disable=plugins'] } as Record<string, string[]>;
+    const council = calls.filter((c) => c.council);
+    const candidates = calls.filter((c) => !c.council);
+    expect(council.map((c) => c.cli)).toEqual(expect.arrayContaining(['claude', 'codex']));
+    expect(candidates.map((c) => c.cli)).toEqual(expect.arrayContaining(['claude', 'codex']));
+    for (const c of council) expect(c.argv).toEqual(expect.arrayContaining(isolated[c.cli]));
+    for (const c of candidates) for (const flag of isolated[c.cli]) expect(c.argv).not.toContain(flag);
     expect(readFileSync(join(runsDir, id, 'tasks.md'), 'utf8')).toContain('## 1. mul: Add mul.js exporting a multiply function');
 
     // The summary: each task's run and verdict, and the pr commands that would ship the stack in order.
@@ -154,6 +178,28 @@ describe('concilium factory', () => {
     const run = concilium('status', second.runId);
     expect(run.stdout).toContain(`Verdict: PASS at ${second.headSha.slice(0, 12)}`);
     expect(run.stdout).toContain('  valid');
+  }, 120_000);
+
+  it('should refuse an author-family verifier before planning, and run it flagged same-family with --allow-same-family-verifier', () => {
+    const refused = concilium('factory', 'spec.md', '--cwd', repo, '--no-adversarial', '--no-judge', '--role', 'verifier=claude');
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('Error: [verifier-author-family] --role verifier: verifier claude is of the anthropic family, which can write the code it verifies');
+    expect(refused.stderr).not.toContain('Planned');
+
+    const result = concilium('factory', 'spec.md', '--cwd', repo, '--no-adversarial', '--no-judge', '--role', 'verifier=claude', '--allow-same-family-verifier');
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Warning: [verifier-author-family-allowed] --role verifier:');
+    const id = /^Factory (\S+) in /m.exec(result.stdout)![1];
+    const record = JSON.parse(readFileSync(join(runsDir, id, 'factory.json'), 'utf8')) as FactoryRecord;
+    expect(record.steps.map((s) => [s.outcome, s.outcome === 'shipped' && s.sameFamily])).toEqual([['shipped', true], ['shipped', true]]);
+    for (const step of record.steps) {
+      if (step.outcome !== 'shipped') throw new Error(result.stdout);
+      const run = JSON.parse(readFileSync(join(runsDir, step.runId, 'run.json'), 'utf8')) as CodeRunRecord;
+      expect(run.prVerdict).toMatchObject({ verdict: 'PASS', verifier: { provider: 'claude', configured: true, sameFamily: true } });
+    }
+    expect(result.stdout).toMatch(/^  mul\s+feature\s+shipped\s+.*PASS \(same family\)$/m);
+    expect(result.stdout).toContain('Warning: mul was verified by a CLI of an author family');
+    expect(result.stdout).toContain('Warning: square was verified by a CLI of an author family');
   }, 120_000);
 
   it('should exit 1 on a spec file it cannot read', () => {

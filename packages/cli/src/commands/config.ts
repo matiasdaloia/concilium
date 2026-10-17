@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline';
 import type { Command } from 'commander';
-import { CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, roleOrigin, SHIP_ROLES, type RoleName } from '@concilium/core';
+import { ALLOW_SAME_FAMILY_VERIFIER, CODE_ROLES, ConfigService, isListRole, JsonConfigStore, parseRoleFlags, PlaintextSecretStore, roleOrigin, SHIP_ROLES, type RoleName } from '@concilium/core';
 import { getConfigDir } from '../adapters/xdg-paths.js';
 import { printError } from '../formatters/roles.js';
 
@@ -38,6 +38,7 @@ export function registerConfigCommand(program: Command): void {
         councilModels: resolved.councilModels,
         chairmanModel: resolved.chairmanModel,
         roles: await configService.savedRoles(),
+        allowSameFamilyVerifier: (await configService.savedAllowSameFamilyVerifier()) ?? false,
         configDir: getConfigDir(),
       };
       const savedRoles = Object.entries(display.roles).map(([role, v]) => `${role}=${Array.isArray(v) ? v.join(',') : v}`);
@@ -52,6 +53,7 @@ export function registerConfigCommand(program: Command): void {
         console.log(`  Juror Models:   ${display.councilModels.join(', ') || AUTO}`);
         console.log(`  Chairman:       ${display.chairmanModel || AUTO}`);
         console.log(`  Code roles:     ${savedRoles.join(' ') || '(none saved; see concilium roles)'}`);
+        console.log(`  Same-family verifier allowed: ${display.allowSameFamilyVerifier ? 'yes (flagged, draft PR)' : 'no'}`);
         console.log(`  Config Dir:     ${display.configDir}`);
         console.log();
       }
@@ -60,7 +62,7 @@ export function registerConfigCommand(program: Command): void {
   config
     .command('set')
     .description('Set a configuration value')
-    .argument('<key>', `Configuration key (api-key, chairman, jurors, or a role: ${SAVED_ROLES.join(', ')})`)
+    .argument('<key>', `Configuration key (api-key, chairman, jurors, ${ALLOW_SAME_FAMILY_VERIFIER}, or a role: ${SAVED_ROLES.join(', ')})`)
     .argument('[value]', 'Value to set')
     .action(async (key: string, value?: string) => {
       const secretStore = new PlaintextSecretStore();
@@ -97,9 +99,18 @@ export function registerConfigCommand(program: Command): void {
           console.log(`Juror models set to: ${models.join(', ')}`);
           break;
         }
+        case ALLOW_SAME_FAMILY_VERIFIER: {
+          if (value !== 'true' && value !== 'false') {
+            console.error(`Usage: concilium config set ${ALLOW_SAME_FAMILY_VERIFIER} <true|false>`);
+            process.exit(1);
+          }
+          await configService.saveAllowSameFamilyVerifier(value === 'true');
+          console.log(`${ALLOW_SAME_FAMILY_VERIFIER} set to: ${value}`);
+          break;
+        }
         default: {
           if (!(SAVED_ROLES as readonly string[]).includes(key)) {
-            console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors, ${SAVED_ROLES.join(', ')}`);
+            console.error(`Unknown config key: ${key}. Valid keys: api-key, chairman, jurors, ${ALLOW_SAME_FAMILY_VERIFIER}, ${SAVED_ROLES.join(', ')}`);
             process.exit(1);
           }
           if (!value) {

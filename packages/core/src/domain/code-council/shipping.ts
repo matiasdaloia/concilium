@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getProviderInfo } from '../agent/providers.js';
-import { ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
+import { agentFamily, familyKey } from '../agent/providers.js';
+import { ALLOW_SAME_FAMILY_VERIFIER, ROLE_KEYWORDS, specAgent } from '../roles/roles.js';
 import type { SurvivalCell } from '../verification/adversarial.js';
 import type { StepResult } from '../verification/gates.js';
 import { blockingDissent, warningDissent, type Dissent } from './dissent.js';
@@ -91,18 +91,17 @@ export type PrRequest = {
   requestedAt: string;
 };
 
-function familyOf(provider: string): string {
-  return getProviderInfo(provider)?.family ?? provider;
-}
-
 /** Who wrote the integration commits: the base candidate, and each committed graft's donor and integrator. */
-export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: string; provider: string }[]): string[] {
-  const providerOf = (id: string) => candidates.find((c) => c.candidateId === id)?.provider ?? id;
-  const providers = [
-    ...(synthesis.base ? [providerOf(synthesis.base.candidateId)] : []),
-    ...synthesis.grafts.filter((g) => g.commitSha).flatMap((g) => [providerOf(g.candidateId), g.integrator.provider]),
+export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: string; provider: string; model?: string | null }[]): string[] {
+  const familyOf = (id: string) => {
+    const c = candidates.find((c) => c.candidateId === id);
+    return c ? familyKey(c.provider, c.model) : id;
+  };
+  const families = [
+    ...(synthesis.base ? [familyOf(synthesis.base.candidateId)] : []),
+    ...synthesis.grafts.filter((g) => g.commitSha).flatMap((g) => [familyOf(g.candidateId), familyKey(g.integrator.provider, g.integrator.model)]),
   ];
-  return [...new Set(providers.map(familyOf))];
+  return [...new Set(families)];
 }
 
 /**
@@ -111,7 +110,7 @@ export function authorFamilies(synthesis: Synthesis, candidates: { candidateId: 
  */
 export function shipSource(record: {
   synthesis?: Synthesis;
-  candidates: { candidateId: string; provider: string; branch: string; headSha: string | null }[];
+  candidates: { candidateId: string; provider: string; model?: string | null; branch: string; headSha: string | null }[];
 }): ShipSource | { blocked: string } {
   if (record.synthesis?.branch) {
     return { kind: 'integration', branch: record.synthesis.branch, authorFamilies: authorFamilies(record.synthesis, record.candidates) };
@@ -119,7 +118,7 @@ export function shipSource(record: {
   if (record.candidates.length !== 1) return { blocked: 'the run has no integration branch' };
   const only = record.candidates[0];
   if (!only.headSha) return { blocked: `the only candidate, ${only.candidateId}, has no head` };
-  return { kind: 'candidate', branch: only.branch, authorFamilies: [familyOf(only.provider)] };
+  return { kind: 'candidate', branch: only.branch, authorFamilies: [familyKey(only.provider, only.model)] };
 }
 
 /** A path of the decision trail, which a shipped commit must not touch. */
@@ -131,19 +130,25 @@ export function isTrailPath(path: string): boolean {
  * The verifier, preferring a family outside `authors`: the configured one (`cli[:model]`, or `auto`/null for none)
  * when its CLI is usable and outside them, else the first usable CLI of a known family outside them. With none, the
  * configured one or the first usable CLI, flagged `sameFamily`. Null only when no CLI is usable. The notes say why a
- * configured verifier was passed over.
+ * configured verifier was passed over. With `allowSameFamily` (`ALLOW_SAME_FAMILY_VERIFIER`), a usable configured
+ * verifier of an author family verifies anyway, still flagged `sameFamily` with the opt-in as its reason.
  */
 export function pickVerifier(
   authors: string[],
   usable: { provider: string; family: string | null }[],
   configured: string | null = null,
+  allowSameFamily = false,
 ): { verifier: Verifier | null; notes: string[] } {
   const spec = configured && configured !== ROLE_KEYWORDS.verifier ? specAgent(configured) : null;
-  const mine = spec ? usable.find((u) => u.provider === spec.provider) : undefined;
+  const mine = spec && usable.some((u) => u.provider === spec.provider) ? { provider: spec.provider, family: agentFamily(spec.provider, spec.model) } : undefined;
   const outside = (u: { family: string | null }): u is { provider: string; family: string } => u.family !== null && !authors.includes(u.family);
   const notes: string[] = [];
   if (mine && outside(mine)) {
     return { verifier: { provider: mine.provider, model: spec!.model ?? null, configured: true, sameFamily: false, family: mine.family }, notes };
+  }
+  if (allowSameFamily && mine?.family && authors.includes(mine.family)) {
+    const sameFamilyReason = `the configured verifier ${configured} is of an author family (${mine.family}); ${ALLOW_SAME_FAMILY_VERIFIER} allows it`;
+    return { verifier: { provider: mine.provider, model: spec!.model ?? null, configured: true, sameFamily: true, family: mine.family, sameFamilyReason }, notes };
   }
   if (spec && !mine) notes.push(`the configured verifier ${configured} is not installed and signed in`);
   const other = usable.find(outside);

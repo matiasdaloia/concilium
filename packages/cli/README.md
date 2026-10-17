@@ -349,6 +349,7 @@ concilium config [subcommand]
 | `set api-key [value]` | Set the optional OpenRouter API key (prompts if value omitted) |
 | `set chairman <model>` | Set the default chairman (a council member) |
 | `set jurors <m1,m2,...>` | Set the default jurors (council members) |
+| `set allow-same-family-verifier <true\|false>` | Save the opt-in that lets a configured verifier of an author family verify, flagged same-family, as a draft PR (default `false`) |
 | `set <role> <members>` | Save a code-council role: `planner`, `implementer`, `adversary`, `judge` or `integrator`, each member `cli[:model]` (comma-separated for `implementer` and `adversary`). See [`concilium roles`](#concilium-roles) |
 | `reset` | Reset all config to defaults |
 | `path` | Print the config directory path |
@@ -593,10 +594,11 @@ concilium pr <run-id> [options]
 | `--remote <name>` | The remote to push to (default: `origin`) |
 | `--base <branch>` | The pull request's base branch (default: the remote's default branch) |
 | `--role <role=member>` | The verifier for this run, as `verifier=<cli[:model]>`, over `factory.yaml` and saved config; no other role applies |
+| `--allow-same-family-verifier` | Let a configured verifier of an author family verify (see [`concilium verify-pr`](#concilium-verify-pr)); the verdict is flagged same-family and the pull request is a draft. Over `factory.yaml` and saved config |
 
 ### `concilium verify-pr`
 
-Verify the commit a code run would ship, preferring a model family that wrote none of it. The commit is the branch head (see [`concilium pr`](#concilium-pr)), or its parent when the head is the run's decision trail commit and touches only `.concilium/runs/`: the trail stays on the branch and in the run directory, never in the pull request. A commit that would still carry `.concilium/runs/` files (for example a commit after the trail commit) is `BLOCKED` with nothing to push. The author families are the base candidate's, and each committed graft's donor and integrator, or the single candidate's. A configured `verifier` role (`--role verifier=`, `factory.yaml`, `config set verifier`) of an author family or of an unknown family is refused before anything runs (see the [role rules](#concilium-roles)). The verifier is the configured one when its CLI is installed and signed in, else the first installed, signed-in agent CLI (in `claude`, `codex`, `gemini`, `opencode` order) of a known family outside them. When there is none, an author-family CLI verifies (the configured one first): the verdict records `sameFamily: true` with the reason, `verification.md`, the PR body, `pr` and `status` say so, and the pull request is always a draft. It is `BLOCKED` only when no agent CLI is usable at all. In a fresh worktree detached at the commit, it re-runs the run's gates and its valid adversarial tests (`evidence` and `regression-guard`), then the verifier CLI reviews the diff read-only and answers `PASS`, `NOTES` or `FAIL`. The verdict is `FAIL` when a gate that passes on the base, a valid test or the review fails; `PASS+NOTES` when a gate fails on the base too or the review has notes; `BLOCKED` when the review gives no verdict; `PASS` otherwise. It is keyed to the commit's SHA, the base SHA and the `git patch-id` of the diff, saved as `prVerdict` in the run record (with the branch head it read and the trail commit it left out) and written to `verification.md` in the run directory. It exits 1 unless the verdict is `PASS` or `PASS+NOTES`.
+Verify the commit a code run would ship, preferring a model family that wrote none of it. The commit is the branch head (see [`concilium pr`](#concilium-pr)), or its parent when the head is the run's decision trail commit and touches only `.concilium/runs/`: the trail stays on the branch and in the run directory, never in the pull request. A commit that would still carry `.concilium/runs/` files (for example a commit after the trail commit) is `BLOCKED` with nothing to push. The author families are the base candidate's, and each committed graft's donor and integrator, or the single candidate's. A configured `verifier` role (`--role verifier=`, `factory.yaml`, `config set verifier`) of an author family or of an unknown family is refused before anything runs (see the [role rules](#concilium-roles)). Only an explicit opt-in lets an author-family one verify: `--allow-same-family-verifier`, `allow-same-family-verifier: true` at the top of `.concilium/factory.yaml`, or `concilium config set allow-same-family-verifier true` (in that order). The rule is then the warning `verifier-author-family-allowed`, and the verdict is flagged `sameFamily: true` and drafted exactly like the fallback below. An unknown family is refused even with the opt-in. The verifier is the configured one when its CLI is installed and signed in, else the first installed, signed-in agent CLI (in `claude`, `codex`, `gemini`, `opencode` order) of a known family outside them. When there is none, an author-family CLI verifies (the configured one first): the verdict records `sameFamily: true` with the reason, `verification.md`, the PR body, `pr` and `status` say so, and the pull request is always a draft. It is `BLOCKED` only when no agent CLI is usable at all. In a fresh worktree detached at the commit, it re-runs the run's gates and its valid adversarial tests (`evidence` and `regression-guard`), then the verifier CLI reviews the diff read-only and answers `PASS`, `NOTES` or `FAIL`. The verdict is `FAIL` when a gate that passes on the base, a valid test or the review fails; `PASS+NOTES` when a gate fails on the base too or the review has notes; `BLOCKED` when the review gives no verdict; `PASS` otherwise. It is keyed to the commit's SHA, the base SHA and the `git patch-id` of the diff, saved as `prVerdict` in the run record (with the branch head it read and the trail commit it left out) and written to `verification.md` in the run directory. It exits 1 unless the verdict is `PASS` or `PASS+NOTES`.
 
 ```
 concilium verify-pr <run-id> [options]
@@ -605,6 +607,7 @@ concilium verify-pr <run-id> [options]
 | Flag | Description |
 |------|-------------|
 | `--role <role=member>` | The verifier, as `verifier=<cli[:model]>`, over `factory.yaml` and saved config; no other role applies |
+| `--allow-same-family-verifier` | Let a configured verifier of an author family verify instead of refusing it; the rule becomes a warning, the verdict records `sameFamily: true` and every report flags it, and the pull request is a draft. Over `allow-same-family-verifier: true` in `factory.yaml` and `config set allow-same-family-verifier true` |
 
 ### `concilium status`
 
@@ -644,6 +647,7 @@ concilium factory <spec> [options]
 | `--timeout <minutes>` | Wall-clock limit per candidate and per adversary in minutes, in every task |
 | `--no-adversarial` | Skip the adversarial round in every task |
 | `--no-judge` | Do not ask a judge CLI to order tied candidates in any task |
+| `--allow-same-family-verifier` | Let a configured verifier of an author family verify every task, flagged same-family (`(same family)` and a `Warning:` line per task) |
 | `--json` | Output the factory record as JSON to stdout |
 
 **Examples:**

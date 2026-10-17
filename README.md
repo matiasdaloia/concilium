@@ -151,7 +151,7 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium config set chairman <model>` | Set the chairman (`gemini`, `claude:opus`, or an OpenRouter ID) |
 | `concilium config set jurors <m1,m2,...>` | Set the jurors |
 | `concilium config set <role> <members>` | Save who plays a code-council role (`planner`, `implementer`, `adversary`, `judge`, `integrator`) or the PR `verifier`, e.g. `judge codex:gpt-5.2` |
-| `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection), where it was set, and any broken role rule (a judge that can judge only its own family, a verifier of an author family), which stops `code`, `factory`, `pr` and `verify-pr` before any agent CLI runs |
+| `concilium roles` | Show who plays each role (from `--role`, `.concilium/factory.yaml`, saved config or detection), where it was set, and any broken role rule (a judge that can judge only its own family, a verifier of an author family, unless you opt in with `allow-same-family-verifier`), which stops `code`, `factory`, `pr` and `verify-pr` before any agent CLI runs |
 | `concilium models` | Discover available agent models |
 | `concilium models --council` | List OpenRouter models for jurors |
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |
@@ -161,7 +161,7 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium approve <gate-id>` | Approve one paused action and run its exact command |
 | `concilium reject <gate-id>` | Reject one paused action; it never runs |
 | `concilium pr <run-id>` | Verify the commit a code run would ship (its integration branch without the trail commit, or its only candidate), then pause a push of exactly that SHA and a pull request for approval; same-family verification forces a draft |
-| `concilium verify-pr <run-id>` | Re-run a code run's gates and adversarial tests at that commit with a non-author family (an author family, flagged, only when no other is usable), and record the verdict |
+| `concilium verify-pr <run-id>` | Re-run a code run's gates and adversarial tests at that commit with a non-author family (an author family, flagged, only when no other is usable or with `--allow-same-family-verifier`), and record the verdict |
 | `concilium status <run-id>` | Show a code run's gates and verdict; the verdict is void once the branch head moved. Given a factory id, show the factory's tasks, runs and verdicts |
 | `concilium factory <spec>` | Have the planner split a spec file into typed tasks with acceptance lines and dependencies, then run one verified code run per task in dependency order, each on the commit the one before it shipped; stops at the first task that does not ship, and pushes nothing |
 | `concilium stats` | Show the learning ledger of the repo's code runs: each implementer's win rate (picked as the base) by task type and runner, the other roles' outcomes, and a candidate set per task type once it has enough runs, always of two model families or more |

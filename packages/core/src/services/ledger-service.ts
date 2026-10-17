@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { getProviderInfo } from '../domain/agent/providers.js';
+import { agentFamily } from '../domain/agent/providers.js';
 import { implementerOutcome, type LedgerRow, type Runner } from '../domain/code-council/ledger.js';
 import { contends } from '../domain/code-council/ranking.js';
 import { specAgent } from '../domain/roles/roles.js';
 import type { CodeRunRecord } from './code-service.js';
 
 function runner(provider: string, model: string | null): Runner {
-  return { spec: model ? `${provider}:${model}` : provider, provider, model, family: getProviderInfo(provider)?.family ?? null };
+  return { spec: model ? `${provider}:${model}` : provider, provider, model, family: agentFamily(provider, model) };
 }
 
 function specRunner(spec: string): Runner {

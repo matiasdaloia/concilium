@@ -49,7 +49,8 @@ describe('CliCouncilGateway', () => {
     const [run] = codex.runs;
     expect(run.brief).toMatchObject({ mode: 'plan', allowedActions: ['read'], cwd: seen.cwd });
     expect(run.brief.task).toContain(COUNCIL_PROMPT_FILE);
-    expect(run.opts).toMatchObject({ cwd: seen.cwd, model: 'gpt-5.2' });
+    // Isolated from the user's hooks and plugins, so their output cannot reach the answer.
+    expect(run.opts).toMatchObject({ cwd: seen.cwd, model: 'gpt-5.2', isolated: true });
     expect(existsSync(seen.cwd!)).toBe(false);
   });
 

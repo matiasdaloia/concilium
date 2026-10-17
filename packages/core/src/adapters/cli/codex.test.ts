@@ -44,6 +44,13 @@ describe('codexArgs', () => {
 
     expect(codexArgs({ ...code, allowedActions: ['read', 'write', 'network'] }, '/w')).toContain('--config=sandbox_workspace_write.network_access=true');
   });
+
+  it("should skip the user's config.toml, hooks and plugins only when isolated, still in the read-only sandbox", () => {
+    expect(codexArgs(planBrief, '/w').join(' ')).not.toMatch(/ignore-user-config|--disable/);
+    const args = codexArgs(planBrief, '/w', undefined, true);
+    expect(args).toEqual(expect.arrayContaining(['--ignore-user-config', '--disable=hooks', '--disable=plugins', '--sandbox=read-only']));
+    expect(args.slice(-2)).toEqual(['--', 'List the top-level folders.']);
+  });
 });
 
 describe('Codex driver run (fake codex on PATH)', () => {

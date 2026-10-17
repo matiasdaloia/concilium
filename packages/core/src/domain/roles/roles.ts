@@ -5,11 +5,11 @@
  */
 
 import { parse as parseYaml } from 'yaml';
-import { getProviderInfo, isProviderId } from '../agent/providers.js';
+import { agentFamily, familyKey, isProviderId } from '../agent/providers.js';
 import { parseCouncilMember } from '../council/council-members.js';
-import { FACTORY_CONFIG, roleOrigin, RolesValidationError, violation, type RoleOrigin, type RoleViolation } from './role-rules.js';
+import { ALLOW_SAME_FAMILY_VERIFIER, FACTORY_CONFIG, roleOrigin, RolesValidationError, violation, type RoleOrigin, type RoleViolation } from './role-rules.js';
 
-export { FACTORY_CONFIG } from './role-rules.js';
+export { ALLOW_SAME_FAMILY_VERIFIER, FACTORY_CONFIG } from './role-rules.js';
 
 /** The code-council roles. Each is played by agent CLIs given as `cli[:model]`. */
 export const CODE_ROLES = ['planner', 'implementer', 'adversary', 'judge', 'integrator'] as const;
@@ -64,10 +64,10 @@ function isRoleName(value: string): value is RoleName {
   return (ROLE_NAMES as readonly string[]).includes(value);
 }
 
-/** The model family of an agent CLI spec, or null when it is unknown (OpenCode). */
+/** The model family of an agent CLI spec (`agentFamily`), or null when it is unknown (OpenCode without a known vendor). */
 export function specFamily(spec: string): string | null {
   const member = parseCouncilMember(spec);
-  return member.kind === 'cli' ? getProviderInfo(member.cli)?.family ?? null : null;
+  return member.kind === 'cli' ? agentFamily(member.cli, member.model) : null;
 }
 
 /** `codex:gpt-5.2` → `{ provider: 'codex', model: 'gpt-5.2' }`. */
@@ -77,9 +77,10 @@ export function specAgent(spec: string): { provider: string; model?: string } {
   return { provider: member.cli, ...(member.model ? { model: member.model } : {}) };
 }
 
-/** The family a member counts toward: its model family, or its provider id when that is unknown (OpenCode). */
-function familyKey(spec: string): string {
-  return specFamily(spec) ?? specAgent(spec).provider;
+/** The family a member counts toward: its model family, or its provider id when that is unknown. */
+function specFamilyKey(spec: string): string {
+  const agent = specAgent(spec);
+  return familyKey(agent.provider, agent.model);
 }
 
 /** The violation of one member of `role`, or null. Code roles need an agent CLI; jurors and the chairman may be OpenRouter ids. */
@@ -135,7 +136,7 @@ export function validateRoles(raw: unknown, origin: RoleOrigin): RoleSettings {
     }
     const specs = members.map((m) => (m as string).trim());
     if (role === 'adversary') {
-      const families = specs.map(familyKey);
+      const families = specs.map(specFamilyKey);
       const twice = families.find((f, i) => families.indexOf(f) !== i);
       if (twice) {
         found.push(violation('adversary-family-twice', origin, role, `two members of the ${twice} family`));
@@ -148,11 +149,15 @@ export function validateRoles(raw: unknown, origin: RoleOrigin): RoleSettings {
   return settings;
 }
 
+/** What `.concilium/factory.yaml` sets today: roles, and the same-family verifier opt-in when it is given. */
+export type FactoryConfig = { roles: RoleSettings; allowSameFamilyVerifier?: boolean };
+
 /**
- * Reads the `roles:` section of the `.concilium/factory.yaml` at `path`. The other sections belong to later
- * milestones and are not read. Throws naming the file and every violation.
+ * Reads the `roles:` section and the top-level `allow-same-family-verifier` (true or false) of the
+ * `.concilium/factory.yaml` at `path`. The other sections belong to later milestones and are not read. Throws naming
+ * the file and every violation.
  */
-export function parseFactoryRoles(text: string, path: string = FACTORY_CONFIG): RoleSettings {
+export function parseFactoryConfig(text: string, path: string = FACTORY_CONFIG): FactoryConfig {
   const origin = roleOrigin.file('repo', path);
   let doc: unknown;
   try {
@@ -160,9 +165,19 @@ export function parseFactoryRoles(text: string, path: string = FACTORY_CONFIG): 
   } catch (err) {
     throw new RolesValidationError([violation('factory-yaml', origin, null, `not valid YAML: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)]);
   }
-  if (doc === null || doc === undefined) return {};
+  if (doc === null || doc === undefined) return { roles: {} };
   if (typeof doc !== 'object' || Array.isArray(doc)) throw new RolesValidationError([violation('factory-yaml', origin, null, 'must be a mapping')]);
-  return validateRoles((doc as Record<string, unknown>).roles, origin);
+  const allow = (doc as Record<string, unknown>)[ALLOW_SAME_FAMILY_VERIFIER];
+  if (allow !== undefined && typeof allow !== 'boolean') {
+    throw new RolesValidationError([violation('factory-yaml', origin, null, `${ALLOW_SAME_FAMILY_VERIFIER} must be true or false`)]);
+  }
+  const roles = validateRoles((doc as Record<string, unknown>).roles, origin);
+  return allow === undefined ? { roles } : { roles, allowSameFamilyVerifier: allow };
+}
+
+/** The `roles:` section of a `.concilium/factory.yaml` (`parseFactoryConfig`). */
+export function parseFactoryRoles(text: string, path: string = FACTORY_CONFIG): RoleSettings {
+  return parseFactoryConfig(text, path).roles;
 }
 
 /**
@@ -268,6 +283,26 @@ export function resolveCodeRoles(layers: readonly (readonly [RoleSource, RoleSet
   };
 }
 
+/**
+ * The verifier, and whether a configured verifier of an author family may verify anyway (`ALLOW_SAME_FAMILY_VERIFIER`:
+ * flag, repo, saved, default false). With it, the verdict is still flagged `sameFamily` and the PR is a draft.
+ */
+export type VerifierRole = ResolvedRole<string> & { allowSameFamily: { value: boolean; source: RoleSource } };
+
+/** Where the same-family verifier opt-in was set, for messages. */
+function optInAt(source: RoleSource): string {
+  if (source === 'flag') return `--${ALLOW_SAME_FAMILY_VERIFIER}`;
+  if (source === 'repo') return `${FACTORY_CONFIG} ${ALLOW_SAME_FAMILY_VERIFIER}`;
+  if (source === 'saved') return `saved config ${ALLOW_SAME_FAMILY_VERIFIER}`;
+  return `${source} ${ALLOW_SAME_FAMILY_VERIFIER}`;
+}
+
+/** The opt-in from the configured layers, highest first: the first that sets it, else false. */
+export function resolveAllowSameFamily(layers: readonly (readonly [RoleSource, boolean | undefined])[]): VerifierRole['allowSameFamily'] {
+  const found = layers.find(([, value]) => value !== undefined);
+  return found ? { value: found[1]!, source: found[0] } : { value: false, source: 'default' };
+}
+
 /** The verifier from the configured layers, highest first, or `auto`. */
 export function resolveVerifierRole(layers: readonly (readonly [RoleSource, RoleSettings])[]): ResolvedRole<string> {
   return (pickRole('verifier', layers) as ResolvedRole<string> | null) ?? { value: ROLE_KEYWORDS.verifier, source: 'default' };
@@ -283,12 +318,14 @@ export function defaultCodeRoles(implementers: string[]): CodeRoleMap {
  * two or more implementers (they can tie among themselves, and can be all the graft picker reads), is an error; of a
  * family with one implementer, a warning. A configured verifier of an unknown family, or of a family that writes the
  * code, is an error: `authors` once the code exists (`pr`, `verify-pr`), else every implementer family and a
- * configured integrator's. `auto` is never a violation: the run picks cross-family and flags what it cannot.
+ * configured integrator's. With the verifier's `allowSameFamily` opt-in, an author-family verifier is a warning
+ * instead (`verifier-author-family-allowed`); an unknown family stays an error. `auto` is never a violation: the run
+ * picks cross-family and flags what it cannot.
  */
-export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: ResolvedRole<string>; authors?: readonly string[] }): RoleViolation[] {
+export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: ResolvedRole<string> & Partial<Pick<VerifierRole, 'allowSameFamily'>>; authors?: readonly string[] }): RoleViolation[] {
   const { roles, verifier } = input;
   const found: RoleViolation[] = [];
-  const implementers = roles?.implementer.value.map(familyKey) ?? [];
+  const implementers = roles?.implementer.value.map(specFamilyKey) ?? [];
   if (roles && roles.judge.value !== ROLE_KEYWORDS.judge) {
     const { value: judge, source } = roles.judge;
     const origin = roleOrigin.resolved(source);
@@ -305,12 +342,16 @@ export function checkRoleFamilies(input: { roles?: CodeRoleMap; verifier?: Resol
   if (verifier && verifier.value !== ROLE_KEYWORDS.verifier) {
     const origin = roleOrigin.resolved(verifier.source);
     const family = specFamily(verifier.value);
-    const integrator = roles && roles.integrator.value !== ROLE_KEYWORDS.integrator ? [familyKey(roles.integrator.value)] : [];
+    const integrator = roles && roles.integrator.value !== ROLE_KEYWORDS.integrator ? [specFamilyKey(roles.integrator.value)] : [];
     const authors = input.authors ?? [...new Set([...implementers, ...integrator])];
     if (family === null) {
       found.push(violation('unknown-family', origin, 'verifier', `verifier ${verifier.value} is of an unknown model family, so it cannot be shown to be outside the authors`));
     } else if (authors.includes(family)) {
-      found.push(violation('verifier-author-family', origin, 'verifier', `verifier ${verifier.value} is of the ${family} family, which ${input.authors ? 'wrote' : 'can write'} the code it verifies (authors: ${authors.join(', ')})`));
+      const message = `verifier ${verifier.value} is of the ${family} family, which ${input.authors ? 'wrote' : 'can write'} the code it verifies (authors: ${authors.join(', ')})`;
+      const allow = verifier.allowSameFamily;
+      found.push(allow?.value
+        ? violation('verifier-author-family-allowed', origin, 'verifier', `${message}; allowed by ${optInAt(allow.source)}, so the verdict is flagged same-family and the PR is a draft`)
+        : violation('verifier-author-family', origin, 'verifier', message));
     }
   }
   return found;

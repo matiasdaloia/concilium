@@ -250,8 +250,9 @@ export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string;
     ? '- Patch: none, the divergence is not resolved'
     : `- Patch: \`${s.patchPath ?? RESULT_PATCH}\` (\`${run.baseSha.slice(0, 12)}..${s.headSha?.slice(0, 12)}\`)`);
   const check = s.mergeCheck;
+  const target = check?.target && check.target !== 'HEAD' ? check.target : '`HEAD`';
   lines.push(check
-    ? `- Mergeable: ${s.mergeable ? 'yes' : 'no'}, ${s.mergeBlock ? `${s.mergeBlock}; ` : ''}\`git apply --check\` against \`HEAD\` at \`${check.targetSha}\`${check.applies ? '' : `: ${check.output.split('\n')[0]}`}`
+    ? `- Mergeable: ${s.mergeable ? 'yes' : 'no'}, ${s.mergeBlock ? `${s.mergeBlock}; ` : ''}\`git apply --check\` against ${target} at \`${check.targetSha}\`${check.applies ? '' : `: ${check.output.split('\n')[0]}`}`
     : `- Mergeable: no, ${s.mergeBlock ? `${s.mergeBlock}; ` : ''}the patch was not checked`);
   return [...lines, ''].join('\n');
 }

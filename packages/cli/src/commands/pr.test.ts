@@ -232,7 +232,10 @@ describe('concilium pr, verify-pr and status', () => {
     for (const command of ['verify-pr', 'pr']) {
       const result = concilium(command, runId, '--role', 'verifier=claude');
       expect(result.status).toBe(1);
-      expect(result.stderr.trim()).toBe('Error: [verifier-author-family] --role verifier: verifier claude is of the anthropic family, which wrote the code it verifies (authors: anthropic). Fix: pick a verifier of a family that wrote none of the code, or `auto`');
+      expect(result.stderr.trim()).toBe(
+        'Error: [verifier-author-family] --role verifier: verifier claude is of the anthropic family, which wrote the code it verifies (authors: anthropic). '
+        + 'Fix: pick a verifier of a family that wrote none of the code, or `auto`; or opt in with allow-same-family-verifier to verify same-family as a draft PR',
+      );
       expect(result.stdout).toBe('');
     }
     expect(loadRun(runId).prVerdict).toBeUndefined();
@@ -245,6 +248,54 @@ describe('concilium pr, verify-pr and status', () => {
     expect(passes.status).toBe(0);
     expect(passes.stdout).toContain('by codex (openai)');
   }, 120_000);
+
+  // An author-family verifier verifies only with the explicit opt-in, from any of its sources, and stays flagged.
+  const OPT_IN = [
+    { name: 'the flag', id: 'eeeee1', args: ['--allow-same-family-verifier'], at: '--allow-same-family-verifier', setup: () => () => {} },
+    {
+      name: 'factory.yaml', id: 'eeeee2', args: [], at: '.concilium/factory.yaml allow-same-family-verifier',
+      setup: () => {
+        mkdirSync(join(repo, '.concilium'), { recursive: true });
+        writeFileSync(join(repo, '.concilium', 'factory.yaml'), 'allow-same-family-verifier: true\n');
+        return () => rmSync(join(repo, '.concilium'), { recursive: true, force: true });
+      },
+    },
+    {
+      name: 'saved config', id: 'eeeee3', args: [], at: 'saved config allow-same-family-verifier',
+      setup: () => {
+        expect(concilium('config', 'set', 'allow-same-family-verifier', 'true').stdout).toContain('allow-same-family-verifier set to: true');
+        return () => expect(concilium('config', 'set', 'allow-same-family-verifier', 'false').status).toBe(0);
+      },
+    },
+  ];
+
+  it.each(OPT_IN)('should let a configured author-family verifier verify with the opt-in from $name, flagged everywhere, as a draft PR', ({ id, args, at, setup }) => {
+    const runId = `20261017T140000-${id}`;
+    const { shipSha } = writeRun(runId, false);
+    const teardown = setup();
+    try {
+      const warning = 'Warning: same-family verification: the configured verifier claude is of an author family (anthropic); allow-same-family-verifier allows it. The pull request is a draft.';
+      const pr = concilium('pr', runId, '--base', 'main', '--role', 'verifier=claude', ...args);
+      expect(pr.status).toBe(0);
+      expect(pr.stderr).toContain(`Warning: [verifier-author-family-allowed] --role verifier: verifier claude is of the anthropic family, which wrote the code it verifies (authors: anthropic); allowed by ${at}, so the verdict is flagged same-family and the PR is a draft.`);
+      expect(pr.stdout).toContain(`Verdict: PASS at ${shipSha.slice(0, 12)}`);
+      expect(pr.stdout).toContain('by claude (anthropic), same family:');
+      expect(pr.stdout).toContain(warning);
+      expect(pr.stdout).toContain('(a draft: the verifier is of an author family)');
+      expect(pr.stdout).toMatch(new RegExp(`${runId}-g2  pending  pr  gh pr create .* --base main --draft\\n`));
+      expect(loadRun(runId).prVerdict).toMatchObject({ verifier: { provider: 'claude', configured: true, sameFamily: true, family: 'anthropic' } });
+      expect(readFileSync(join(runsDir, runId, 'pr-body.md'), 'utf8')).toContain(`> **${warning}**`);
+      expect(readFileSync(join(runsDir, runId, 'verification.md'), 'utf8')).toContain('- verifier: claude (anthropic), SAME FAMILY as the authors');
+      expect(concilium('status', runId).stdout).toContain(warning);
+      const verify = concilium('verify-pr', runId, '--role', 'verifier=claude', ...args);
+      expect(verify.status).toBe(0);
+      expect(verify.stdout).toContain(warning);
+    } finally {
+      teardown();
+    }
+    // Without the opt-in the same verifier is refused again.
+    expect(concilium('verify-pr', runId, '--role', 'verifier=claude').stderr).toContain('Error: [verifier-author-family]');
+  }, 180_000);
 
   it("should ship a single-candidate run from the candidate's branch", () => {
     const runId = '20261017T130000-dddddd';

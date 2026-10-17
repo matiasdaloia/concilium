@@ -191,7 +191,7 @@ export type FactoryRecord = {
 export type TaskRun = {
   status: 'done' | 'reframe-needed';
   synthesis?: Parameters<typeof shipSource>[0]['synthesis'];
-  candidates: { candidateId: string; provider: string; branch: string; headSha: string | null; status: string }[];
+  candidates: { candidateId: string; provider: string; model?: string | null; branch: string; headSha: string | null; status: string }[];
 };
 
 /** Why a finished task run has no head to verify, or null when it has one. */

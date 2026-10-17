@@ -7,7 +7,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { getProviderInfo } from '../domain/agent/providers.js';
+import { familyKey } from '../domain/agent/providers.js';
 import { configuredJudge, pickJudge } from '../domain/code-council/judging.js';
 import type { TaskType } from '../domain/code-council/playbooks.js';
 import type { Ranking } from '../domain/code-council/ranking.js';
@@ -29,7 +29,7 @@ import {
 import { testGate, type AdversarialTest, type SurvivalCell } from '../domain/verification/adversarial.js';
 import { parseDiff } from '../domain/verification/integrity.js';
 import type { HeadlessCliDriver } from '../ports/headless-cli-driver.js';
-import type { Workspace, WorkspaceManager } from '../ports/workspace.js';
+import type { MergeTarget, Workspace, WorkspaceManager } from '../ports/workspace.js';
 import { CliCouncilGateway } from '../adapters/cli/cli-council-gateway.js';
 import { GateRunner } from '../adapters/gate-runner.js';
 import { INTEGRATION_CANDIDATE } from '../adapters/git-worktree-workspace.js';
@@ -65,6 +65,8 @@ export type SynthesisInput = {
    * suite, re-run at the integration head, and unless that head passes the gates and all of them, no patch is kept.
    */
   conflictTests?: AdversarialTest[];
+  /** What `mergeable` is checked against instead of the target repo's `HEAD`: the commit a stacked run builds on. */
+  mergeTarget?: MergeTarget;
   /** Wall-clock limit per integrator run. */
   timeoutMs: number;
   runner?: GateRunner;
@@ -86,7 +88,7 @@ function errorMessage(err: unknown): string {
 }
 
 function familyOf(c: CodeCandidate): string {
-  return getProviderInfo(c.provider)?.family ?? c.provider;
+  return familyKey(c.provider, c.model);
 }
 
 function emptySynthesis(): Synthesis {
@@ -307,7 +309,7 @@ export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
       await mkdir(input.runDir, { recursive: true });
       synthesis.patchPath = join(input.runDir, RESULT_PATCH);
       await writeFile(synthesis.patchPath, patch);
-      synthesis.mergeCheck = await input.workspace.checkPatch({ repoDir: input.repoDir, patch });
+      synthesis.mergeCheck = await input.workspace.checkPatch({ repoDir: input.repoDir, patch, ...(input.mergeTarget ? { target: input.mergeTarget } : {}) });
       synthesis.mergeable = synthesis.mergeCheck.applies;
     }
   } catch (err) {

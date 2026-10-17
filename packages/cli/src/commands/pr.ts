@@ -33,6 +33,15 @@ import { collect } from './roles.js';
 
 const RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+/** What `--allow-same-family-verifier` says, shared by every command that verifies. */
+export const ALLOW_SAME_FAMILY_HELP =
+  'Let a configured verifier of an author family verify; the verdict is flagged same-family and the PR is a draft (default: factory.yaml, saved config, else no)';
+
+interface VerifyOptions {
+  role?: string[];
+  allowSameFamilyVerifier?: boolean;
+}
+
 function fail(err: unknown): never {
   printError(err);
   process.exit(1);
@@ -62,19 +71,20 @@ function verdictLines(v: PrVerdict): string[] {
  * Re-verifies the commit the run would ship, saves the verdict on the record and prints it. The role rules run
  * first, against the run's author families: an error stops before any agent CLI runs.
  */
-async function verify(command: 'pr' | 'verify-pr', store: JsonCodeRunStore, record: CodeRunRecord, roleFlags: string[]): Promise<PrVerdict> {
-  const flags = parseCommandRoles(command, { roles: roleFlags });
+async function verify(command: 'pr' | 'verify-pr', store: JsonCodeRunStore, record: CodeRunRecord, opts: VerifyOptions): Promise<PrVerdict> {
+  const flags = parseCommandRoles(command, { roles: opts.role ?? [] });
   const runtime = createConciliumRuntime({
     secretStore: new PlaintextSecretStore(),
     configStore: new JsonConfigStore(getConfigDir()),
     runRepository: new JsonRunRepository(getDataDir()),
   });
-  const verifier = await runtime.resolveVerifier({ repoDir: record.repoDir, flags });
+  const verifier = await runtime.resolveVerifier({ repoDir: record.repoDir, flags, allowSameFamily: opts.allowSameFamilyVerifier });
   const source = shipSource(record);
   const authors = 'blocked' in source ? undefined : source.authorFamilies;
   for (const line of violationLines(throwOnRoleErrors(checkRoleFamilies({ verifier, authors })))) console.error(line);
   const verdict = await verifyPr({
-    record, runDir: store.runDir(record.id), drivers: runtime.drivers, verifier: verifier.value, onStep: (line) => console.error(`  ${line}`),
+    record, runDir: store.runDir(record.id), drivers: runtime.drivers, verifier: verifier.value, allowSameFamily: verifier.allowSameFamily.value,
+    onStep: (line) => console.error(`  ${line}`),
   });
   record.prVerdict = verdict;
   await store.save(record);
@@ -93,13 +103,14 @@ export function registerPrCommands(program: Command): void {
     .option('--remote <name>', 'The remote to push to', 'origin')
     .option('--base <branch>', "The pull request's base branch (default: the remote's default branch)")
     .option('--role <role=member>', 'The verifier, as verifier=<cli[:model]> (default: factory.yaml, saved config, else auto)', collect)
-    .action(async (runId: string, opts: { remote: string; base?: string; role?: string[] }) => {
+    .option('--allow-same-family-verifier', ALLOW_SAME_FAMILY_HELP)
+    .action(async (runId: string, opts: VerifyOptions & { remote: string; base?: string }) => {
       const store = new JsonCodeRunStore(getDataDir());
       const record = await loadRun(store, runId);
       const source = shipSource(record);
       if ('blocked' in source) fail(`run ${runId} has nothing to ship: ${source.blocked}`);
       try {
-        const verdict = await verify('pr', store, record, opts.role ?? []);
+        const verdict = await verify('pr', store, record, opts);
         const { pr, gates, reused, superseded } = await requestPr({ record, runDir: store.runDir(runId), verdict, remote: opts.remote, base: opts.base });
         record.pr = pr;
         await store.save(record);
@@ -124,11 +135,12 @@ export function registerPrCommands(program: Command): void {
     .description('Verify the commit a run would ship')
     .argument('<run-id>', 'The code run to verify')
     .option('--role <role=member>', 'The verifier, as verifier=<cli[:model]> (default: factory.yaml, saved config, else auto)', collect)
-    .action(async (runId: string, opts: { role?: string[] }) => {
+    .option('--allow-same-family-verifier', ALLOW_SAME_FAMILY_HELP)
+    .action(async (runId: string, opts: VerifyOptions) => {
       const store = new JsonCodeRunStore(getDataDir());
       const record = await loadRun(store, runId);
       try {
-        if (!passed(await verify('verify-pr', store, record, opts.role ?? []))) process.exitCode = 1;
+        if (!passed(await verify('verify-pr', store, record, opts))) process.exitCode = 1;
       } catch (err) {
         fail(err);
       }

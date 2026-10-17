@@ -9,7 +9,7 @@ import { PROVIDER_IDS, type AgentProviderType } from '../domain/agent/providers.
 import type { CouncilConfig } from '../domain/council/council-config.js';
 import { parseCouncilMember, resolveCouncil } from '../domain/council/council-members.js';
 import {
-  pickRole, resolveCodeRoles, resolveVerifierRole, type CodeRoleMap, type ResolvedRole, type RoleMap, type RoleSettings,
+  pickRole, resolveAllowSameFamily, resolveCodeRoles, resolveVerifierRole, type CodeRoleMap, type RoleMap, type RoleSettings, type VerifierRole,
 } from '../domain/roles/roles.js';
 import type { ConfigStore } from '../ports/config-store.js';
 import type { DeliberationEvents } from '../ports/deliberation-events.js';
@@ -83,8 +83,12 @@ export interface ConciliumRuntime extends ConciliumAdapters {
    * `factory.yaml` it read. Never rejects for a missing agent CLI: that is a note.
    */
   resolveRoleMap(input: { repoDir: string; flags?: RoleSettings }): Promise<{ roles: RoleMap; factoryPath: string | null; notes: string[] }>;
-  /** The verifier `concilium pr` and `verify-pr` prefer: flag, the repo's `factory.yaml` (read now), saved, else `auto`. */
-  resolveVerifier(input: { repoDir: string; flags?: RoleSettings }): Promise<ResolvedRole<string>>;
+  /**
+   * The verifier `concilium pr` and `verify-pr` prefer: flag, the repo's `factory.yaml` (read now), saved, else
+   * `auto`; and the same-family opt-in the same way (`allowSameFamily`: the `--allow-same-family-verifier` flag, set
+   * only when given), default false.
+   */
+  resolveVerifier(input: { repoDir: string; flags?: RoleSettings; allowSameFamily?: boolean }): Promise<VerifierRole>;
 }
 
 /** Where to look for `.concilium/factory.yaml`, whose `juror` and `chairman` roles rank between env vars and saved config. */
@@ -164,8 +168,14 @@ export function createConciliumRuntime(adapters: ConciliumAdapters): ConciliumRu
         notes,
       };
     },
-    async resolveVerifier({ repoDir, flags = {} }) {
-      return resolveVerifierRole(await roleLayers(flags, (await readRepoRoles(repoDir)).roles));
+    async resolveVerifier({ repoDir, flags = {}, allowSameFamily }) {
+      const repo = await readRepoRoles(repoDir);
+      return {
+        ...resolveVerifierRole(await roleLayers(flags, repo.roles)),
+        allowSameFamily: resolveAllowSameFamily([
+          ['flag', allowSameFamily], ['repo', repo.allowSameFamilyVerifier], ['saved', await configService.savedAllowSameFamilyVerifier()],
+        ]),
+      };
     },
   };
 

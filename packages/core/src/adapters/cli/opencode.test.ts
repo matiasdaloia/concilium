@@ -42,6 +42,10 @@ describe('openCodeArgs', () => {
       'List the top-level folders.\n\nConstraints:\n- Touch only src/',
     ]);
   });
+
+  it('should run without external plugins only when isolated', () => {
+    expect(openCodeArgs(planBrief, undefined, true)).toEqual(['run', '--format=json', '--agent=plan', '--pure', '--', 'List the top-level folders.']);
+  });
 });
 
 describe('openCodePermission', () => {
