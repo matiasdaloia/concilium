@@ -13,7 +13,7 @@ Prior art comes from [software-factory-landscape.md](../research/software-factor
 - Section 2 covers subscription auth on remote runners and secret handling.
 - Section 3 covers org mode.
 - Section 4 is the per-repo `factory.yaml`.
-- Section 5 is the milestone list M10 to M14, in four phases, each ending in a gate with exit criteria. Then risks and open questions.
+- Section 5 is the milestone list M10 to M14, in four phases plus Phase 2b (messaging channels), each ending in a gate with exit criteria. Then risks and open questions.
 
 ---
 
@@ -59,7 +59,7 @@ Each cut names what would bring it back. None of these is needed to reach the ph
 | Embedding-based dedup | Dedup by source reference (same issue, same PR, same alert id) | Duplicate work from different sources is observed |
 | `WORKFLOW.md` prose prompts with Liquid templates [R§1] | Playbooks stay in core (layer 3, C1). `factory.yaml` selects them | Users need per-repo playbook text (add a `playbooks/` override dir, not a template engine) |
 | Generic DAG pipeline engine [R§3] | Fixed work-item steps, plus the stacked sequential tasks of M8.1 | Real specs need parallel task DAGs (`blocked_by` dispatch, as Symphony does) |
-| Plugin system | Adapters are code in core behind ports. Org-specific behavior is config and playbooks | Third parties want to ship adapters |
+| Plugin system | Adapters are code in core behind ports. Org-specific behavior is config and playbooks. One exception: messaging channel adapters may load from a `plugin:` module (M11.10), so company chat platforms stay out of the repo | Third parties want to ship other adapters |
 | Separate `.concilium/verify.yaml` and `roles.yaml` (layer 3, B6 and C4) | Folded into `factory.yaml` as `checks:` and `roles:` | — |
 | OpenTelemetry in core | Events table plus structured logs. An optional OTLP exporter reads the events table | An org needs traces in its own backend |
 | Building a tunnel for phone access to a laptop | Document Tailscale or Cloudflare Tunnel | — |
@@ -112,6 +112,7 @@ flowchart TB
     CLI[CLI]
     EL[Electron]
     MCP[MCP server]
+    CH[chat channels: Telegram, plugins]
   end
   subgraph Triggers
     GH[GitHub poll / webhook]
@@ -130,7 +131,7 @@ flowchart TB
     VM[cloud VM runner]
     SB[hosted sandbox runner]
   end
-  PWA & CLI & EL & MCP -->|HTTPS + SSE| API
+  PWA & CLI & EL & MCP & CH -->|HTTPS + SSE| API
   GH & CRON & WH --> FS
   API --> FS --> DB
   FS --> ART
@@ -256,15 +257,18 @@ GET    /api/runners                runners + capabilities + last heartbeat
 GET    /api/stats                  leaderboard, cost, throughput
 POST   /api/push/subscribe         Web Push subscription for this device
 POST   /api/hooks/:source          inbound webhooks (signature-checked per source)
+POST   /api/channels/pair          redeem a pairing code for a chat user id (channel tokens only)
+POST   /api/approvals/:id/tokens   mint a single-use approval token for one mapped chat user (channel tokens only)
 /runner/*                          the runner protocol (Section 1.6), runner tokens only
 ```
 
 Every handler calls `can(user, action, repoId)` before anything else. In v1 the single owner passes every check, but the call sites exist, so org mode only changes the function and the data, not the handlers.
 
-Authentication in v1 has two token kinds, both random, stored hashed:
+Authentication in v1 has three token kinds, all random, stored hashed:
 
 - **User tokens.** `concilium token create` for the CLI. `concilium pair` prints a URL and QR code with a one-time code. The PWA exchanges it for a device token. Tokens can be listed and revoked.
 - **Runner tokens.** `concilium runner register` issues one, bound to an owner user (Section 2).
+- **Channel tokens.** One per enabled messaging channel (Phase 2b). A channel token acts for no user by itself. It acts only for a mapped, paired chat user, and it approves only with an approval token minted for that user (Section 5.3).
 
 ### 1.6 The runner protocol
 
@@ -300,6 +304,7 @@ Properties that keep this simple and robust:
 - **CLI.** Existing commands keep working. New commands are API clients: `concilium serve`, `submit`, `status`, `approve`, `logs`, `pair`, `token`, `runner`. `concilium code` (layer 3, M2.2) remains the direct, server-less way to run one council locally. It is the same function the runner calls.
 - **Electron.** Stops growing orchestration. Short term it points a window at the PWA served by a local `serve` and keeps the existing plan-council screens. Long term the installed PWA likely replaces it (F4).
 - **MCP server.** `concilium mcp` exposes `submit`, `status`, `answer` as tools, so another agent can file work. It is an API client with a user token.
+- **Messaging channels** (Phase 2b). Telegram first, other platforms as plugins. A chat can show gate notifications, approve or reject, show status and start a task. Each adapter is an API client of `serve` through a core `ChannelGateway` (Section 5.3).
 - **Native iOS.** Deferred (Section 0.3).
 
 ---
@@ -317,7 +322,7 @@ This rule is enforced in the data model, not in documentation:
 - A job that would use a `subscription` credential gets the requirement `owner:<requesterId>`. Only runners owned by the requester can claim it.
 - Shared org runners (Section 3) may only run CLIs whose `auth_kind` is `api_key` with a key owned by the org.
 
-Whether scripted, multi-process, remote use of consumer subscriptions is allowed by each provider's terms is an **open decision** (layer 3, F3; Section 5.8 Q1). It must be checked against primary sources before M12.3 ships. Until then cloud runners are documented as "your machine, your login, your work only", and API-key mode is the documented fallback.
+Whether scripted, multi-process, remote use of consumer subscriptions is allowed by each provider's terms is an **open decision** (layer 3, F3; Section 5.9 Q1). It must be checked against primary sources before M12.3 ships. Until then cloud runners are documented as "your machine, your login, your work only", and API-key mode is the documented fallback.
 
 ### 2.2 Getting each CLI logged in on a remote runner
 
@@ -580,6 +585,26 @@ notify:
   # slack: { channel: "#factory", events: [pr_open, merged] }   # later adapter
   heartbeat: off                         # e.g. 30m posts progress on long items
 
+# ── Messaging channels (Phase 2b) ────────────────────────────────────────────
+# Chat is one more approver surface. The always-pause rules still apply.
+# Secrets are env var names, never values. The bot itself is per `serve`; repos
+# that enable the same channel share it, and each repo's identities gate its items.
+channels:
+  telegram:
+    mode: poll                           # poll (getUpdates, no public endpoint) | webhook
+    token_env: TELEGRAM_BOT_TOKEN
+    # webhook_secret_env: TELEGRAM_WEBHOOK_SECRET   # webhook mode: checked on every call
+    notify: [approval_needed, needs_input, failed, pr_open]
+  # company-chat:                        # an external platform, loaded as a plugin
+  #   plugin: "@your-org/concilium-channel-gaby"   # npm package or path; never in core
+  #   token_env: COMPANY_CHAT_TOKEN
+  #   notify: [approval_needed]
+  approval_token_ttl: 15m                # signed, single-use, bound to gate + SHA + user
+  identities:                            # explicit allowlist; anyone else gets nothing
+    - chat: telegram:123456789           # must also be paired (`concilium channel pair`)
+      user: owner
+      may: [status, start, "approve:push", "approve:pr"]   # per action class; narrows can()
+
 # ── Storage and memory ───────────────────────────────────────────────────────
 storage:
   commit_trail: true                     # .concilium/runs/<id>/ on the integration branch (layer 3 F6)
@@ -594,7 +619,7 @@ Database path, artifact root and OTel export are deployment concerns and live in
 ### 4.4 Schema, validation, hot reload
 
 - **One schema.** `packages/core/src/config/factory-schema.ts` defines the file with zod. The same module exports a JSON Schema for editor completion (`$schema` in the YAML) and the TypeScript type. Unknown keys are errors, so typos fail loudly.
-- **Semantic rules after the schema.** Roster family rules (M8.3), never-auto cannot be loosened, panel size within 1 to 6, `high_paths` globs compile, every referenced secret name exists in `serve`, triggers reference labels only in their own repo.
+- **Semantic rules after the schema.** Roster family rules (M8.3), never-auto cannot be loosened, panel size within 1 to 6, `high_paths` globs compile, every referenced secret name exists in `serve`, triggers reference labels only in their own repo, every channel identity names a known user and only `ActionGate` action classes.
 - **`concilium config check [path]`.** Runs both layers and prints errors with YAML line numbers. CI in the target repo can run it.
 - **Hot reload by reading at use.** There is no file watcher. The control plane reads `factory.yaml` from the repo's default branch head (from a local mirror for remote repos, from the committed file for local repos) whenever it evaluates a trigger or creates an item, cached by blob SHA. A changed file is picked up on the next evaluation.
 - **Invalid config never stops the factory.** If the new version is invalid, the last valid version stays in effect, an event `config.invalid` is recorded with the errors, and the repo owner gets a push notification.
@@ -670,7 +695,43 @@ Depends on layer 3 M0 to M7. This phase proves the core claim (competition, veri
 3. The API surface used by the PWA is frozen as v1 (versioned path, a contract test per route). No PWA feature reads SQLite or the filesystem directly.
 4. Zero duplicate items from repeated triggers in the two weeks.
 
-### 5.3 Phase 3: cloud runners
+### 5.3 Phase 2b: messaging channels gateway (approve from chat)
+
+Depends on G2: the frozen v1 API is what the adapters call. A channel is one more client surface, like the PWA. The always-pause rules (layer 3 B10, M7.1) do not change. Chat only adds another place to approve from, and the same `ActionGate` and `can()` checks decide.
+
+Shape:
+
+- **A generic port in core.** `ChannelAdapter` (`packages/core/src/channels/`) does platform I/O only: receive messages and button presses as normalized `ChannelEvent`s, send text and buttons. A core `ChannelGateway` turns events into API calls and API events (SSE) into messages. It is an API client of `serve` with a channel token, the same way the embedded runner uses loopback HTTP. No adapter talks to runners, git or SQLite.
+- **Capabilities.** Notify pending gates (and the other `notify` events), approve or reject a gate, show item or run status, start work (`/task <text>` becomes `POST /api/items` with the source `channel:<name>`/`<message id>`, deduplicated like any trigger).
+- **Identity.** A chat user can do nothing until two things hold: the repo's `channels.identities` allowlist maps the chat user id to a Concilium user with explicit permissions, and that mapping is paired. `concilium channel pair <channel> --user <user>` prints a one-time code (single use, 10 minutes), the user sends `/pair <code>` to the bot, and `serve` records `channel_identities(channel, chat_user_id) → user_id`. Messages from an unknown or unpaired chat user get no reply. Each one is recorded as a `channel.unmapped` event, rate-limited.
+- **Who may approve.** Permissions are per action class, using the `ActionGate` kinds (`approve:push`, `approve:pr`, …). They can only narrow `can()` and the `access:` roles of Section 3.2, never widen them. The agent that requested an action can never approve it: agent processes hold no user or channel token (B5), and approval tokens are minted only for mapped humans. The human requester follows `self_approval`.
+- **Approval tokens.** Each gate notification carries, per recipient, a token minted by `serve`: signed with the server key, single-use, expiring (15 minutes by default), and bound to gate id, verified head SHA (M7.2) and user. The button carries only the short token, so it fits Telegram's 64-byte callback data. `serve` rejects a token that is expired, already used, signed for another gate or user, or whose SHA no longer matches the integration head (`verdictState` void). Inbound platform webhooks are signature-checked per platform before parsing (for Telegram the `X-Telegram-Bot-Api-Secret-Token` header). Poll mode needs no public endpoint.
+- **Decided once.** The approval goes through the M7.1 semantics. A gate is decided once, and the first decision wins. A later approve or reject from any surface (chat, PWA, CLI) is rejected, and the chat is told who decided it and when.
+- **Audit.** Every chat decision, and every rejected attempt, is an event and a `decision` row in the run's `decisions.tsv` (layer 3 M6.2). The row records the channel, the chat user id, the mapped user and the token id.
+- **Nothing company-specific in core.** Telegram is the first adapter, built in. Other platforms load from a `plugin:` module named in config that implements the port, versioned against it. Core and the repo's defaults never name them (Section 3.4).
+
+**M11.7 Channel port, gateway, identity mapping.**
+- `ChannelAdapter`, `ChannelGateway`, a channel token kind, `channel_identities`, `concilium channel pair`, the `channels:` schema (Section 4.3), and a `FakeChannel` for tests.
+- *Acceptance.* With `FakeChannel`, a mapped and paired user gets status and starts an item. An unmapped user gets nothing, and the attempt is recorded as an event. A pairing code works once and fails after 10 minutes. A static test fails if any file under `channels/` imports a runner, workspace or SQLite module.
+
+**M11.8 Signed approval tokens and chat approvals.**
+- Token minting and redemption in `serve`, per-action-class permissions, first-decision-wins through `ActionGate`, trail rows.
+- *Acceptance.* Table-driven tests: an expired, reused, foreign-gate, foreign-user or stale-SHA token is rejected. A second decision on a decided gate returns a conflict naming the first decision. An agent-side request with no user token cannot approve. Every attempt has an event and every decision has a `decisions.tsv` row that `concilium trail check` accepts.
+
+**M11.9 Telegram adapter.**
+- Bot API in poll mode (`getUpdates`) by default, webhook mode with the secret-token header check. Inline buttons for approve and reject.
+- *Acceptance.* On a test bot against a fake remote: a pending push gate produces one notification. Approve once, and the push runs exactly once. A second approve is rejected and reported in the chat. A message from an unmapped account is rejected, and so is a press with an expired token. A webhook call with a wrong secret token is dropped before parsing.
+
+**M11.10 External channel plugins (first: Gaby).**
+- `plugin:` loads a module (npm package or path) that exports an adapter factory for the port version it declares. The Gaby adapter (Matias's company's internal platform, API now, MCP later) lives in such a module, outside this repo.
+- *Acceptance.* A fixture plugin outside `packages/` passes the same gateway contract tests as Telegram. A plugin that declares an incompatible port version is refused at start with a clear error. `rg -i gaby packages/` returns nothing.
+
+**Gate G2b: chat approvals are as safe as the PWA.** Exit criteria:
+1. For one week, the owner approves real gates from Telegram. Every approval appears once in `decisions.tsv` with the mapped user and the verified SHA.
+2. Zero gates decided twice, zero approvals from unmapped chat users or with expired tokens (checked from events).
+3. A security review of token minting, redemption and the webhook checks is recorded before any channel is exposed through a public webhook.
+
+### 5.4 Phase 3: cloud runners
 
 **M12.1 Runner image and remote checkout.**
 - A container image with Node, git, the four CLIs, and `concilium runner`. Remote jobs clone from `repo.url` with a job-scoped read token. Labels from the probe.
@@ -702,7 +763,7 @@ Depends on layer 3 M0 to M7. This phase proves the core claim (competition, veri
 3. ToS findings are recorded and enforced (M12.3).
 4. The runner protocol is versioned and has not changed incompatibly for two weeks.
 
-### 5.4 Phase 4: SSO and orgs
+### 5.5 Phase 4: SSO and orgs
 
 **M13.1 OIDC login and identity linking.**
 - Generic OIDC (code plus PKCE), tested against Entra ID and Google. A GitHub OAuth adapter. `identities` table. The existing owner links their identity.
@@ -730,31 +791,33 @@ Depends on layer 3 M0 to M7. This phase proves the core claim (competition, veri
 3. No subscription credential was used for another user's work (checked from job records).
 4. Core contains no org-specific names or defaults (`rg -i scanoss packages/core packages/cli` returns only the optional docs example).
 
-### 5.5 After the gates: more sources and sinks (M14)
+### 5.6 After the gates: more sources and sinks (M14)
 
 Independent adapters, each one milestone, in any order once G2 has passed. Each has the same acceptance pattern: a recorded event fixture creates exactly one item, dedups a repeat, and respects allowed actors and rate limits.
 
 - M14.1 Linear (issue state, agent delegation) as trigger and tracker [R§1, R§2].
-- M14.2 Slack (mention, reaction, channel filters) as trigger and notifier [R§5, R§8].
+- M14.2 Slack (mention, reaction, channel filters) as trigger, and as a channel adapter on the M11.7 port [R§5, R§8].
 - M14.3 Sentry and PagerDuty triggers [R§8].
 - M14.4 Jira trigger and tracker.
 - M14.5 PR babysitting step: answer review comments, fix red CI on factory PRs, rebase [R§2.8].
 - M14.6 Optional OTLP exporter over the events table.
 
-### 5.6 Order at a glance
+### 5.7 Order at a glance
 
 ```
 layer 3: M0 → M1 → M2 → M3 → M4 → M5 → M6 → M7
                                               ↓
 Phase 1: M10.1 → M10.2 → M10.3 → M10.4 → M10.5 → [G1 council beats single agent]
 Phase 2: M11.1 → M11.2 → M11.3 → M11.4 → M11.5 → M11.6 → [G2 daily use from PWA]
+Phase 2b: M11.7 → M11.8 → M11.9 → M11.10 → [G2b chat approvals as safe as PWA]
 Phase 3: M12.1 → M12.2 → M12.3 → M12.4 → M12.5 → M12.6 → [G3 cloud = runner choice]
 Phase 4: M13.1 → M13.2 → M13.3 → M13.4 → M13.5 → [G4 org pilot]
 M14.x: any order after G2.  Layer 3 M8 (factory loop, ledger) fits in Phase 2.
+Phase 2b does not block Phase 3; it can run alongside it.
 Layer 3 M9 (desktop) is replaced by M11.6.
 ```
 
-### 5.7 Risks
+### 5.8 Risks
 
 | Risk | Where | Mitigation |
 |---|---|---|
@@ -765,11 +828,12 @@ Layer 3 M9 (desktop) is replaced by M11.6.
 | **`node:sqlite` stability.** It is newer than the rest of the stack. | M10.1 | Wrap it behind a 5-function module. `better-sqlite3` is a drop-in swap if needed. |
 | **Exposing `serve` to the internet.** The control plane holds repo tokens. | Phase 2 | Recommend Tailscale for solo use. Tokens hashed, secrets encrypted with a key outside the database, `can()` on every route, rate limits on auth. Security review before G2. |
 | **Web Push reliability on iOS.** | M11.3 | Measured in G2. The inbox works without push. Fallback is a GitHub comment or email notifier. |
+| **Forged or replayed chat approvals.** A chat account or webhook is easier to spoof than a device token. | Phase 2b | Allowlist plus pairing, signed single-use expiring tokens bound to gate, SHA and user, webhook signature checks, first decision wins, every attempt audited (Section 5.3). |
 | **Prompt injection through triggers.** Issue text and webhook payloads are untrusted. | M11.4 | Allowed actors per source. Triage output is schema-validated. Memory is never written from issue text. Agents hold no credentials (Section 2.3). |
 | **Runner image drift.** The four CLIs change fast (layer 3 A7). | M12.1 | Probe at registration. The image pins CLI versions. Updating them is a deliberate PR with probe fixtures. |
 | **Scope creep into a platform.** | All | The cut list (Section 0.3) is part of the plan. Adding any cut item requires naming its trigger as observed. |
 
-### 5.8 Open questions
+### 5.9 Open questions
 
 1. **Subscription terms.** Which providers allow scripted, remote, multi-process use of a personal subscription, and under which conditions? Decided in M12.3 from primary sources (layer 3 F3).
 2. **Where does `serve` run for a solo user by default?** Workstation (simplest, no hosting) or a small VPS (works with the laptop closed)? Recommendation: workstation in Phase 1 and 2, document VPS in Phase 3.
