@@ -157,6 +157,9 @@ concilium run --output solution.md "Migrate the database schema"
 | `concilium doctor` | Check which agent CLIs are installed and how they sign in |
 | `concilium gc` | Remove worktrees and `concilium/` branches of finished runs |
 | `concilium trail check --run <id>` | Check a code run's `decisions.tsv` against its event log and resolve every row's evidence |
+| `concilium gates` | List the actions Concilium paused for your approval (push, pull requests, writes outside `concilium/`) |
+| `concilium approve <gate-id>` | Approve one paused action and run its exact command |
+| `concilium reject <gate-id>` | Reject one paused action; it never runs |
 
 For detailed usage, flags, configuration, and the programmatic API, see the **[CLI documentation](packages/cli/README.md)**.
 

@@ -97,6 +97,9 @@ Commands:
   roles [options]             Show who plays each role and where it was set
   gc [options]                Remove worktrees and branches of finished runs
   trail                       Audit the decision trail of a code run
+  gates [options]             List paused actions from each run's gates.md
+  approve <gate-id>           Approve one paused action and run its command
+  reject <gate-id>            Reject one paused action; its command never runs
   help [command]              display help for command
 "
 `;

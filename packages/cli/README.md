@@ -189,6 +189,8 @@ After the candidates finish, every candidate is verified against the base (skip 
 
 A candidate is `PASS` with no new gate failure and no finding, `DISQUALIFIED` when it weakened the tests, and `ISSUES` otherwise. Gates run the target repo's own code, and the code the candidates wrote, on your machine, without a sandbox; only credentials (variables ending in `KEY`, `TOKEN`, `SECRET`, `PASSWORD`) and npm's settings are removed from their environment.
 
+Agent CLIs (candidates, adversaries, the integrator, and every other agent run) start without push credentials: `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN`, `GITLAB_TOKEN`, `GL_TOKEN`, `BITBUCKET_TOKEN`, `GIT_ASKPASS`, `SSH_ASKPASS`, `SSH_AUTH_SOCK`, `GIT_SSH` and `GIT_SSH_COMMAND` are removed, git's credential helpers are reset to none at command scope (`GIT_CONFIG_COUNT`, which beats every config file), and git's prompts are off (`GIT_TERMINAL_PROMPT=0`). Their own CLI logins are untouched. This is not a sandbox: an agent can still pass its own `git -c credential.helper=...`, read a stored credential file such as `~/.git-credentials`, or use an ssh key on disk without a passphrase. Concilium itself never pushes without your approval (see [`concilium gates`](#concilium-gates)).
+
 `.concilium/verify.yaml`, committed in the target repo, replaces the detected gates when it lists `gates`, and the install step when it sets `install`:
 
 ```yaml
@@ -518,6 +520,44 @@ concilium trail check --run <id> [options]
 ```bash
 concilium trail check --run 20261016T141015-a1b2c3
 concilium trail check --run 20261016T141015-a1b2c3 --json | jq '.problems'
+```
+
+### `concilium gates`
+
+List the actions Concilium paused instead of running. Concilium sorts every side effect of its own in three tiers: it runs what stays in the run (worktrees and `concilium/` branches, agent CLIs and gates in a worktree, the run store, reverting a graft, `gc`), runs and announces a dependency install or a rebase of the integration branch, and always pauses a push to any remote, opening, merging or closing a pull request, a write to your checkout or to a branch outside `concilium/`, a delete outside the run's own worktrees and branches, a deploy and a message to a person. A paused action is a gate: an entry in `gates.json` and `gates.md` in `$XDG_DATA_HOME/concilium/runs/<run-id>/`, with its id (`<run-id>-g<n>`), the exact command and the directory it runs in, the reason and the time. It runs only when you approve that gate. An approval covers one gate and never a later one, even with the same command. Status is `pending`, `approved` (its command started), `executed`, `failed` (with the exit code and the end of the output) or `rejected`. No command of Concilium pauses yet; opening the integration pull request (M7.2) will be the first.
+
+```
+concilium gates [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--run <id>` | Only the gates of this run |
+| `--json` | Print the gate entries as JSON to stdout |
+
+### `concilium approve`
+
+Approve one pending gate and run its exact command, without a shell, in its directory, with your environment. It prints the command, the exit code and the output, and exits 1 when the command fails, when the gate is unknown, or when it was already approved or rejected.
+
+```
+concilium approve <gate-id>
+```
+
+### `concilium reject`
+
+Reject one pending gate. Its command never runs, and a rejected gate cannot be approved later.
+
+```
+concilium reject <gate-id>
+```
+
+**Examples:**
+
+```bash
+concilium gates
+concilium gates --run 20261016T141015-a1b2c3 --json | jq '.[] | select(.status == "pending")'
+concilium approve 20261016T141015-a1b2c3-g1
+concilium reject 20261016T141015-a1b2c3-g2
 ```
 
 ## Configuration

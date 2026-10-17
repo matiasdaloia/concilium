@@ -106,6 +106,33 @@ describe('cli output', () => {
   });
 });
 
+describe('action gate', () => {
+  const ACTION_GATE = 'packages/core/src/services/action-gate.ts';
+
+  /** A `git push` or `gh` command anywhere but a `kind: 'push'` action request. */
+  function pushOrGh(source) {
+    const code = source.replace(/\bkind:\s*(['"`])push\1/g, '');
+    return /\bgit\s+push\b/.test(code) || /(['"`])push\1/.test(code) || /(['"`])gh(\1|\s)/.test(code);
+  }
+
+  it('should catch the ways a module can build a push or gh command', () => {
+    for (const source of ["['git', 'push', remote]", 'run(`git push ${remote}`)', "execFile('gh', ['pr'])", '"gh pr create"']) {
+      assert.ok(pushOrGh(source), source);
+    }
+    for (const source of ["gate.request({ kind: 'push', command: gitPushCommand(r, b) })", 'items.push(x)', "'ghost'"]) {
+      assert.ok(!pushOrGh(source), source);
+    }
+  });
+
+  it('should build `git push` and `gh` commands only in the ActionGate module', () => {
+    const offenders = trackedFiles('packages/*.ts', 'packages/*.tsx', 'desktop/src/*.ts', 'desktop/src/*.tsx')
+      .filter((file) => file !== ACTION_GATE && !/\.test\.tsx?$/.test(file) && !file.includes('__fixtures__'))
+      .filter((file) => pushOrGh(read(file)));
+
+    assert.deepEqual(offenders, [], `orchestrator side effects that leave the run go through ActionGate (${ACTION_GATE})`);
+  });
+});
+
 describe('docs match `concilium --help`', () => {
   const sandbox = mkdtempSync(join(tmpdir(), 'concilium-invariants-'));
   after(() => rmSync(sandbox, { recursive: true, force: true }));

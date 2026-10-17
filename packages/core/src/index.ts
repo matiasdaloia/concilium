@@ -78,6 +78,7 @@ export { FakeCliDriver } from './adapters/cli/fake-cli-driver.js';
 export { CliCouncilGateway, councilBrief, COUNCIL_PROMPT_FILE, COUNCIL_TIMEOUT_MS } from './adapters/cli/cli-council-gateway.js';
 export { CliDriver, createHeadlessCliDrivers, parseOpenCodeModels } from './adapters/cli/cli-drivers.js';
 export type { HeadlessCliId } from './adapters/cli/cli-drivers.js';
+export { PUSH_CREDENTIAL_VARS, withoutPushCredentials } from './adapters/cli/agent-env.js';
 export type { FakeCliDriverOptions } from './adapters/cli/fake-cli-driver.js';
 
 // Application services
@@ -123,6 +124,10 @@ export {
 } from './domain/code-council/trail.js';
 export { COMMITTED_TRAIL_FILES, DecisionTrail, checkTrail, committedTrailDir, decisions } from './services/trail-service.js';
 export type { RunTrail, TrailCheck } from './services/trail-service.js';
+export {
+  ActionGate, GATE_OUTPUT_LIMIT, GATES_JSON, GATES_MD, approveGate, classifyAction, gatesMarkdown, gitPushCommand, isConciliumRef, listGates, rejectGate, shellLine,
+} from './services/action-gate.js';
+export type { ActionKind, ActionOutcome, ActionRequest, AutonomyTier, CommandResult, GateEntry, GatesFile, GateStatus } from './services/action-gate.js';
 export type { DissentRunInput, RunDissent } from './services/dissent-service.js';
 export type { SynthesisInput } from './services/synthesis-service.js';
 export type { JudgeTieInput, RankRunInput } from './services/ranking-service.js';

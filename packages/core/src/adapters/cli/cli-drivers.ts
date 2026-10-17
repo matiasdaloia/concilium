@@ -8,6 +8,7 @@ import { PROVIDER_IDS, type AgentProviderType } from '../../domain/agent/provide
 import { parseBrief, type Brief } from '../../domain/driver/brief.js';
 import type { NormalizedEvent } from '../../domain/driver/normalized-event.js';
 import type { CliAuth, CliDetection, DriverRunOptions, HeadlessCliDriver } from '../../ports/headless-cli-driver.js';
+import { withoutPushCredentials } from './agent-env.js';
 import { runClaudeCode } from './claude-code.js';
 import { runCodex } from './codex.js';
 import { runGemini } from './gemini.js';
@@ -144,7 +145,7 @@ export class CliDriver implements HeadlessCliDriver {
 
   async *run(brief: Brief, opts: DriverRunOptions): AsyncGenerator<NormalizedEvent> {
     const { command, run } = this.definition;
-    yield* run({ command, env: this.env, brief: parseBrief(brief), opts });
+    yield* run({ command, env: withoutPushCredentials(this.env), brief: parseBrief(brief), opts });
   }
 }
 
