@@ -38,7 +38,7 @@ export async function recordDissent(input: DissentRunInput): Promise<{ dissent: 
     const path = join(dirname(reports[0]), DISSENT_FILE);
     await writeFile(path, `${JSON.stringify({ version: 1, runId: input.run.id, records }, null, 2)}\n`);
     dissent.path = path;
-    if (synthesis?.synthesisPath) await writeFile(synthesis.synthesisPath, synthesisMarkdown(synthesis, input.run, records));
+    if (synthesis?.synthesisPath) await writeFile(synthesis.synthesisPath, synthesisMarkdown(synthesis, { ...input.run, ranking: input.ranking }, records));
     if (input.reframe?.reportPath) await writeFile(input.reframe.reportPath, reframeMarkdown(input.reframe, input.run, records));
   } catch (err) {
     log.error(`run ${input.run.id}: could not write the dissent: ${err instanceof Error ? err.message : String(err)}`);

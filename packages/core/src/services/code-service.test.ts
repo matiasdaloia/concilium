@@ -947,6 +947,10 @@ describe('runCodeCandidates synthesis', () => {
     expect(md).toContain(`reverted by \`${rejected.revertSha}\``);
     expect(md).toContain('- `opencode`: BLOCKED: made no change');
     expect(md).toContain('- Mergeable: yes');
+    // The ranking table holds the record's order, also after the dissent re-render.
+    const ranked = [...md.matchAll(/^\| (\d+) \| `([^`]+)` \|/gm)].map((m) => [Number(m[1]), m[2]]);
+    expect(ranked).toEqual(record.ranking.order.map((e) => [e.rank, e.candidateId]));
+    expect(md).toContain(`Winner: \`claude\`: ${record.ranking.reason}.`);
 
     // The rejected graft is dissent overruled by the checks that failed after it; nothing is open, so the label stays.
     expect(record.dissent).toEqual({ path: join(runDir, 'dissent.json'), records: [expect.objectContaining({ id: 'dissent-1', source: 'rejected-graft', resolution: 'overruled' })] });

@@ -320,7 +320,7 @@ export async function synthesize(input: SynthesisInput): Promise<Synthesis> {
   try {
     await mkdir(input.runDir, { recursive: true });
     const path = join(input.runDir, SYNTHESIS_REPORT);
-    await writeFile(path, synthesisMarkdown(synthesis, { id: input.runId, task: input.task, baseSha: input.baseSha }));
+    await writeFile(path, synthesisMarkdown(synthesis, { id: input.runId, task: input.task, baseSha: input.baseSha, ranking: input.ranking }));
     synthesis.synthesisPath = path;
   } catch (err) {
     synthesis.notes.push(`could not write ${SYNTHESIS_REPORT}: ${errorMessage(err)}`);

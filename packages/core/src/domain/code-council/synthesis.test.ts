@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { graftPrompt, integratorBrief, parseGraftAnswer, settleDivergence, synthesisMarkdown, type Graft, type Synthesis } from './synthesis.js';
+import type { Ranking } from './ranking.js';
 
 describe('graftPrompt', () => {
   it('should hold the task, the base and each other candidate by letter with its evidence and diff, and ask for JSON only', () => {
@@ -118,6 +119,34 @@ describe('synthesisMarkdown', () => {
     const unresolved = synthesisMarkdown({ ...synthesis, divergence: open, patchPath: null, mergeable: false, mergeCheck: null }, { id: 'r', task: 't', baseSha: 'b' });
     expect(unresolved).toContain('Not resolved: at the integration head gate test is fail, anthropic-1 is error. No patch was kept: the run needs a reframe (see `reframe.md`).');
     expect(unresolved).toContain('- Patch: none');
+  });
+
+  it('should list the ranking in rank order, tied candidates sharing a rank, then the winner', () => {
+    const key = { disqualified: false, newFailures: 0, survived: 1, counted: 2, penalties: 0 };
+    const ranking: Ranking = {
+      order: [
+        { candidateId: 'claude', status: 'PASS', key, size: { lines: 4, files: 1 }, rank: 1, judgeTotal: 8.5 },
+        { candidateId: 'gemini', status: 'ISSUES', key: { ...key, newFailures: 1, counted: 0 }, size: { lines: 9, files: 2 }, rank: 2, judgeTotal: null },
+        { candidateId: 'codex', status: 'ISSUES', key: { ...key, newFailures: 1, counted: 0 }, size: { lines: 2, files: 1 }, rank: 2, judgeTotal: null },
+        { candidateId: 'opencode', status: 'ISSUES', key: { ...key, disqualified: true, penalties: 1 }, size: { lines: 1, files: 1 }, rank: 4, judgeTotal: null },
+      ],
+      winner: 'claude', reason: 'best on the evidence', judgments: [],
+    };
+    const md = synthesisMarkdown(synthesis, { id: 'r', task: 't', baseSha: 'b', ranking });
+    expect(md).toContain([
+      '## Ranking', '',
+      '| Rank | Candidate | Report | New gate failures | Survival | Penalties | Diff | Judge total |',
+      '|---|---|---|---|---|---|---|---|',
+      '| 1 | `claude` | PASS | 0 | 1/2 | 0 | 4 lines, 1 files | 8.5 |',
+      '| 2 | `gemini` | ISSUES | 1 | none counted | 0 | 9 lines, 2 files | - |',
+      '| 2 | `codex` | ISSUES | 1 | none counted | 0 | 2 lines, 1 files | - |',
+      '| 4 | `opencode` | ISSUES, disqualified | 0 | 1/2 | 1 | 1 lines, 1 files | - |', '',
+      'Winner: `claude`: best on the evidence.', '',
+      '## Base',
+    ].join('\n'));
+    expect(synthesisMarkdown(synthesis, { id: 'r', task: 't', baseSha: 'b', ranking: { ...ranking, winner: null, reason: 'every candidate is blocked' } }))
+      .toContain('No winner: every candidate is blocked.');
+    expect(synthesisMarkdown(synthesis, { id: 'r', task: 't', baseSha: 'b' })).not.toContain('## Ranking');
   });
 
   it('should say why it was skipped, and why a patch is not mergeable', () => {

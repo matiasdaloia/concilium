@@ -11,6 +11,7 @@ import type { StepResult } from '../verification/gates.js';
 import type { PatchCheck } from '../../ports/workspace.js';
 import { dissentMarkdown, type Dissent } from './dissent.js';
 import type { JudgeChoice } from './judging.js';
+import type { RankEntry, Ranking } from './ranking.js';
 import { jsonFromAnswer } from './rubric.js';
 
 /** At most this many grafts are taken from one losing candidate. */
@@ -209,12 +210,39 @@ function graftLine(g: Graft): string {
   return `**${g.id}** from \`${g.candidateId}\` (${g.files.map((f) => `\`${f}\``).join(', ')}${g.hunk ? `, hunk \`${g.hunk.split('\n')[0]}\`` : ''}): ${g.instruction} Why: ${g.why}`;
 }
 
+function survivalCell(e: RankEntry): string {
+  return e.key.counted ? `${e.key.survived}/${e.key.counted}` : 'none counted';
+}
+
 /**
- * `synthesis.md`: the dissent (when given), the base, the applied grafts with their source, the rejected ones with
- * their evidence, the dropouts, the checks and the patch.
+ * The `## Ranking` section of `synthesis.md`: one table row per candidate in rank order (tied candidates share a
+ * rank), then the winner. The desktop's run viewer shows the same order, read from `run.json`.
  */
-export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string; baseSha: string }, dissent?: Dissent[]): string {
-  const lines = [`# Synthesis of run ${run.id}`, '', `Task: ${run.task}`, '', ...(dissent ? dissentMarkdown(dissent) : [])];
+export function rankingMarkdown(ranking: Ranking): string[] {
+  const rows = ranking.order.map((e) => {
+    const report = `${e.status}${e.key.disqualified ? ', disqualified' : ''}`;
+    const diff = `${e.size.lines} lines, ${e.size.files} files`;
+    return `| ${e.rank} | \`${e.candidateId}\` | ${report} | ${e.key.newFailures} | ${survivalCell(e)} | ${e.key.penalties} | ${diff} | ${e.judgeTotal ?? '-'} |`;
+  });
+  return [
+    '## Ranking', '',
+    '| Rank | Candidate | Report | New gate failures | Survival | Penalties | Diff | Judge total |',
+    '|---|---|---|---|---|---|---|---|',
+    ...rows, '',
+    ranking.winner ? `Winner: \`${ranking.winner}\`: ${ranking.reason}.` : `No winner: ${ranking.reason}.`, '',
+  ];
+}
+
+/**
+ * `synthesis.md`: the dissent (when given), the ranking (when given), the base, the applied grafts with their source,
+ * the rejected ones with their evidence, the dropouts, the checks and the patch.
+ */
+export function synthesisMarkdown(s: Synthesis, run: { id: string; task: string; baseSha: string; ranking?: Ranking }, dissent?: Dissent[]): string {
+  const lines = [
+    `# Synthesis of run ${run.id}`, '', `Task: ${run.task}`, '',
+    ...(dissent ? dissentMarkdown(dissent) : []),
+    ...(run.ranking ? rankingMarkdown(run.ranking) : []),
+  ];
   if (s.skipped) return [...lines, `Skipped: ${s.skipped}.`, ''].join('\n');
 
   const applied = s.grafts.filter((g) => g.status === 'applied');
