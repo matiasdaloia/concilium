@@ -58,7 +58,7 @@ Concilium follows a **hexagonal (ports-and-adapters) architecture**:
 | `RunRepository` | `JsonRunRepository` (XDG data dir) | `JsonRunRepository` (Electron `userData`) |
 | `DeliberationEvents` | Callback event bridge / Ink reducer | IPC event bridge (`webContents.send`) |
 
-The desktop runs Electron 44 with `contextIsolation` and `sandbox` on and `nodeIntegration` off (`desktop/src/main/main.ts`); the renderer reaches the main process only through the preload's `window.electronAPI`. `--smoke-test` (`src/main/smoke-test.ts`) quits with 0 once the renderer has mounted with that API, 1 on a load failure, a renderer crash or 30 seconds; `npm run smoke -w concilium` runs the packaged app that way under `xvfb-run` in temp `HOME`/`XDG_*` dirs.
+The desktop runs Electron 44 with `contextIsolation` and `sandbox` on and `nodeIntegration` off (`desktop/src/main/main.ts`); the renderer reaches the main process only through the preload's `window.electronAPI`. `--smoke-test` (`src/main/smoke-test.ts`) quits with 0 once the renderer has mounted with that API, 1 on a load failure, a renderer crash or 30 seconds; `npm run smoke -w concilium` runs the packaged app that way under `xvfb-run` in temp `HOME`/`XDG_*` dirs with an empty `PATH`, so no real agent CLI runs.
 
 Agent providers (`claude`, `codex`, `gemini`, `opencode`) are listed once, in the `PROVIDERS` registry (`packages/core/src/domain/agent/providers.ts`), with their model family and model list, and a headless CLI driver per id in `adapters/cli/cli-drivers.ts`.
 

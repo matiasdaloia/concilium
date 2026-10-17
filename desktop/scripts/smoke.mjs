@@ -6,9 +6,10 @@
 
 // Starts the app packaged by `npm run package` under xvfb-run with --smoke-test,
 // in throwaway HOME and XDG dirs, and exits with the app's exit code.
-// Linux only; needs xvfb-run.
+// The app gets an empty PATH, so the agent detection the home screen runs
+// finds no real agent CLI. Linux only; needs xvfb-run.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +23,10 @@ if (!existsSync(binary)) {
 
 const home = mkdtempSync(path.join(tmpdir(), 'concilium-smoke-'));
 try {
-  const result = spawnSync('xvfb-run', ['-a', binary, '--smoke-test', `--cwd=${home}`], {
+  const emptyBin = path.join(home, 'bin');
+  mkdirSync(emptyBin);
+  const appArgs = ['env', `PATH=${emptyBin}`, binary, '--smoke-test', `--cwd=${home}`];
+  const result = spawnSync('xvfb-run', ['-a', ...appArgs], {
     cwd: home,
     stdio: 'inherit',
     timeout: 60_000,
