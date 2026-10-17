@@ -11,43 +11,41 @@ import ResultsScreen from './screens/ResultsScreen';
 import AnalyticsScreen from './screens/AnalyticsScreen';
 import type { RunRecord } from './types';
 
-type Screen = 'home' | 'running' | 'results' | 'analytics';
+type InitialAgents = Array<{ key: string; name: string }>;
+
+type View =
+  | { screen: 'home' }
+  | { screen: 'running'; runId: string; initialAgents: InitialAgents }
+  | { screen: 'results'; record: RunRecord }
+  | { screen: 'analytics' };
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('home');
-  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
-  const [currentInitialAgents, setCurrentInitialAgents] = useState<Array<{ key: string; name: string }>>([]);
-  const [lastResult, setLastResult] = useState<RunRecord | null>(null);
+  const [view, setView] = useState<View>({ screen: 'home' });
 
-  const handleStartRun = useCallback((runId: string, initialAgents: Array<{ key: string; name: string }>) => {
-    setCurrentRunId(runId);
-    setCurrentInitialAgents(initialAgents);
-    setScreen('running');
+  const handleStartRun = useCallback((runId: string, initialAgents: InitialAgents) => {
+    setView({ screen: 'running', runId, initialAgents });
   }, []);
 
   const handleRunComplete = useCallback((record: RunRecord) => {
-    setLastResult(record);
-    setScreen('results');
+    setView({ screen: 'results', record });
   }, []);
 
   const handleNewRun = useCallback(() => {
-    setCurrentRunId(null);
-    setLastResult(null);
-    setScreen('home');
+    setView({ screen: 'home' });
   }, []);
 
   const handleOpenAnalytics = useCallback(() => {
-    setScreen('analytics');
+    setView({ screen: 'analytics' });
   }, []);
 
-  switch (screen) {
+  switch (view.screen) {
     case 'home':
       return <HomeScreen onStartRun={handleStartRun} onOpenAnalytics={handleOpenAnalytics} />;
     case 'running':
       return (
         <RunningScreen
-          runId={currentRunId!}
-          initialAgents={currentInitialAgents}
+          runId={view.runId}
+          initialAgents={view.initialAgents}
           onComplete={handleRunComplete}
           onCancel={handleNewRun}
         />
@@ -55,7 +53,7 @@ export default function App() {
     case 'results':
       return (
         <ResultsScreen
-          record={lastResult!}
+          record={view.record}
           onNewRun={handleNewRun}
         />
       );

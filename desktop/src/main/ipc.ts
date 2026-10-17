@@ -160,15 +160,16 @@ export function registerIpcHandlers(
       };
     });
 
-    deliberationService = await runtime.createDeliberationService(
+    const service = await runtime.createDeliberationService(
       new ElectronEventBridge(mainWindow),
     );
+    deliberationService = service;
 
     // Run pipeline asynchronously
     const runId = crypto.randomUUID();
     setImmediate(async () => {
       try {
-        await deliberationService!.run({
+        await service.run({
           runId,
           prompt: params.prompt,
           images: params.images,
