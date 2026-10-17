@@ -12,7 +12,8 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { rankCells, rankingLine } from '../shared/run-view';
 import { cliRunsDir, openRunArg, readRunDir } from './run-dir';
 
-const FIXTURE = fileURLToPath(new URL('./__fixtures__/20261017T113106-2dc8df', import.meta.url));
+/** Written by `desktop/scripts/make-run-fixture.mjs`. */
+const FIXTURE = fileURLToPath(new URL('./__fixtures__/code-run', import.meta.url));
 const sandbox = mkdtempSync(path.join(tmpdir(), 'concilium-run-dir-'));
 
 afterAll(() => rmSync(sandbox, { recursive: true, force: true }));
@@ -54,7 +55,7 @@ describe('readRunDir', () => {
     symlinkSync(FIXTURE, link);
     const view = await readRunDir(link);
     expect(view.dir).toBe(FIXTURE);
-    expect(view.runId).toBe('20261017T113106-2dc8df');
+    expect(view.runId).toBe(JSON.parse(readFileSync(path.join(FIXTURE, 'run.json'), 'utf8')).id);
 
     await expect(readRunDir(path.join(FIXTURE, 'run.json'))).rejects.toThrow('is not a directory');
     await expect(readRunDir(path.join(sandbox, 'nope'))).rejects.toThrow('ENOENT');

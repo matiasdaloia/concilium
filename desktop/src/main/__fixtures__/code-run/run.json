@@ -1,10 +1,10 @@
 {
   "version": 1,
   "kind": "code",
-  "id": "20261017T113106-2dc8df",
+  "id": "20261017T113941-c4b9de",
   "status": "done",
   "dissent": {
-    "path": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/dissent.json",
+    "path": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/dissent.json",
     "records": [
       {
         "id": "dissent-1",
@@ -22,12 +22,12 @@
       }
     ]
   },
-  "createdAt": "2026-10-17T11:31:06.796Z",
-  "finishedAt": "2026-10-17T11:31:07.250Z",
+  "createdAt": "2026-10-17T11:39:41.304Z",
+  "finishedAt": "2026-10-17T11:39:41.750Z",
   "task": "sum must reject non-numbers",
-  "repoDir": "/tmp/m92-44Kh1m/repo",
-  "headSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
-  "baseSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+  "repoDir": "/tmp/concilium-run-fixture-0LAVbT/repo",
+  "headSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+  "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
   "taskType": {
     "type": "feature",
     "source": "classifier",
@@ -81,7 +81,7 @@
     ],
     "source": "framer",
     "framer": "claude",
-    "frozenAt": "2026-10-17T11:31:06.821Z",
+    "frozenAt": "2026-10-17T11:39:41.327Z",
     "sha256": "72bede41a0d4e6eef487097a536593f989d2387ea109ee8f7f9a2272826359da"
   },
   "candidates": [
@@ -90,9 +90,9 @@
       "provider": "claude",
       "model": null,
       "status": "ok",
-      "branch": "concilium/20261017T113106-2dc8df/claude",
-      "worktree": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/claude",
-      "headSha": "d6963894106d7c862b8f19843c103657e06a8e01",
+      "branch": "concilium/20261017T113941-c4b9de/claude",
+      "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude",
+      "headSha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
       "committed": true,
       "diffStat": {
         "commits": 1,
@@ -100,7 +100,7 @@
         "insertions": 3,
         "deletions": 1
       },
-      "durationMs": 27,
+      "durationMs": 24,
       "usage": {
         "inputTokens": 0,
         "outputTokens": 0
@@ -110,9 +110,9 @@
         "version": 1,
         "task": "sum must reject non-numbers\n\n## Playbook: feature\nFollow these steps in order. In your final message, list every step as done, or as skipped with the reason.\n1. Name the data shape first: the types and the data the feature reads and writes.\n2. Find the blocking steps, the independent pieces and the shared state, and pick the smallest decomposition.\n3. Build it in small, ordered commits, each with its tests.\n4. Verify it through the surface a user touches (the command, endpoint or screen), not only through unit tests.\n\n## Verification expected\n- Tests for the new behavior.\n- The existing tests still pass.\n- The feature exercised through its real entry point.",
         "mode": "code",
-        "cwd": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/claude",
+        "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude",
         "constraints": [
-          "You are in /tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/claude, a git worktree of the project on branch concilium/20261017T113106-2dc8df/claude. Make every change inside this directory.",
+          "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/claude, a git worktree of the project on branch concilium/20261017T113941-c4b9de/claude. Make every change inside this directory.",
           "You do not need to commit: Concilium commits what you leave in the working tree when you finish. Do not push, and do not create or switch branches."
         ],
         "allowedActions": [
@@ -124,16 +124,16 @@
       "finalText": "1. done: validated a\n2. done: added sum.test.js\n3. done: ran the tests\n4. skipped: nothing else",
       "verification": {
         "status": "ISSUES",
-        "sha": "d6963894106d7c862b8f19843c103657e06a8e01",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
         "install": null,
         "gates": [
           {
             "name": "lint",
             "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
-            "sha": "d6963894106d7c862b8f19843c103657e06a8e01",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
             "outcome": "fail",
             "exitCode": 1,
-            "durationMs": 13,
+            "durationMs": 14,
             "output": "var in sum.js\n",
             "truncated": false,
             "verdict": "new-failure"
@@ -141,10 +141,10 @@
           {
             "name": "test",
             "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-            "sha": "d6963894106d7c862b8f19843c103657e06a8e01",
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
             "outcome": "pass",
             "exitCode": 0,
-            "durationMs": 12,
+            "durationMs": 14,
             "output": "",
             "truncated": false,
             "verdict": "pass"
@@ -159,9 +159,9 @@
         "errors": []
       },
       "report": {
-        "branch": "concilium/20261017T113106-2dc8df/claude",
-        "baseSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
-        "headSha": "d6963894106d7c862b8f19843c103657e06a8e01",
+        "branch": "concilium/20261017T113941-c4b9de/claude",
+        "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "headSha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
         "evidence": [
           {
             "kind": "agent",
@@ -172,13 +172,13 @@
             "kind": "gate",
             "ok": false,
             "detail": "lint: fail, passes on the base",
-            "sha": "d6963894106d7c862b8f19843c103657e06a8e01"
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1"
           },
           {
             "kind": "gate",
             "ok": true,
             "detail": "test: pass",
-            "sha": "d6963894106d7c862b8f19843c103657e06a8e01"
+            "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1"
           },
           {
             "kind": "survival",
@@ -200,9 +200,9 @@
       "provider": "codex",
       "model": null,
       "status": "ok",
-      "branch": "concilium/20261017T113106-2dc8df/codex",
-      "worktree": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/codex",
-      "headSha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+      "branch": "concilium/20261017T113941-c4b9de/codex",
+      "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex",
+      "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
       "committed": true,
       "diffStat": {
         "commits": 1,
@@ -210,7 +210,7 @@
         "insertions": 4,
         "deletions": 1
       },
-      "durationMs": 36,
+      "durationMs": 35,
       "usage": {
         "inputTokens": 1,
         "outputTokens": 1
@@ -220,9 +220,9 @@
         "version": 1,
         "task": "sum must reject non-numbers\n\n## Playbook: feature\nFollow these steps in order. In your final message, list every step as done, or as skipped with the reason.\n1. Name the data shape first: the types and the data the feature reads and writes.\n2. Find the blocking steps, the independent pieces and the shared state, and pick the smallest decomposition.\n3. Build it in small, ordered commits, each with its tests.\n4. Verify it through the surface a user touches (the command, endpoint or screen), not only through unit tests.\n\n## Verification expected\n- Tests for the new behavior.\n- The existing tests still pass.\n- The feature exercised through its real entry point.",
         "mode": "code",
-        "cwd": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/codex",
+        "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex",
         "constraints": [
-          "You are in /tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/codex, a git worktree of the project on branch concilium/20261017T113106-2dc8df/codex. Make every change inside this directory.",
+          "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/codex, a git worktree of the project on branch concilium/20261017T113941-c4b9de/codex. Make every change inside this directory.",
           "You do not need to commit: Concilium commits what you leave in the working tree when you finish. Do not push, and do not create or switch branches."
         ],
         "allowedActions": [
@@ -234,13 +234,13 @@
       "finalText": "1. done: validated both\n2. done\n3. done: ran the tests\n4. skipped: nothing else",
       "verification": {
         "status": "PASS",
-        "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
         "install": null,
         "gates": [
           {
             "name": "lint",
             "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
-            "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
             "outcome": "pass",
             "exitCode": 0,
             "durationMs": 12,
@@ -251,10 +251,10 @@
           {
             "name": "test",
             "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-            "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
             "outcome": "pass",
             "exitCode": 0,
-            "durationMs": 11,
+            "durationMs": 12,
             "output": "",
             "truncated": false,
             "verdict": "pass"
@@ -267,9 +267,9 @@
         "errors": []
       },
       "report": {
-        "branch": "concilium/20261017T113106-2dc8df/codex",
-        "baseSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
-        "headSha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+        "branch": "concilium/20261017T113941-c4b9de/codex",
+        "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
+        "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
         "evidence": [
           {
             "kind": "agent",
@@ -280,13 +280,13 @@
             "kind": "gate",
             "ok": true,
             "detail": "lint: pass",
-            "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5"
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05"
           },
           {
             "kind": "gate",
             "ok": true,
             "detail": "test: pass",
-            "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5"
+            "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05"
           },
           {
             "kind": "survival",
@@ -324,23 +324,23 @@
     },
     "baseline": {
       "lane": "base",
-      "sha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+      "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
       "install": null,
       "gates": [
         {
           "name": "lint",
           "command": "\"/home/matiasdaloia/.local/node/bin/node\" lint.js",
-          "sha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+          "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
           "outcome": "pass",
           "exitCode": 0,
-          "durationMs": 15,
+          "durationMs": 13,
           "output": "",
           "truncated": false
         },
         {
           "name": "test",
           "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-          "sha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+          "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
           "outcome": "pass",
           "exitCode": 0,
           "durationMs": 12,
@@ -359,11 +359,11 @@
         "provider": "claude",
         "model": null,
         "lane": "adv-anthropic",
-        "branch": "concilium/20261017T113106-2dc8df/adv-anthropic",
-        "worktree": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-anthropic",
-        "headSha": "08b55ed0bcf09aa0bd046cda88c8b5e46b6d00a7",
+        "branch": "concilium/20261017T113941-c4b9de/adv-anthropic",
+        "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic",
+        "headSha": "a94895bafa8f2b547a2cee48fef0125dca371449",
         "status": "ok",
-        "durationMs": 26,
+        "durationMs": 24,
         "usage": {
           "inputTokens": 0,
           "outputTokens": 0
@@ -377,10 +377,10 @@
           "version": 1,
           "task": "You are an adversary reviewing 1 candidate solutions to a feature task. The task:\n\nsum must reject non-numbers\n\nWrite tests that a correct solution passes and that fail on the code in your directory, which is the project before any candidate changed it.\nAim them at what the task asks for and at the weak spots in the candidates' diffs: edge cases they miss, inputs they mishandle.\nEvery test enforces one requirement of the task: quote the sentence or phrase of the task it checks as its specClause.\nDo not change the project's code. Add new test files only, in the project's test style, where `\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js` runs them.\nWhen you are done, write concilium-adversarial.json at the root of your directory, listing at most 5 tests:\n{\"tests\": [{\"files\": [\"path/to/new.test.js\"], \"specClause\": \"the part of the task this test enforces\"}]}",
           "mode": "code",
-          "cwd": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-anthropic",
+          "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic",
           "constraints": [
-            "You are in /tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-anthropic, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
-            "Candidate diff, read-only: /tmp/concilium-adversary-lZ7tEY/candidate-2.patch"
+            "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-anthropic, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
+            "Candidate diff, read-only: /tmp/concilium-adversary-mGrslb/candidate-2.patch"
           ],
           "allowedActions": [
             "read",
@@ -395,11 +395,11 @@
         "provider": "codex",
         "model": null,
         "lane": "adv-openai",
-        "branch": "concilium/20261017T113106-2dc8df/adv-openai",
-        "worktree": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-openai",
-        "headSha": "3004c80f56b4aca8cbeaf42a35a37a43eb09c4f6",
+        "branch": "concilium/20261017T113941-c4b9de/adv-openai",
+        "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai",
+        "headSha": "fa8a9174ab4c2693504e7dc0ec42cb51f237cb19",
         "status": "ok",
-        "durationMs": 32,
+        "durationMs": 34,
         "usage": {
           "inputTokens": 1,
           "outputTokens": 1
@@ -413,10 +413,10 @@
           "version": 1,
           "task": "You are an adversary reviewing 1 candidate solutions to a feature task. The task:\n\nsum must reject non-numbers\n\nWrite tests that a correct solution passes and that fail on the code in your directory, which is the project before any candidate changed it.\nAim them at what the task asks for and at the weak spots in the candidates' diffs: edge cases they miss, inputs they mishandle.\nEvery test enforces one requirement of the task: quote the sentence or phrase of the task it checks as its specClause.\nDo not change the project's code. Add new test files only, in the project's test style, where `\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js` runs them.\nWhen you are done, write concilium-adversarial.json at the root of your directory, listing at most 5 tests:\n{\"tests\": [{\"files\": [\"path/to/new.test.js\"], \"specClause\": \"the part of the task this test enforces\"}]}",
           "mode": "code",
-          "cwd": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-openai",
+          "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai",
           "constraints": [
-            "You are in /tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/adv-openai, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
-            "Candidate diff, read-only: /tmp/concilium-adversary-lZ7tEY/candidate-1.patch"
+            "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/adv-openai, a scratch git worktree. Make every change inside this directory; do not commit, push or switch branches.",
+            "Candidate diff, read-only: /tmp/concilium-adversary-mGrslb/candidate-1.patch"
           ],
           "allowedActions": [
             "read",
@@ -475,7 +475,7 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+        "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
         "outcome": "fail",
         "exitCode": 1,
         "durationMs": 15,
@@ -487,10 +487,10 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "d6963894106d7c862b8f19843c103657e06a8e01",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
         "outcome": "pass",
         "exitCode": 0,
-        "durationMs": 13,
+        "durationMs": 12,
         "output": "",
         "truncated": false,
         "testId": "anthropic-1",
@@ -499,10 +499,10 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
         "outcome": "pass",
         "exitCode": 0,
-        "durationMs": 14,
+        "durationMs": 13,
         "output": "",
         "truncated": false,
         "testId": "anthropic-1",
@@ -511,10 +511,10 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+        "sha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
         "outcome": "fail",
         "exitCode": 1,
-        "durationMs": 14,
+        "durationMs": 13,
         "output": "codex-adv.test.js: no TypeError\n",
         "truncated": false,
         "testId": "openai-1",
@@ -523,10 +523,10 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "d6963894106d7c862b8f19843c103657e06a8e01",
+        "sha": "a4ec4c458eaa7f2e437e21d40db1c987d6425fe1",
         "outcome": "fail",
         "exitCode": 1,
-        "durationMs": 15,
+        "durationMs": 13,
         "output": "codex-adv.test.js: no TypeError\n",
         "truncated": false,
         "testId": "openai-1",
@@ -535,10 +535,10 @@
       {
         "name": "test",
         "command": "\"/home/matiasdaloia/.local/node/bin/node\" run-tests.js",
-        "sha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+        "sha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
         "outcome": "pass",
         "exitCode": 0,
-        "durationMs": 14,
+        "durationMs": 11,
         "output": "",
         "truncated": false,
         "testId": "openai-1",
@@ -590,12 +590,12 @@
   "synthesis": {
     "base": {
       "candidateId": "codex",
-      "headSha": "a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5",
+      "headSha": "b3aa857c51a564fda432ea3a8b25cdeb8a228e05",
       "reason": "best on the evidence"
     },
-    "branch": "concilium/20261017T113106-2dc8df/integration",
-    "worktree": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/integration",
-    "headSha": "a4c32dcdc964f315840bf7a97ca0c58308b3099f",
+    "branch": "concilium/20261017T113941-c4b9de/integration",
+    "worktree": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration",
+    "headSha": "415972a7b57fe74341feef51e5de6fd192daf598",
     "picker": {
       "provider": "claude",
       "sameFamily": true,
@@ -613,7 +613,7 @@
         "instruction": "Take its sum.test.js.",
         "why": "The base has no test.",
         "status": "applied",
-        "commitSha": "a4c32dcdc964f315840bf7a97ca0c58308b3099f",
+        "commitSha": "415972a7b57fe74341feef51e5de6fd192daf598",
         "revertSha": null,
         "reason": "",
         "evidence": [],
@@ -621,18 +621,18 @@
           "provider": "codex",
           "model": null,
           "status": "ok",
-          "durationMs": 14,
+          "durationMs": 16,
           "errors": [],
           "finalText": "Folded the test in",
           "brief": {
             "version": 1,
             "task": "You are integrating one idea from another solution into the solution in your directory, which solves the task below.\nFold the idea in by hand so the result stays coherent. Do not copy the other solution wholesale, and change nothing the idea does not need.\n\nTask:\nsum must reject non-numbers\n\nGraft graft-1:\nInstruction: Take its sum.test.js.\nWhy: The base has no test.\nSource files: sum.test.js\n\nKeep the existing tests passing; never delete, skip or weaken a test to get there. When you finish, say in one line what you changed.",
             "mode": "code",
-            "cwd": "/tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/integration",
+            "cwd": "/tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration",
             "constraints": [
-              "You are in /tmp/m92-44Kh1m/cache/concilium/worktrees/8cc6ac25429fbd32/20261017T113106-2dc8df/integration, a git worktree on branch concilium/20261017T113106-2dc8df/integration. Make every change inside this directory.",
+              "You are in /tmp/concilium-run-fixture-0LAVbT/cache/concilium/worktrees/6c0ba8b4ca0a3908/20261017T113941-c4b9de/integration, a git worktree on branch concilium/20261017T113941-c4b9de/integration. Make every change inside this directory.",
               "You do not need to commit: Concilium commits what you leave in the working tree. Do not push, and do not create or switch branches.",
-              "Source solution diff, read-only: /tmp/concilium-graft-uKx2v6/source.patch"
+              "Source solution diff, read-only: /tmp/concilium-graft-vo0qio/source.patch"
             ],
             "allowedActions": [
               "read",
@@ -645,7 +645,7 @@
     ],
     "dropouts": [],
     "checks": {
-      "sha": "a4c32dcdc964f315840bf7a97ca0c58308b3099f",
+      "sha": "415972a7b57fe74341feef51e5de6fd192daf598",
       "gates": {
         "lint": "pass",
         "test": "pass"
@@ -654,26 +654,26 @@
         "anthropic-1": "pass"
       }
     },
-    "patchPath": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/result.patch",
-    "synthesisPath": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/synthesis.md",
+    "patchPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/result.patch",
+    "synthesisPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/synthesis.md",
     "mergeable": true,
     "mergeCheck": {
       "applies": true,
-      "targetSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+      "targetSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
       "target": "HEAD",
       "output": ""
     }
   },
   "trail": {
-    "decisionsPath": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/decisions.tsv",
-    "eventsPath": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/events.jsonl",
+    "decisionsPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/decisions.tsv",
+    "eventsPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/events.jsonl",
     "rows": 13,
-    "commitSha": "9d9141197645f3eb0d6b8df94d929b418d03ed1d",
+    "commitSha": "f4db80168e8b1e77eb799eae2b175023395c1e19",
     "errors": []
   },
   "prVerdict": {
     "verdict": "PASS",
-    "reason": "every gate and valid adversarial test passes at a4c32dcdc964 and the review says PASS",
+    "reason": "every gate and valid adversarial test passes at 415972a7b57f and the review says PASS",
     "notes": [],
     "verifier": {
       "provider": "claude",
@@ -687,11 +687,11 @@
       "openai",
       "anthropic"
     ],
-    "branch": "concilium/20261017T113106-2dc8df/integration",
-    "branchHead": "9d9141197645f3eb0d6b8df94d929b418d03ed1d",
-    "headSha": "a4c32dcdc964f315840bf7a97ca0c58308b3099f",
-    "trailSha": "9d9141197645f3eb0d6b8df94d929b418d03ed1d",
-    "baseSha": "1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74",
+    "branch": "concilium/20261017T113941-c4b9de/integration",
+    "branchHead": "f4db80168e8b1e77eb799eae2b175023395c1e19",
+    "headSha": "415972a7b57fe74341feef51e5de6fd192daf598",
+    "trailSha": "f4db80168e8b1e77eb799eae2b175023395c1e19",
+    "baseSha": "c07260d2b86c6093ed9a0e7de4b3912553fdf97e",
     "patchId": "5f38b8860268c928490f8a556c7e8d45cb3fa678",
     "gates": {
       "lint": "pass",
@@ -704,7 +704,7 @@
       "status": "PASS",
       "text": "VERDICT: PASS\nThe validation and its test match the task."
     },
-    "verifiedAt": "2026-10-17T11:31:07.456Z",
-    "reportPath": "/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/verification.md"
+    "verifiedAt": "2026-10-17T11:39:41.947Z",
+    "reportPath": "/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/verification.md"
   }
 }

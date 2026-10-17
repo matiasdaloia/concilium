@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 import { rankCells, rankingLine } from '../shared/run-view';
 import { parseRunDir, RUN_FILES, type RunFiles } from './run-view';
 
-/** A run directory `concilium code` wrote (fake claude and codex on PATH), then `concilium verify-pr`. */
-const FIXTURE = fileURLToPath(new URL('./__fixtures__/20261017T113106-2dc8df', import.meta.url));
+/** A run directory `concilium code` and `concilium verify-pr` wrote on fake CLIs: `desktop/scripts/make-run-fixture.mjs`. */
+const FIXTURE = fileURLToPath(new URL('./__fixtures__/code-run', import.meta.url));
 
 function fixtureFiles(): RunFiles {
   const files: RunFiles = {};
@@ -33,7 +33,7 @@ describe('parseRunDir', () => {
     const view = parseRunDir(FIXTURE, fixtureFiles());
 
     expect(view.notes).toEqual([]);
-    expect(view).toMatchObject({ runId: '20261017T113106-2dc8df', task: 'sum must reject non-numbers', status: 'done', taskType: 'feature' });
+    expect(view).toMatchObject({ runId: record().id, task: 'sum must reject non-numbers', status: 'done', taskType: 'feature' });
     expect(view.candidates.map((c) => [c.candidateId, c.runner, c.status, c.report, c.diff])).toEqual([
       ['claude', 'claude', 'ok', 'ISSUES', '2 files, +3 -1'],
       ['codex', 'codex', 'ok', 'PASS', '1 files, +4 -1'],

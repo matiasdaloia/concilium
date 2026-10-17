@@ -1,4 +1,4 @@
-# Synthesis of run 20261017T113106-2dc8df
+# Synthesis of run 20261017T113941-c4b9de
 
 Task: sum must reject non-numbers
 
@@ -21,13 +21,13 @@ Winner: `codex`: best on the evidence.
 
 ## Base
 
-`codex` at `a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5` (best on the evidence).
+`codex` at `b3aa857c51a564fda432ea3a8b25cdeb8a228e05` (best on the evidence).
 
 Grafts named by `claude`, a same-family picker: no CLI outside the candidates' families (openai, anthropic) is usable, so claude names the grafts.
 
 ## Applied grafts
 
-- **graft-1** from `claude` (`sum.test.js`): Take its sum.test.js. Why: The base has no test. Commit `a4c32dcdc964f315840bf7a97ca0c58308b3099f`.
+- **graft-1** from `claude` (`sum.test.js`): Take its sum.test.js. Why: The base has no test. Commit `415972a7b57fe74341feef51e5de6fd192daf598`.
 
 ## Rejected grafts
 
@@ -39,7 +39,7 @@ None.
 
 ## Checks at the integration head
 
-At `a4c32dcdc964f315840bf7a97ca0c58308b3099f`:
+At `415972a7b57fe74341feef51e5de6fd192daf598`:
 
 - gate lint: pass
 - gate test: pass
@@ -47,6 +47,6 @@ At `a4c32dcdc964f315840bf7a97ca0c58308b3099f`:
 
 ## Result
 
-- Integration branch: `concilium/20261017T113106-2dc8df/integration` at `a4c32dcdc964f315840bf7a97ca0c58308b3099f`
-- Patch: `/tmp/m92-44Kh1m/data/concilium/runs/20261017T113106-2dc8df/result.patch` (`1f22c0dbe464..a4c32dcdc964`)
-- Mergeable: yes, `git apply --check` against `HEAD` at `1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74`
+- Integration branch: `concilium/20261017T113941-c4b9de/integration` at `415972a7b57fe74341feef51e5de6fd192daf598`
+- Patch: `/tmp/concilium-run-fixture-0LAVbT/data/concilium/runs/20261017T113941-c4b9de/result.patch` (`c07260d2b86c..415972a7b57f`)
+- Mergeable: yes, `git apply --check` against `HEAD` at `c07260d2b86c6093ed9a0e7de4b3912553fdf97e`
