@@ -54,9 +54,15 @@ export type ActionRequest = {
   ref?: string;
   /** Why the orchestrator wants it, for the gate entry. */
   reason?: string;
+  /**
+   * What a paused action is for, such as the commit it ships. A keyed request reuses a pending, approved or executed
+   * gate of its kind with the same key, command and cwd, and supersedes every other pending keyed gate of its kind.
+   */
+  key?: string;
 };
 
-export type GateStatus = 'pending' | 'approved' | 'executed' | 'failed' | 'rejected';
+/** `superseded`: a newer keyed request of its kind replaced it while pending; it can never run. */
+export type GateStatus = 'pending' | 'approved' | 'executed' | 'failed' | 'rejected' | 'superseded';
 
 export type GateEntry = {
   id: string;
@@ -65,9 +71,11 @@ export type GateEntry = {
   command: string[];
   cwd: string;
   reason: string;
+  /** The request's `key`, or null (absent on gates written before keys existed). */
+  key?: string | null;
   requestedAt: string;
   status: GateStatus;
-  /** When it was approved or rejected. */
+  /** When it was approved, rejected or superseded. */
   decidedAt: string | null;
   executedAt: string | null;
   exitCode: number | null;
@@ -80,7 +88,10 @@ export type CommandResult = { exitCode: number; output: string };
 
 export type ActionOutcome =
   | { tier: 'proceed' | 'proceed-and-announce'; reason: string; result: CommandResult }
-  | { tier: 'always-pause'; reason: string; gate: GateEntry };
+  | { tier: 'always-pause'; reason: string; gate: GateEntry; reused: boolean; superseded: GateEntry[] };
+
+/** A keyed gate in these states is the same request again; a failed or rejected one is asked for anew. */
+const REUSABLE: readonly GateStatus[] = ['pending', 'approved', 'executed'];
 
 const TIERS: Record<ActionKind, AutonomyTier> = {
   worktree: 'proceed',
@@ -218,8 +229,19 @@ export class ActionGate {
     }
 
     const { runId, runDir } = this.options;
-    const gate = await withLock(runDir, async () => {
+    const now = (this.options.now?.() ?? new Date()).toISOString();
+    const { gate, reused, superseded } = await withLock(runDir, async () => {
       const file = await readGates(runDir, runId);
+      const keyed = action.key === undefined ? [] : file.gates.filter((g) => g.kind === action.kind && g.key != null);
+      const same = keyed.find(
+        (g) => g.key === action.key && g.cwd === action.cwd && REUSABLE.includes(g.status) && JSON.stringify(g.command) === JSON.stringify(action.command),
+      );
+      if (same) return { gate: same, reused: true, superseded: [] };
+      const superseded = keyed.filter((g) => g.status === 'pending');
+      for (const g of superseded) {
+        g.status = 'superseded';
+        g.decidedAt = now;
+      }
       const entry: GateEntry = {
         id: `${runId}-g${file.gates.length + 1}`,
         runId,
@@ -227,7 +249,8 @@ export class ActionGate {
         command: [...action.command],
         cwd: action.cwd,
         reason: action.reason ? `${action.reason} (${reason})` : reason,
-        requestedAt: (this.options.now?.() ?? new Date()).toISOString(),
+        key: action.key ?? null,
+        requestedAt: now,
         status: 'pending',
         decidedAt: null,
         executedAt: null,
@@ -236,10 +259,11 @@ export class ActionGate {
       };
       file.gates.push(entry);
       await writeGates(runDir, file);
-      return entry;
+      return { gate: entry, reused: false, superseded };
     });
-    log.info(`paused ${gate.id}: ${shellLine(gate.command)} (${gate.reason})`);
-    return { tier, reason, gate };
+    for (const g of superseded) log.info(`superseded ${g.id} by ${gate.id}`);
+    log.info(`${reused ? 'reused' : 'paused'} ${gate.id}: ${shellLine(gate.command)} (${gate.reason})`);
+    return { tier, reason, gate, reused, superseded };
   }
 }
 
@@ -266,6 +290,7 @@ async function decide(runsDir: string, gateId: string, apply: (entry: GateEntry,
   return withLock(runDir, async () => {
     const file = await readGates(runDir, found.runId);
     const entry = file.gates.find((g) => g.id === gateId)!;
+    if (entry.status === 'superseded') throw new Error(`gate ${gateId} is superseded by a newer request; see concilium gates`);
     if (entry.status !== 'pending') throw new Error(`gate ${gateId} is ${entry.status}; each gate is decided once`);
     await apply(entry, runDir, file);
     return entry;

@@ -106,6 +106,7 @@ describe('ActionGate', () => {
         command: ['git', 'push', 'origin', branch],
         cwd: repo,
         reason: 'ship the integration branch (pushes to a remote)',
+        key: null,
         requestedAt: '2026-10-17T10:00:00.000Z',
         status: 'pending',
         decidedAt: null,
@@ -143,6 +144,37 @@ describe('ActionGate', () => {
       ['twice-run-g1', 'executed'],
       ['twice-run-g2', 'pending'],
     ]);
+  });
+
+  it('should reuse a keyed gate asked for again, and supersede pending keyed gates of its kind for another key', async () => {
+    const { repo, remote, branch } = repoWithRemote('keyed-run');
+    const gate = new ActionGate({ runId: 'keyed-run', runDir: join(runsDir, 'keyed-run'), now });
+    const push = (sha: string) => gate.request({ kind: 'push', command: gitPushCommand('origin', `${sha}:refs/heads/${branch}`), cwd: repo, key: sha });
+    const first = git(repo, 'rev-parse', branch);
+
+    const asked = await push(first);
+    const again = await push(first);
+    expect(asked.tier === 'always-pause' && [asked.gate.id, asked.reused]).toEqual(['keyed-run-g1', false]);
+    expect(again.tier === 'always-pause' && [again.gate.id, again.reused, again.superseded]).toEqual(['keyed-run-g1', true, []]);
+    // A gate without a key is never reused or superseded.
+    await gate.request({ kind: 'push', command: gitPushCommand('origin', branch), cwd: repo });
+
+    git(repo, 'commit', '-q', '--allow-empty', '-m', 'second');
+    const second = git(repo, 'rev-parse', 'HEAD');
+    const moved = await push(second);
+    expect(moved.tier === 'always-pause' && [moved.gate.id, moved.reused, moved.superseded.map((g) => g.id)]).toEqual(['keyed-run-g3', false, ['keyed-run-g1']]);
+    expect((await listGates(runsDir, 'keyed-run')).map((g) => [g.id, g.status])).toEqual([
+      ['keyed-run-g1', 'superseded'],
+      ['keyed-run-g2', 'pending'],
+      ['keyed-run-g3', 'pending'],
+    ]);
+    await expect(approveGate(runsDir, 'keyed-run-g1')).rejects.toThrow('gate keyed-run-g1 is superseded by a newer request');
+    expect(remoteBranches(remote)).toBe('');
+
+    // An executed keyed gate is reused too: the same commit is not asked for twice.
+    await approveGate(runsDir, 'keyed-run-g3', now);
+    const done = await push(second);
+    expect(done.tier === 'always-pause' && [done.gate.id, done.gate.status, done.reused]).toEqual(['keyed-run-g3', 'executed', true]);
   });
 
   it('should never run a rejected gate', async () => {
