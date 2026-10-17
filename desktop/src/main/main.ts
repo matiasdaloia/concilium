@@ -67,7 +67,7 @@ const createWindow = () => {
   registerIpcHandlers(mainWindow, resolvedProjectCwd, openRun);
 
   if (app.commandLine.hasSwitch('smoke-test')) {
-    watchSmokeTest(mainWindow);
+    watchSmokeTest(mainWindow, { openRun });
   }
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
