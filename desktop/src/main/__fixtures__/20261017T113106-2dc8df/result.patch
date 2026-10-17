@@ -1,0 +1,17 @@
+diff --git a/sum.js b/sum.js
+index bf90601..d7e41b6 100644
+--- a/sum.js
++++ b/sum.js
+@@ -1 +1,4 @@
+-module.exports = (a, b) => a + b;
++module.exports = (a, b) => {
++  if (typeof a !== "number" || typeof b !== "number") throw new TypeError("sum takes numbers");
++  return a + b;
++};
+diff --git a/sum.test.js b/sum.test.js
+new file mode 100644
+index 0000000..8e4d41f
+--- /dev/null
++++ b/sum.test.js
+@@ -0,0 +1 @@
++require("./sum")(1, 2);

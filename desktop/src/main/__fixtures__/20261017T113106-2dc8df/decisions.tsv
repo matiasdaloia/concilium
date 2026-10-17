@@ -1,0 +1,14 @@
+ts	event	step	decision	chosen	alternatives	evidence	reason
+2026-10-17T11:31:06.822Z	2	task-type	pick the playbook	feature	bugfix | refactor | perf | prototype	commit:1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74	classifier: no keyword matched, feature is the default
+2026-10-17T11:31:06.822Z	3	rubric	freeze the rubric before fan-out	sha256:72bede41a0d4e6eef487097a536593f989d2387ea109ee8f7f9a2272826359da	-	file:rubric.json	3 criteria (validates, suite, small), tailored by claude
+2026-10-17T11:31:06.822Z	4	candidates	fan out the candidates	claude, codex	-	commit:1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74	planner claude (default); implementer claude,codex (flag); adversary same-as-implementer (default); judge auto (default); integrator winner (default)
+2026-10-17T11:31:06.971Z	15	gate-plan	decide the gates from the base	lint, test	-	commit:1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74	from verify.yaml; base: lint pass, test pass
+2026-10-17T11:31:06.971Z	16	verification	verify claude	ISSUES	PASS | DISQUALIFIED	commit:d6963894106d7c862b8f19843c103657e06a8e01	new failures: lint; penalties: 0
+2026-10-17T11:31:06.971Z	17	verification	verify codex	PASS	ISSUES | DISQUALIFIED	commit:a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5	new failures: none; penalties: 0
+2026-10-17T11:31:07.106Z	26	adversarial	classify the adversarial tests	evidence 1, own-family-only 1	-	commit:08b55ed0bcf09aa0bd046cda88c8b5e46b6d00a7 | commit:3004c80f56b4aca8cbeaf42a35a37a43eb09c4f6	2 tests by adv-anthropic (ok), adv-openai (ok); survival claude 0/0, codex 1/1
+2026-10-17T11:31:07.107Z	27	ranking	rank on the evidence	codex	claude	commit:a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5	best on the evidence; order 1. codex, 2. claude
+2026-10-17T11:31:07.241Z	29	base-pick	pick the synthesis base	codex	claude	commit:a65ce8ac9636ae20fc4f04ca9af4bdef557c37c5 | file:synthesis.md	best on the evidence; dropouts: none
+2026-10-17T11:31:07.241Z	30	graft	graft-1 from claude (sum.test.js)	applied	rejected	commit:a4c32dcdc964f315840bf7a97ca0c58308b3099f	The base has no test.
+2026-10-17T11:31:07.241Z	31	divergence	check the candidates for divergence	none	-	file:synthesis.md	no trigger fired
+2026-10-17T11:31:07.242Z	32	dissent	record the dissent	0 open of 1	-	file:dissent.json	dissent-1 same-family-judge accepted-risk
+2026-10-17T11:31:07.242Z	33	mergeable	label the patch	mergeable	not mergeable	file:result.patch | commit:a4c32dcdc964f315840bf7a97ca0c58308b3099f	git apply --check passes against HEAD 1f22c0dbe4640c6fe8f5acdeaf34265edf21ce74
